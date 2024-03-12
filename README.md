@@ -4,7 +4,9 @@
 
 # candle-einops
 
-This library is a fork of [einops](https://github.com/VasanthakumarV/einops) intended to bring support for einops to [Candle](https://github.com/huggingface/candle)
+This library is a fork of [einops](https://github.com/VasanthakumarV/einops) intended to bring support for einops to [Candle](https://github.com/huggingface/candle). Thank you @VasanthakumarV for such a fantastic macro based library to build off. The original library was implemented with TCH as the backing library and was based on the [einops](https://github.com/arogozhnikov/einops) python library.
+
+For the most part everything from the original library has remained and only the device/dtype bindings have been altered. I do have plans to port `einsum` functionality to this library in the future.
 
 Difference from the python version:
 

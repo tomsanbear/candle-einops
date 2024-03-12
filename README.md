@@ -1,12 +1,10 @@
-![einops](https://github.com/VasanthakumarV/einops/workflows/CI/badge.svg)
-[![crates](https://img.shields.io/crates/v/einops)](https://crates.io/crates/einops)
-[![docs](https://img.shields.io/docsrs/einops)](https://docs.rs/einops)
+![candle-einops](https://github.com/tomsanbear/candle-einops/workflows/CI/badge.svg)
+[![crates](https://img.shields.io/crates/v/candle-einops)](https://crates.io/crates/candle-einops)
+[![docs](https://img.shields.io/docsrs/candle-einops)](https://docs.rs/candle-einops)
 
-# einops
+# candle-einops
 
-This library is heavily inspired by python's [einops](https://github.com/arogozhnikov/einops).
-
-Currently [tch](https://github.com/LaurentMazare/tch-rs) is the only available backend.
+This library is a fork from the original library that was implemented and based ont he TCH library. It 
 
 Difference from the python version,
 
@@ -70,8 +68,9 @@ let output = einops!("b h (w w2:2) c -> (h w2) (b w) c", &input);
 ```
 
 __Reduce__
+Note: the prod operation is not implemented until candle upstream deals with merging it in.
 
-We can reduce axes using operations like, `sum`, `min`, `max`, `mean` and `prod`,
+We can reduce axes using operations like, `sum`, `min`, `max`, and `mean`.
 if the same operations has to be performed on multiple continuous axes we can do `sum(a b c)`
 
 ```rust

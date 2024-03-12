@@ -1,26 +1,19 @@
 [package]
-name = "candle-einops"
+name = "candle-einops-macros"
 version = "0.1.0"
 authors = ["Thomas Santerre <thomas@santerre.xyz>"]
 edition = "2021"
 description = " Pure rust implementation of the python einops package for the Candle ML library "
 license = "MIT OR Apache-2.0"
-keywords = [
-    "deep-learning",
-    "tensor",
-    "candle",
-    "einops",
-    "machine-learning",
-    "ai",
-]
+keywords = ["deep-learning", "tensor", "candle", "einops", "machine-learning", "ai"]
 categories = ["algorithms", "science", "mathematics"]
 exclude = [".github/"]
 repository = "https://github.com/VasanthakumarV/einops"
 
-[dependencies]
-candle-core = { version = "0.4" }
-candle-nn = { version = "0.4" }
-candle-einops-macros = { path = "candle-einops-macros", version = "0.1.0" }
+[lib]
+proc-macro = true
 
-[package.metadata.docs.rs]
-no-default-features = true
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full", "extra-traits"] }

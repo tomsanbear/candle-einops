@@ -1,6 +1,6 @@
 mod backend;
 
-pub use einops_macros::einops;
+pub use candle_einops_macros::einops;
 
 pub use backend::Backend;
 
@@ -15,6 +15,4 @@ pub enum Operation {
     Sum,
     /// Take the average
     Mean,
-    /// Multiply all elements
-    Prod,
 }

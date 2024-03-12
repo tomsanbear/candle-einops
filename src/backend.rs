@@ -1,5 +1,4 @@
-#[cfg(feature = "tch")]
-mod torch;
+mod candle;
 
 use crate::Operation;
 

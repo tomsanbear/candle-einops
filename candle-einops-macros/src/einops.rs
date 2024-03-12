@@ -239,7 +239,7 @@ impl quote::ToTokens for ParsedExpression {
         ) {
             (true, true, _) => proc_macro2::TokenStream::new(),
             (false, _, _) | (_, false, true) => {
-                quote!(let #shape_ident = ::einops::Backend::shape(&#tensor_ident);)
+                quote!(let #shape_ident = ::candle_einops::Backend::shape(&#tensor_ident);)
             }
             (_, false, false) => proc_macro2::TokenStream::new(),
         };
@@ -252,7 +252,7 @@ impl quote::ToTokens for ParsedExpression {
         {
             proc_macro2::TokenStream::new()
         } else {
-            quote!(let #shape_ident = ::einops::Backend::shape(&#tensor_ident);)
+            quote!(let #shape_ident = ::candle_einops::Backend::shape(&#tensor_ident);)
         };
 
         // We have to recalculate the shape of the tensor before composition transformation
@@ -263,7 +263,7 @@ impl quote::ToTokens for ParsedExpression {
         {
             proc_macro2::TokenStream::new()
         } else {
-            quote!(let #shape_ident = ::einops::Backend::shape(&#tensor_ident);)
+            quote!(let #shape_ident = ::candle_einops::Backend::shape(&#tensor_ident);)
         };
 
         let code = quote! {{

@@ -5,14 +5,7 @@ authors = ["Thomas Santerre <thomas@santerre.xyz>"]
 edition = "2021"
 description = " Pure rust implementation of the python einops package for the Candle ML library "
 license = "MIT OR Apache-2.0"
-keywords = [
-    "deep-learning",
-    "tensor",
-    "candle",
-    "einops",
-    "machine-learning",
-    "ai",
-]
+keywords = ["tensor", "candle", "einops", "machine-learning", "ai"]
 categories = ["algorithms", "science", "mathematics"]
 exclude = [".github/"]
 repository = "https://github.com/tomsanbear/candle-einops"

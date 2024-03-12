@@ -11,8 +11,8 @@ pub enum Operation {
     Min,
     /// Take the maximum value
     Max,
-    /// Add all elements
+    /// Sum all elements
     Sum,
-    /// Take the average
+    /// Get the mean value
     Mean,
 }

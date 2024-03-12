@@ -4,9 +4,9 @@
 
 # candle-einops
 
-This library is a fork from the original library that was implemented and based ont he TCH library. It 
+This library is a fork of [einops](https://github.com/VasanthakumarV/einops) intended to bring support for einops to [Candle](https://github.com/huggingface/candle)
 
-Difference from the python version,
+Difference from the python version:
 
 - All code generated at compile time, avoiding the need for caching
 - One common api for rearrange, reduce and repeat operations
@@ -68,7 +68,6 @@ let output = einops!("b h (w w2:2) c -> (h w2) (b w) c", &input);
 ```
 
 __Reduce__
-Note: the prod operation is not implemented until candle upstream deals with merging it in.
 
 We can reduce axes using operations like, `sum`, `min`, `max`, and `mean`.
 if the same operations has to be performed on multiple continuous axes we can do `sum(a b c)`

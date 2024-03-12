@@ -1,9 +1,9 @@
 [package]
 name = "candle-einops"
 version = "0.1.0"
-authors = ["Thomas Santerre <thomas@santerre.xyz>"]
+authors = ["tomsanbear <thomas@santerre.xyz>"]
 edition = "2021"
-description = " Pure rust implementation of the python einops package for the Candle ML library "
+description = "Rust implementation of the python einops package for the Candle ML library "
 license = "MIT OR Apache-2.0"
 keywords = [
     "deep-learning",
@@ -15,7 +15,7 @@ keywords = [
 ]
 categories = ["algorithms", "science", "mathematics"]
 exclude = [".github/"]
-repository = "https://github.com/VasanthakumarV/einops"
+repository = "https://github.com/tomsanbear/candle-einops"
 
 [dependencies]
 candle-core = { version = "0.4" }

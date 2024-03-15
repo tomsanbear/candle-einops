@@ -1,8 +1,8 @@
 mod backend;
 
-pub use candle_einops_macros::einops;
-
 pub use backend::Backend;
+pub use candle_einops_macros::einops;
+pub use candle_einops_macros::einsum;
 
 /// Specifies the operation used to reduce an axis
 #[derive(Copy, Clone, Debug)]

@@ -1,6 +1,6 @@
 [package]
 name = "candle-einops"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["tomsanbear <thomas@santerre.xyz>"]
 edition = "2021"
 description = "Rust implementation of the python einops package for the Candle ML library "
@@ -12,8 +12,7 @@ repository = "https://github.com/tomsanbear/candle-einops"
 
 [dependencies]
 candle-core = { version = "0.4" }
-candle-nn = { version = "0.4" }
-candle-einops-macros = { path = "candle-einops-macros", version = "0.1.0" }
+candle-einops-macros = { path = "candle-einops-macros", version = "0.1.1" }
 
 [package.metadata.docs.rs]
 no-default-features = true

@@ -1,6 +1,6 @@
 [package]
 name = "candle-einops-macros"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Thomas Santerre <thomas@santerre.xyz>"]
 edition = "2021"
 description = " Pure rust implementation of the python einops package for the Candle ML library "

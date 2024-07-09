@@ -1,6 +1,6 @@
 [package]
 name = "candle-einops"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["tomsanbear <thomas@santerre.xyz>"]
 edition = "2021"
 description = "Rust implementation of the python einops package for the Candle ML library "

@@ -11,7 +11,7 @@ exclude = [".github/"]
 repository = "https://github.com/tomsanbear/candle-einops"
 
 [dependencies]
-candle-core = { version = "0.6" }
+candle-core = { version = "0.8" }
 candle-einops-macros = { path = "candle-einops-macros", version = "0.1.1" }
 
 [package.metadata.docs.rs]

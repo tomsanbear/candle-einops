@@ -55,7 +55,7 @@ pub fn to_tokens_composition(
                 } => {
                     let shape = quote!(
                         (#index..(#index + #ignored_len_ident))
-                            .into_iter().map(|i| #shape_ident[i]).product()
+                            .into_iter().map(|i| #shape_ident[i]).product::<usize>()
                     );
                     insert_shape(shape);
                 }
@@ -65,7 +65,7 @@ pub fn to_tokens_composition(
                 } => {
                     let shape = quote!(
                         (#from_index..=#to_index)
-                            .into_iter().map(|i| #shape_ident[i]).product()
+                            .into_iter().map(|i| #shape_ident[i]).product::<usize>()
                     );
                     insert_shape(shape);
                 }
@@ -79,7 +79,7 @@ pub fn to_tokens_composition(
                 } => {
                     let shape = quote!(
                         (#from_index..(#to_index + #ignored_len_ident))
-                            .into_iter().map(|i| #shape_ident[i]).product()
+                            .into_iter().map(|i| #shape_ident[i]).product::<usize>()
                     );
                     insert_shape(shape);
                 }
@@ -89,7 +89,7 @@ pub fn to_tokens_composition(
                 } => {
                     let shape = quote!(
                         (#from_index..=(#to_index + #ignored_len_ident))
-                            .into_iter().map(|i| #shape_ident[i]).product()
+                            .into_iter().map(|i| #shape_ident[i]).product::<usize>()
                     );
                     insert_shape(shape);
                 }
@@ -99,7 +99,7 @@ pub fn to_tokens_composition(
                 } => {
                     let shape = quote!(
                         ((#from_index + #ignored_len_ident - 1)..(#to_index + #ignored_len_ident))
-                            .into_iter().map(|i| #shape_ident[i]).product()
+                            .into_iter().map(|i| #shape_ident[i]).product::<usize>()
                     );
                     insert_shape(shape);
                 }
@@ -115,28 +115,35 @@ pub fn to_tokens_composition(
         after_ignored.is_empty(),
     ) {
         (false, true, true) => quote!([#(#before_ignored),*]),
-        (false, false, true) => quote!(
-            [#(#before_ignored),*]
-                .into_iter()
-                .chain(#ignored)
-                .into_iter()
-                .collect::<Vec<_>>()
-        ),
-        (false, false, false) => quote!(
-            [#(#before_ignored),*]
-                .into_iter()
-                .chain(#ignored)
-                .chain([#(#after_ignored),*].into_iter())
-                .into_iter()
-                .collect::<Vec<_>>()
-
-        ),
-        (true, false, false) => quote!(
-            #ignored
-                .chain([#(#after_ignored),*].into_iter())
-                .into_iter()
-                .collect::<Vec<_>>()
-        ),
+        (false, false, true) => {
+            let before_len = before_ignored.len();
+            quote!({
+                let mut shape: Vec<usize> = Vec::with_capacity(#before_len + #ignored.len());
+                shape.extend([#(#before_ignored),*]);
+                shape.extend(#ignored);
+                shape
+            })
+        },
+        (false, false, false) => {
+            let before_len = before_ignored.len();
+            let after_len = after_ignored.len();
+            quote!({
+                let mut shape: Vec<usize> = Vec::with_capacity(#before_len + #ignored.len() + #after_len);
+                shape.extend([#(#before_ignored),*]);
+                shape.extend(#ignored);
+                shape.extend([#(#after_ignored),*]);
+                shape
+            })
+        },
+        (true, false, false) => {
+            let after_len = after_ignored.len();
+            quote!({
+                let mut shape: Vec<usize> = Vec::with_capacity(#ignored.len() + #after_len);
+                shape.extend(#ignored);
+                shape.extend([#(#after_ignored),*]);
+                shape
+            })
+        },
         _ => unreachable!(),
     };
 
@@ -218,28 +225,35 @@ pub fn to_tokens_permute(
         after_ignored.is_empty(),
     ) {
         (false, true, true) => quote!([#(#before_ignored),*]),
-        (false, false, true) => quote!(
-            [#(#before_ignored),*]
-                .into_iter()
-                .chain(#ignored_permute)
-                .into_iter()
-                .collect::<Vec<_>>()
-        ),
-        (false, false, false) => quote!(
-            [#(#before_ignored),*]
-                .into_iter()
-                .chain(#ignored_permute)
-                .chain([#(#after_ignored),*].into_iter())
-                .into_iter()
-                .collect::<Vec<_>>()
-
-        ),
-        (true, false, false) => quote!(
-            #ignored_permute
-                .chain([#(#after_ignored),*].into_iter())
-                .into_iter()
-                .collect::<Vec<_>>()
-        ),
+        (false, false, true) => {
+            let before_len = before_ignored.len();
+            quote!({
+                let mut indices: Vec<usize> = Vec::with_capacity(#before_len + #ignored_permute.len());
+                indices.extend([#(#before_ignored),*]);
+                indices.extend(#ignored_permute);
+                indices
+            })
+        },
+        (false, false, false) => {
+            let before_len = before_ignored.len();
+            let after_len = after_ignored.len();
+            quote!({
+                let mut indices: Vec<usize> = Vec::with_capacity(#before_len + #ignored_permute.len() + #after_len);
+                indices.extend([#(#before_ignored),*]);
+                indices.extend(#ignored_permute);
+                indices.extend([#(#after_ignored),*]);
+                indices
+            })
+        },
+        (true, false, false) => {
+            let after_len = after_ignored.len();
+            quote!({
+                let mut indices: Vec<usize> = Vec::with_capacity(#ignored_permute.len() + #after_len);
+                indices.extend(#ignored_permute);
+                indices.extend([#(#after_ignored),*]);
+                indices
+            })
+        },
         _ => unreachable!(),
     };
 
@@ -310,22 +324,22 @@ pub fn to_tokens_reduce(
                 );
             )
         }
+
         (Some(ignored_indices), Some(ignored_operations), false) => {
+            let reduce_len = reduce_indices.len();
             quote!(
                 let #tensor_ident = ::candle_einops::Backend::reduce_axes(
                     #tensor_ident,
-                    &mut [#(#reduce_indices),*]
-                        .into_iter()
-                        .chain(#ignored_indices)
-                        .zip(
-                            [#(#reduce_operations),*]
-                                .into_iter()
-                                .chain(#ignored_operations)
-                        )
-                        .collect::<Vec<(_, _)>>()
+                    &mut {
+                        let mut axes: Vec<(usize, ::candle_einops::Operation)> = Vec::with_capacity(#reduce_len + #ignored_indices.len());
+                        axes.extend([#(#reduce_indices),*].into_iter().zip([#(#reduce_operations),*]));
+                        axes.extend(#ignored_indices.zip(#ignored_operations));
+                        axes
+                    }
                 );
             )
         }
+
         (None, None, false) => {
             quote!(
                 let #tensor_ident = ::candle_einops::Backend::reduce_axes(
@@ -408,27 +422,35 @@ pub fn to_tokens_decomposition(
         (false, true, true) => {
             quote!([#(#known_indices),*])
         }
-        (false, false, true) => quote!(
-            [#(#known_indices),*]
-                .into_iter()
-                .chain(#ignored_indices)
-                .into_iter()
-                .collect::<Vec<_>>()
-        ),
-        (false, false, false) => quote!(
-            [#(#known_indices),*]
-                .into_iter()
-                .chain(#ignored_indices)
-                .chain([#(#unknown_indices),*].into_iter())
-                .into_iter()
-                .collect::<Vec<_>>()
-        ),
-        (true, false, false) => quote!(
-            #ignored_indices
-                .chain([#(#unknown_indices),*].into_iter())
-                .into_iter()
-                .collect::<Vec<_>>()
-        ),
+        (false, false, true) => {
+            let known_len = known_indices.len();
+            quote!({
+                let mut shape: Vec<usize> = Vec::with_capacity(#known_len + #ignored_indices.len());
+                shape.extend([#(#known_indices),*]);
+                shape.extend(#ignored_indices);
+                shape
+            })
+        },
+        (false, false, false) => {
+            let known_len = known_indices.len();
+            let unknown_len = unknown_indices.len();
+            quote!({
+                let mut shape: Vec<usize> = Vec::with_capacity(#known_len + #ignored_indices.len() + #unknown_len);
+                shape.extend([#(#known_indices),*]);
+                shape.extend(#ignored_indices);
+                shape.extend([#(#unknown_indices),*]);
+                shape
+            })
+        },
+        (true, false, false) => {
+            let unknown_len = unknown_indices.len();
+            quote!({
+                let mut shape: Vec<usize> = Vec::with_capacity(#ignored_indices.len() + #unknown_len);
+                shape.extend(#ignored_indices);
+                shape.extend([#(#unknown_indices),*]);
+                shape
+            })
+        },
         (true, false, true) => quote!(
             #ignored_indices.collect::<Vec<_>>()
         ),

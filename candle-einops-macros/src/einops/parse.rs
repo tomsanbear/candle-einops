@@ -22,7 +22,7 @@ pub enum Decomposition {
     Derived {
         name: String,
         index: Index,
-        operation: Option<Operation>,
+
         shape_calc: proc_macro2::TokenStream,
     },
     Named {
@@ -95,6 +95,21 @@ pub enum Operation {
     Prod,
 }
 
+#[derive(Clone, Copy)]
+enum IndexFn {
+    Known,
+    Unknown,
+}
+
+impl IndexFn {
+    fn apply(&self, i: usize) -> Index {
+        match self {
+            IndexFn::Known => Index::Known(i),
+            IndexFn::Unknown => Index::Unknown(i),
+        }
+    }
+}
+
 pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition>, bool)> {
     // Length of dimensions inside parenthesis,
     // we need it to account for the dimensions skipped during the iteration
@@ -118,14 +133,14 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
                 false,
                 // Closure that helps construct `Index`,
                 // it is updated once we hit '..' to construct `Unknown` indices
-                Box::new(Index::Known) as Box<dyn Fn(usize) -> Index>,
+                IndexFn::Known,
             ),
             |(mut decomposition, mut requires_decomposition, mut index_fn), mut i| {
                 // We account for dimensions skipped when we parse
                 // contents of parenthesized expression
                 i += parenthesized_len;
                 if input.peek(syn::token::Paren) {
-                    let content_expression = parse_left_parenthesized(input, index_fn(i))?;
+                    let content_expression = parse_left_parenthesized(input, index_fn.apply(i))?;
                     decomposition.extend(content_expression);
                     requires_decomposition = true;
                 } else if peek_reduce_kw(input) {
@@ -137,7 +152,7 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
                         |(inner_index, (name, shape, operation))| {
                             // If we encounter '..' inside reduce, we will have to update the closure
                             if name == ".." {
-                                index_fn = Box::new(Index::Unknown);
+                                index_fn = IndexFn::Unknown;
                                 decomposition.push(Decomposition::Named {
                                     name,
                                     index: Index::Range(i + inner_index),
@@ -147,7 +162,7 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
                             } else {
                                 decomposition.push(Decomposition::Named {
                                     name,
-                                    index: index_fn(i + inner_index),
+                                    index: index_fn.apply(i + inner_index),
                                     shape,
                                     operation: Some(operation),
                                 });
@@ -159,7 +174,7 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
                     decomposition.push(Decomposition::Named {
                         name,
                         shape,
-                        index: index_fn(i),
+                        index: index_fn.apply(i),
                         operation: None,
                     });
                 } else if input.peek(syn::LitInt) {
@@ -183,7 +198,7 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
                         operation: None,
                     });
                     // We update the closure as we have encountered '..'
-                    index_fn = Box::new(Index::Unknown);
+                    index_fn = IndexFn::Unknown;
                 } else {
                     return Err(input
                         .error("Unrecognized charater found in the left side of the expression"));
@@ -278,7 +293,6 @@ fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec
             Decomposition::Derived {
                 name: derived_name.unwrap(),
                 index,
-                operation: None,
                 shape_calc: quote::quote!(
                     (#running_mul * [#(#shape_expr),*].iter().product::<usize>())
                 ),
@@ -433,7 +447,7 @@ pub fn parse_composition_permute_repeat(
             Vec::new(),
             // Closure to construct `Index`, once we encounter '..',
             // `Known` index becomes `Unknown`
-            Box::new(Index::Known) as Box<dyn Fn(usize) -> Index>,
+            IndexFn::Known,
         ),
         |(mut composition, mut permute, mut repeat, mut index_fn), mut i| {
             // We update the iterator's index to account for dimensions skipped
@@ -453,32 +467,32 @@ pub fn parse_composition_permute_repeat(
                 } else {
                     // New identifiers represents repetition
                     repeat.push((
-                        index_fn(i),
-                        shape.expect("New identifier on the right should have a shape"),
+                        index_fn.apply(i),
+                        shape.ok_or_else(|| syn::Error::new(input.span(), "New identifier on the right should have a shape"))?,
                     ));
                 }
-                composition.push(Composition::Individual(index_fn(i)))
+                composition.push(Composition::Individual(index_fn.apply(i)))
             } else if input.peek(syn::LitInt) {
                 // Literal ints represent repetition
-                repeat.push((index_fn(i), Shape::Lit(parse_usize(input)?)));
-                composition.push(Composition::Individual(index_fn(i)));
+                repeat.push((index_fn.apply(i), Shape::Lit(parse_usize(input)?)));
+                composition.push(Composition::Individual(index_fn.apply(i)));
             } else if input.peek(syn::Token![..]) {
                 input.parse::<syn::Token![..]>()?;
                 composition.push(Composition::Individual(Index::Range(i)));
                 permute.push(
                     positions
                         .get("..")
-                        .expect("Ignore should be on both sides of the expression")
+                        .ok_or_else(|| syn::Error::new(input.span(), "Ignore should be on both sides of the expression"))?
                         .clone(),
                 );
                 // We update the closure
-                index_fn = Box::new(Index::Unknown);
+                index_fn = IndexFn::Unknown;
             } else if input.peek(syn::token::Brace) {
                 let (name, shape) = parse_braced_expression(input)?;
                 if let Some(index) = positions.get(&name) {
                     permute.push(index.clone());
                 } else {
-                    repeat.push((index_fn(i), shape));
+                    repeat.push((index_fn.apply(i), shape));
                 }
             } else {
                 return Err(
@@ -505,7 +519,7 @@ pub fn parse_composition_permute_repeat(
 fn parse_right_parenthesized(
     input: ParseStream,
     start_index: usize,
-    index_fn: &mut Box<dyn Fn(usize) -> Index>,
+    index_fn: &mut IndexFn,
     positions: &HashMap<String, Index>,
 ) -> syn::Result<(Composition, Vec<Index>, Vec<(Index, Shape)>, usize)> {
     let content;
@@ -522,10 +536,10 @@ fn parse_right_parenthesized(
             permute.push(
                 positions
                     .get("..")
-                    .expect("Ignore should be on both sides of the expressions")
+                    .ok_or_else(|| syn::Error::new(content.span(), "Ignore should be on both sides of the expressions"))?
                     .clone(),
             );
-            *index_fn = Box::new(Index::Unknown);
+            *index_fn = IndexFn::Unknown;
             Ok(Index::Range(index))
         } else if content.peek(syn::Ident) {
             let (name, shape) = parse_identifier(content)?;
@@ -533,22 +547,22 @@ fn parse_right_parenthesized(
                 permute.push(index.clone());
             } else {
                 repeat.push((
-                    index_fn(index),
-                    shape.expect("New identifier with no shape specified on the right side"),
+                    index_fn.apply(index),
+                    shape.ok_or_else(|| syn::Error::new(content.span(), "New identifier with no shape specified on the right side"))?,
                 ));
             }
-            Ok(index_fn(index))
+            Ok(index_fn.apply(index))
         } else if content.peek(syn::LitInt) {
-            repeat.push((index_fn(index), Shape::Lit(parse_usize(content)?)));
-            Ok(index_fn(index))
+            repeat.push((index_fn.apply(index), Shape::Lit(parse_usize(content)?)));
+            Ok(index_fn.apply(index))
         } else if content.peek(syn::token::Brace) {
             let (name, shape) = parse_braced_expression(content)?;
             if let Some(index) = positions.get(&name) {
                 permute.push(index.clone());
             } else {
-                repeat.push((index_fn(index), shape));
+                repeat.push((index_fn.apply(index), shape));
             }
-            Ok(index_fn(index))
+            Ok(index_fn.apply(index))
         } else {
             Err(input.error("Unrecognized character on the right side of the expression"))
         }

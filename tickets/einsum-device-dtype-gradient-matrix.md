@@ -1,7 +1,7 @@
 ---
 id: einsum-device-dtype-gradient-matrix
 title: Harden einsum dtypes devices and gradients
-status: todo
+status: done
 priority: p1
 dependencies: [einsum-nary-greedy-planner]
 related: []

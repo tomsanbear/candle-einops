@@ -6,7 +6,7 @@ priority: p1
 dependencies: [performance-harness-foundation]
 related: [einsum-diagonal-fastpath]
 scopes: []
-shared_scopes: [tests, benchmarks, docs, ticketing]
+shared_scopes: [tests, benchmarks, docs, ticketing, tooling]
 tags: [performance-0.2]
 ---
 # Select an efficient repeated-label diagonal strategy

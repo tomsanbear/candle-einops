@@ -15,5 +15,8 @@ fn main() -> Result<()> {
     assert_eq!(product.dims(), &[2, 2]);
     let ellipsis = einsum!(".. columns -> columns ..", &matrix)?;
     assert_eq!(ellipsis.dims(), &[3, 2]);
+    let square = Tensor::arange(0f32, 9f32, &Device::Cpu)?.reshape((3, 3))?;
+    let diagonal = einsum!("index index -> index", &square)?;
+    assert_eq!(diagonal.to_vec1::<f32>()?, [0., 4., 8.]);
     Ok(())
 }

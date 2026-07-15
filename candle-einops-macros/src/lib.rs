@@ -14,8 +14,8 @@ pub fn einops(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 /// Evaluates an explicit-output Einstein summation equation.
 ///
-/// Supports one or two operands with unique, named axes and at most one `..`
-/// per axis list. Repeated input labels are reserved for a later syntax slice.
+/// Supports one or two operands with named axes and at most one `..` per axis
+/// list. Repeated input labels extract diagonals before contraction.
 #[proc_macro]
 pub fn einsum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     einsum::einsum(input.into())

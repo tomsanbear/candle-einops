@@ -80,10 +80,10 @@ pub trait Backend {
         permutation: &[usize],
         output_shape: &[usize],
         _group_lengths: &[usize],
-    ) -> Result<Self::Output>
+    ) -> Result<<Self::Output as Backend>::Output>
     where
         Self: Sized,
-        Self::Output: Backend<Output = Self::Output>,
+        Self::Output: Backend,
     {
         let output = self.transpose(permutation)?;
         Backend::reshape(output, output_shape)
@@ -124,9 +124,9 @@ impl<T: AsRef<Tensor>> Backend for T {
         permutation: &[usize],
         output_shape: &[usize],
         group_lengths: &[usize],
-    ) -> Result<Self::Output>
+    ) -> Result<<Self::Output as Backend>::Output>
     where
-        Self::Output: Backend<Output = Self::Output>,
+        Self::Output: Backend,
     {
         execute_tensor_permute_and_compose(self.as_ref(), permutation, output_shape, group_lengths)
     }

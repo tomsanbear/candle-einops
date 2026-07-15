@@ -43,9 +43,9 @@ impl Backend for RecordingBackend {
         _permutation: &[usize],
         output_shape: &[usize],
         _group_lengths: &[usize],
-    ) -> Result<Self::Output>
+    ) -> Result<<Self::Output as Backend>::Output>
     where
-        Self::Output: Backend<Output = Self::Output>,
+        Self::Output: Backend,
     {
         self.calls.borrow_mut().push("fused");
         self.shape = output_shape.to_vec();
@@ -148,6 +148,83 @@ impl Backend for &DefaultBackend {
 }
 
 #[derive(Clone, Debug)]
+struct ChainInput(RecordingBackend);
+#[derive(Clone, Debug)]
+struct ChainIntermediate(RecordingBackend);
+#[derive(Clone, Debug)]
+struct ChainFinal {
+    shape: Vec<usize>,
+}
+
+impl Backend for ChainInput {
+    type Output = ChainIntermediate;
+    fn shape(self) -> Vec<usize> {
+        self.0.shape
+    }
+    fn reshape(self, shape: &[usize]) -> Result<Self::Output> {
+        self.0.calls.borrow_mut().push("input-reshape");
+        Ok(ChainIntermediate(RecordingBackend {
+            shape: shape.to_vec(),
+            calls: self.0.calls,
+        }))
+    }
+    fn transpose(self, axes: &[usize]) -> Result<Self::Output> {
+        self.0.calls.borrow_mut().push("transpose");
+        Ok(ChainIntermediate(RecordingBackend {
+            shape: axes.iter().map(|&axis| self.0.shape[axis]).collect(),
+            calls: self.0.calls,
+        }))
+    }
+    fn reduce_axes(self, _axes: &mut [(usize, Operation)]) -> Result<Self::Output> {
+        unreachable!()
+    }
+    fn add_axes(self, _naxes: usize, _positions: &[(usize, usize)]) -> Result<Self::Output> {
+        unreachable!()
+    }
+}
+
+impl Backend for &ChainInput {
+    type Output = ChainIntermediate;
+    fn shape(self) -> Vec<usize> {
+        self.0.shape.clone()
+    }
+    fn reshape(self, shape: &[usize]) -> Result<Self::Output> {
+        self.clone().reshape(shape)
+    }
+    fn transpose(self, axes: &[usize]) -> Result<Self::Output> {
+        self.clone().transpose(axes)
+    }
+    fn reduce_axes(self, axes: &mut [(usize, Operation)]) -> Result<Self::Output> {
+        self.clone().reduce_axes(axes)
+    }
+    fn add_axes(self, naxes: usize, positions: &[(usize, usize)]) -> Result<Self::Output> {
+        self.clone().add_axes(naxes, positions)
+    }
+}
+
+impl Backend for ChainIntermediate {
+    type Output = ChainFinal;
+    fn shape(self) -> Vec<usize> {
+        self.0.shape
+    }
+    fn reshape(self, shape: &[usize]) -> Result<Self::Output> {
+        self.0.calls.borrow_mut().push("reshape");
+        Ok(ChainFinal {
+            shape: shape.to_vec(),
+        })
+    }
+    fn transpose(self, _axes: &[usize]) -> Result<Self::Output> {
+        unreachable!()
+    }
+    fn reduce_axes(self, _axes: &mut [(usize, Operation)]) -> Result<Self::Output> {
+        unreachable!()
+    }
+    fn add_axes(self, _naxes: usize, _positions: &[(usize, usize)]) -> Result<Self::Output> {
+        unreachable!()
+    }
+}
+
+#[derive(Clone, Debug)]
 struct FailingFusedBackend(RecordingBackend);
 
 impl Backend for FailingFusedBackend {
@@ -168,9 +245,9 @@ impl Backend for FailingFusedBackend {
         _permutation: &[usize],
         _output_shape: &[usize],
         _group_lengths: &[usize],
-    ) -> Result<Self::Output>
+    ) -> Result<<Self::Output as Backend>::Output>
     where
-        Self::Output: Backend<Output = Self::Output>,
+        Self::Output: Backend,
     {
         self.0.calls.borrow_mut().push("fused");
         candle_core::bail!("selected fused failure")
@@ -215,6 +292,12 @@ fn fused_codegen_is_narrow_and_default_backend_remains_compatible() -> Result<()
     let output =
         <DefaultBackend as Backend>::permute_and_compose(default, &[2, 0, 1], &[4, 6], &[1, 2])?;
     assert_eq!(output.0.shape, [4, 6]);
+    assert_eq!(&*calls.borrow(), &["transpose", "reshape"]);
+
+    let chain = ChainInput(RecordingBackend::new(&[2, 3, 4]));
+    let calls = chain.0.calls.clone();
+    let output = einops!("a b c -> c (a b)", chain)?;
+    assert_eq!(output.shape, [4, 6]);
     assert_eq!(&*calls.borrow(), &["transpose", "reshape"]);
 
     let reduction = RecordingBackend::new(&[2, 3, 4, 5]);

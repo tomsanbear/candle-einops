@@ -1,7 +1,7 @@
 ---
 id: spike-multi-axis-extrema-reduction-lowering
 title: Spike multi-axis extrema reduction lowering
-status: in-progress
+status: done
 priority: p2
 dependencies: [performance-harness-foundation]
 related: [homogeneous-reduction-fusion]
@@ -9,9 +9,6 @@ scopes: [benchmarks]
 shared_scopes: [runtime, tests, ticketing]
 paths: []
 tags: [kernel-enqueue-hardening, spike]
-claimed_from: todo
-assignee: codex-root
-lease_expires_at: 1784158858
 ---
 # Spike multi-axis extrema reduction lowering
 

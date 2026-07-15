@@ -9,10 +9,7 @@ fn unary_explicit_equations_match_independent_oracles() -> Result<()> {
     let matrix = Tensor::new(&[[1f32, 2., 3.], [4., 5., 6.]], &Device::Cpu)?;
 
     let transposed = einsum!("rows columns -> columns rows", &matrix)?;
-    assert_eq!(
-        transposed.to_vec2::<f32>()?,
-        [[1., 4.], [2., 5.], [3., 6.]]
-    );
+    assert_eq!(transposed.to_vec2::<f32>()?, [[1., 4.], [2., 5.], [3., 6.]]);
 
     let reduced = einsum!("rows columns -> rows", &matrix)?;
     assert_eq!(reduced.to_vec1::<f32>()?, [6., 15.]);

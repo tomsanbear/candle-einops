@@ -1,5 +1,5 @@
 use candle_core::{Device, Result, Tensor};
-use einops_runtime::einops;
+use einops_runtime::{einops, einsum};
 
 fn main() -> Result<()> {
     let vector = Tensor::arange(0f32, 6f32, &Device::Cpu)?;
@@ -12,5 +12,8 @@ fn main() -> Result<()> {
 
     let composed = einops!("a b -> (a b)", &matrix)?;
     assert_eq!(composed.dims(), &[6]);
+
+    let transposed = einsum!("rows columns -> columns rows", &matrix)?;
+    assert_eq!(transposed.dims(), &[3, 2]);
     Ok(())
 }

@@ -1,7 +1,7 @@
 ---
 id: independent-behavior-tests
 title: Expand independent behavior tests
-status: todo
+status: in-progress
 priority: p1
 dependencies: [candle-011-baseline]
 related: []
@@ -9,6 +9,9 @@ scopes: [tests]
 shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
+claimed_from: todo
+assignee: codex-tests
+lease_expires_at: 1784123401
 ---
 # Expand independent behavior tests
 

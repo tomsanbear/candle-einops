@@ -1,7 +1,7 @@
 ---
 id: macro-diagnostic-tests
 title: Add macro diagnostic test infrastructure
-status: todo
+status: in-progress
 priority: p0
 dependencies: [candle-011-baseline]
 related: []
@@ -9,6 +9,9 @@ scopes: [macros]
 shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784123401
 ---
 # Add macro diagnostic test infrastructure
 

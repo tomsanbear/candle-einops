@@ -129,12 +129,12 @@ fn evaluate(equation: &str, operands: &[HostTensor]) -> OracleResult<HostTensor>
         }
         let mut local_dimensions = HashMap::new();
         for (&label, &extent) in labels.iter().zip(&operand.shape) {
-            if let Some(previous) = local_dimensions.insert(label, extent) {
-                if previous != extent {
-                    return Err(format!(
-                        "operand {operand_index} repeated label `{label}` has unequal extents {previous} and {extent}"
-                    ));
-                }
+            if let Some(previous) = local_dimensions.insert(label, extent)
+                && previous != extent
+            {
+                return Err(format!(
+                    "operand {operand_index} repeated label `{label}` has unequal extents {previous} and {extent}"
+                ));
             }
             if !input_order.contains(&label) {
                 input_order.push(label);

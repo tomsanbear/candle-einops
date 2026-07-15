@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use candle_core::{Device, Result, Tensor};
 use candle_einops_benchmarks::{
     Backend, BenchmarkRecord, Clock, Fingerprint, Operation, Scenario, ScenarioId, Synchronizer,
-    WorkUnits, binary_fast_path_scenarios, measure_pair, prepare,
+    WorkUnits, binary_fast_path_scenarios, measure_pair, prepare, reduction_fusion_scenarios,
 };
 
 #[derive(Clone)]
@@ -17,6 +17,30 @@ impl EventLog {
     fn take(&self) -> Vec<&'static str> {
         std::mem::take(&mut *self.0.lock().expect("event log lock"))
     }
+}
+
+#[test]
+fn reduction_fusion_scenarios_are_exactly_the_ticket_owned_matrix() -> Result<()> {
+    let scenarios = reduction_fusion_scenarios();
+    assert_eq!(scenarios.len(), 4);
+    let ids = scenarios
+        .iter()
+        .map(|scenario| scenario.id().as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids,
+        [
+            "reduce/fusion/contiguous-trailing/sum",
+            "reduce/fusion/contiguous-trailing/mean",
+            "reduce/fusion/strided-non-adjacent/sum",
+            "reduce/fusion/strided-non-adjacent/mean",
+        ]
+    );
+    for scenario in &scenarios {
+        assert!(scenario.tracked());
+        prepare(scenario, &Device::Cpu)?;
+    }
+    Ok(())
 }
 
 #[test]

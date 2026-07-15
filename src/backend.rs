@@ -2,6 +2,60 @@ use candle_core::{Result, Shape, Tensor};
 
 use crate::Operation;
 
+#[derive(Debug)]
+struct ReductionRun {
+    axes: Vec<usize>,
+    operation: Operation,
+}
+
+fn operations_are_fusible(left: Operation, right: Operation) -> bool {
+    matches!(
+        (left, right),
+        (Operation::Sum, Operation::Sum) | (Operation::Mean, Operation::Mean)
+    )
+}
+
+fn plan_reduction_runs(axes_operations: &mut [(usize, Operation)]) -> Vec<ReductionRun> {
+    axes_operations.sort_by_key(|(axis, _)| *axis);
+    let mut runs: Vec<ReductionRun> = Vec::new();
+    for &(axis, operation) in axes_operations.iter().rev() {
+        if let Some(run) = runs.last_mut()
+            && operations_are_fusible(run.operation, operation)
+        {
+            run.axes.push(axis);
+        } else {
+            runs.push(ReductionRun {
+                axes: vec![axis],
+                operation,
+            });
+        }
+    }
+    runs
+}
+
+#[cfg(test)]
+std::thread_local! {
+    static BACKEND_REDUCTION_CALL_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn record_backend_reduction_call() {
+    BACKEND_REDUCTION_CALL_COUNT.set(BACKEND_REDUCTION_CALL_COUNT.get() + 1);
+}
+
+#[cfg(not(test))]
+fn record_backend_reduction_call() {}
+
+#[cfg(test)]
+fn reset_backend_reduction_call_count() {
+    BACKEND_REDUCTION_CALL_COUNT.set(0);
+}
+
+#[cfg(test)]
+fn backend_reduction_call_count() -> usize {
+    BACKEND_REDUCTION_CALL_COUNT.get()
+}
+
 /// Tensor operations used by [`crate::einops!`].
 ///
 /// Transformations return Candle [`Result`] values so backend failures retain
@@ -48,24 +102,24 @@ impl<T: AsRef<Tensor>> Backend for T {
             occupied[axis] = true;
         }
 
-        axes_operations.sort_by_key(|(axis, _)| *axis);
-
-        for (axis, operation) in axes_operations.iter().rev() {
-            output = match operation {
-                Operation::Min => output.min(*axis)?,
-                Operation::Max => output.max(*axis)?,
-                Operation::Sum => output.sum(&[*axis][..])?,
-                Operation::Mean => output.mean(&[*axis][..])?,
+        for run in plan_reduction_runs(axes_operations) {
+            record_backend_reduction_call();
+            output = match run.operation {
+                Operation::Min => output.min(run.axes[0])?,
+                Operation::Max => output.max(run.axes[0])?,
+                Operation::Sum => output.sum(run.axes.as_slice())?,
+                Operation::Mean => output.mean(run.axes.as_slice())?,
                 Operation::Prod => {
-                    let axis_len = output.dim(*axis)?;
+                    let axis = run.axes[0];
+                    let axis_len = output.dim(axis)?;
                     if axis_len == 0 {
                         let mut shape = output.dims().to_vec();
-                        shape.remove(*axis);
+                        shape.remove(axis);
                         Tensor::ones(Shape::from_dims(&shape), output.dtype(), output.device())?
                     } else {
-                        let mut product = output.narrow(*axis, 0, 1)?.squeeze(*axis)?;
+                        let mut product = output.narrow(axis, 0, 1)?.squeeze(axis)?;
                         for index in 1..axis_len {
-                            let factor = output.narrow(*axis, index, 1)?.squeeze(*axis)?;
+                            let factor = output.narrow(axis, index, 1)?.squeeze(axis)?;
                             product = product.mul(&factor)?;
                         }
                         product
@@ -178,7 +232,7 @@ mod tests {
         let input = Tensor::arange(0f32, 2. * 3. * 4., &Device::Cpu)?.reshape(&[2, 3, 4])?;
 
         reset_backend_reduction_call_count();
-        input.reduce_axes(&mut [
+        (&input).reduce_axes(&mut [
             (0, Operation::Sum),
             (1, Operation::Sum),
             (2, Operation::Sum),
@@ -186,7 +240,7 @@ mod tests {
         assert_eq!(backend_reduction_call_count(), 1);
 
         reset_backend_reduction_call_count();
-        input.reduce_axes(&mut [
+        (&input).reduce_axes(&mut [
             (0, Operation::Mean),
             (1, Operation::Mean),
             (2, Operation::Mean),
@@ -194,7 +248,7 @@ mod tests {
         assert_eq!(backend_reduction_call_count(), 1);
 
         reset_backend_reduction_call_count();
-        input.reduce_axes(&mut [
+        (&input).reduce_axes(&mut [
             (0, Operation::Sum),
             (1, Operation::Max),
             (2, Operation::Sum),

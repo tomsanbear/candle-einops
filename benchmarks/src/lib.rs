@@ -752,6 +752,146 @@ impl Scenario for BinaryFastPathScenario {
     }
 }
 
+#[derive(Clone, Copy)]
+enum ReductionLayout {
+    ContiguousTrailing,
+    StridedNonAdjacent,
+}
+
+#[derive(Clone, Copy)]
+enum ReductionKind {
+    Sum,
+    Mean,
+}
+
+pub struct ReductionFusionScenario {
+    id: &'static str,
+    layout: ReductionLayout,
+    kind: ReductionKind,
+}
+
+#[must_use]
+pub fn reduction_fusion_scenarios() -> [ReductionFusionScenario; 4] {
+    use ReductionKind::{Mean, Sum};
+    use ReductionLayout::{ContiguousTrailing, StridedNonAdjacent};
+    [
+        ReductionFusionScenario {
+            id: "reduce/fusion/contiguous-trailing/sum",
+            layout: ContiguousTrailing,
+            kind: Sum,
+        },
+        ReductionFusionScenario {
+            id: "reduce/fusion/contiguous-trailing/mean",
+            layout: ContiguousTrailing,
+            kind: Mean,
+        },
+        ReductionFusionScenario {
+            id: "reduce/fusion/strided-non-adjacent/sum",
+            layout: StridedNonAdjacent,
+            kind: Sum,
+        },
+        ReductionFusionScenario {
+            id: "reduce/fusion/strided-non-adjacent/mean",
+            layout: StridedNonAdjacent,
+            kind: Mean,
+        },
+    ]
+}
+
+impl ReductionFusionScenario {
+    const INPUT_ELEMENTS: usize = 16 * 16 * 32 * 32;
+
+    fn output_elements(&self) -> usize {
+        match self.layout {
+            ReductionLayout::ContiguousTrailing => 16 * 16,
+            ReductionLayout::StridedNonAdjacent => 16 * 32,
+        }
+    }
+}
+
+impl Scenario for ReductionFusionScenario {
+    fn id(&self) -> ScenarioId {
+        ScenarioId::new(self.id)
+    }
+
+    fn tracked(&self) -> bool {
+        true
+    }
+
+    fn work(&self) -> WorkUnits {
+        let output_elements = self.output_elements();
+        WorkUnits::new(
+            Self::INPUT_ELEMENTS as u64,
+            ((Self::INPUT_ELEMENTS + output_elements) * size_of::<f32>()) as u64,
+            Some(Self::INPUT_ELEMENTS as u64),
+        )
+    }
+
+    fn setup(&self, device: &Device) -> Result<Vec<Tensor>> {
+        let values = (0..Self::INPUT_ELEMENTS)
+            .map(|index| (index % 257) as f32 / 257.)
+            .collect::<Vec<_>>();
+        let input = match self.layout {
+            ReductionLayout::ContiguousTrailing => {
+                Tensor::from_vec(values, (16, 16, 32, 32), device)?
+            }
+            ReductionLayout::StridedNonAdjacent => {
+                Tensor::from_vec(values, (16, 32, 16, 32), device)?.permute([0, 2, 1, 3])?
+            }
+        };
+        Ok(vec![input])
+    }
+
+    fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {
+        match (self.layout, self.kind) {
+            (ReductionLayout::ContiguousTrailing, ReductionKind::Sum) => {
+                einops!("batch channel sum(row column) -> batch channel", &inputs[0])
+            }
+            (ReductionLayout::ContiguousTrailing, ReductionKind::Mean) => einops!(
+                "batch channel mean(row column) -> batch channel",
+                &inputs[0]
+            ),
+            (ReductionLayout::StridedNonAdjacent, ReductionKind::Sum) => einops!(
+                "batch sum(row) channel sum(column) -> batch channel",
+                &inputs[0]
+            ),
+            (ReductionLayout::StridedNonAdjacent, ReductionKind::Mean) => einops!(
+                "batch mean(row) channel mean(column) -> batch channel",
+                &inputs[0]
+            ),
+        }
+    }
+
+    fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
+        let axes: &[usize] = match self.layout {
+            ReductionLayout::ContiguousTrailing => &[2, 3],
+            ReductionLayout::StridedNonAdjacent => &[1, 3],
+        };
+        match self.kind {
+            ReductionKind::Sum => inputs[0].sum(axes),
+            ReductionKind::Mean => inputs[0].mean(axes),
+        }
+    }
+
+    fn check(&self, library: &Tensor, reference: &Tensor) -> Result<()> {
+        if library.dims() != reference.dims() {
+            candle_core::bail!("reduction fusion outputs have different shapes")
+        }
+        let library = library.flatten_all()?.to_vec1::<f32>()?;
+        let reference = reference.flatten_all()?.to_vec1::<f32>()?;
+        let tolerance = 1e-5f32;
+        for (index, (&library, &reference)) in library.iter().zip(&reference).enumerate() {
+            let allowed = tolerance * reference.abs().max(1.);
+            if (library - reference).abs() > allowed {
+                candle_core::bail!(
+                    "reduction fusion output {index} differs: {library} vs {reference}, tolerance {allowed}"
+                )
+            }
+        }
+        Ok(())
+    }
+}
+
 pub fn criterion_plumbing_benchmark(criterion: &mut Criterion) {
     let device = Device::Cpu;
     let scenario = PlumbingScenario;
@@ -801,6 +941,31 @@ pub fn criterion_binary_fast_paths(criterion: &mut Criterion) {
                 bencher.iter(|| {
                     measure_operation(&prepared, operation, &synchronizer, &clock)
                         .expect("binary fast-path sample must succeed")
+                });
+            });
+        }
+    }
+}
+
+pub fn criterion_reduction_fusion(criterion: &mut Criterion) {
+    let device = Device::Cpu;
+    let synchronizer = DeviceSynchronizer(&device);
+    let clock = MonotonicClock;
+    for scenario in reduction_fusion_scenarios() {
+        let prepared = prepare(&scenario, &device).expect("reduction fusion setup must succeed");
+        for operation in [Operation::Library, Operation::Reference] {
+            let name = format!(
+                "{}/{}",
+                scenario.id().as_str(),
+                match operation {
+                    Operation::Library => "library",
+                    Operation::Reference => "reference",
+                }
+            );
+            criterion.bench_function(&name, |bencher| {
+                bencher.iter(|| {
+                    measure_operation(&prepared, operation, &synchronizer, &clock)
+                        .expect("reduction fusion sample must succeed")
                 });
             });
         }

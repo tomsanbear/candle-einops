@@ -1,16 +1,13 @@
 ---
 id: einsum-diagonal-fastpath
 title: Implement selected repeated-label diagonal fast path
-status: in-progress
+status: done
 priority: p1
 dependencies: [einsum-diagonal-lowering-spike]
 related: [einsum-diagonal-lowering-spike]
 scopes: [runtime]
 shared_scopes: [tests, benchmarks, ticketing]
 tags: [performance-0.2, conditional]
-claimed_from: todo
-assignee: diagonal-fastpath
-lease_expires_at: 1784149776
 ---
 # Implement selected repeated-label diagonal fast path
 
@@ -65,3 +62,21 @@ must improve interleaved extraction without materially regressing simple diagona
 ## Non-goals
 
 No device-global unbounded cache or unrelated indexing API changes.
+
+## Result
+
+- Repeated extents are validated before planning. A pure layout simulation
+  selects one original-flat gather only for contiguous operands whose existing
+  sequential permutation/reshape would materialize; adjacent, non-contiguous,
+  arithmetic-overflow, and Candle index-sentinel cases remain sequential.
+- Selected invocations build one local U32 offset tensor, flatten the unchanged
+  operand, perform one differentiable `index_select`, and reshape unique axes in
+  first-appearance order. Allocation and device execution errors propagate.
+- Forward, dtype/device, error, zero-extent, and gradient contracts cover
+  adjacent, batched, interleaved, triple, and multiple repeated-label groups.
+- The six spike scenarios and scaling points remain stable. Same-machine
+  release measurements improved interleaved cases by 44.5–83.2%; sequential
+  simple cases remained within 3.6–9.8% and 42 ns of the exact pre-change
+  commit. The cached reference is explicitly labeled as a floor.
+- Independent review found the reserved `u32::MAX` sentinel boundary; the fix
+  and exact equality regression test were re-reviewed with no findings.

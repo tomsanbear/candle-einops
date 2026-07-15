@@ -1,7 +1,7 @@
 ---
 id: panic-free-parser
 title: Make macro parsing panic-free
-status: todo
+status: in-progress
 priority: p0
 dependencies: [macro-diagnostic-tests]
 related: []
@@ -9,6 +9,9 @@ scopes: [macros]
 shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784123551
 ---
 # Make macro parsing panic-free
 

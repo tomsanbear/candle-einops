@@ -1,7 +1,7 @@
 ---
 id: candle-style-errors
 title: Align runtime error handling with Candle
-status: todo
+status: done
 priority: p1
 dependencies: [product-reduction, rename-safe-expansions]
 related: []

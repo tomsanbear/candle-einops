@@ -5,7 +5,7 @@ status: todo
 priority: p1
 dependencies: [python-einops-rearrange-properties, python-einops-repeat-reduce-properties]
 related: []
-scopes: [tooling, docs]
+scopes: [tooling, docs, parity]
 shared_scopes: [ticketing]
 tags: [python-einops-parity]
 ---

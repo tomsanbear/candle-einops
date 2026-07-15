@@ -1,7 +1,7 @@
 ---
 id: extend-permute-compose-fusion-across-runtime-shapes
 title: Extend permute-compose fusion across runtime shapes
-status: in-progress
+status: done
 priority: p1
 dependencies: [add-layout-aware-binary-einsum-operand-packing]
 related: [fused-permute-compose-layout]
@@ -9,9 +9,6 @@ scopes: [runtime, macros]
 shared_scopes: [tests, benchmarks, ticketing]
 paths: []
 tags: [kernel-enqueue-hardening]
-claimed_from: todo
-assignee: codex-root
-lease_expires_at: 1784157166
 ---
 # Extend permute-compose fusion across runtime shapes
 

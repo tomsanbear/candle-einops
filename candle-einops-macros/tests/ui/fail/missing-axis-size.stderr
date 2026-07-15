@@ -1,0 +1,7 @@
+error: proc macro panicked
+ --> tests/ui/fail/missing-axis-size.rs:4:13
+  |
+4 |     let _ = einops!("a -> a b", ());
+  |             ^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: message: New identifier on the right should have a shape

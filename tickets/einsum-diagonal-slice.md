@@ -1,13 +1,13 @@
 ---
 id: einsum-diagonal-slice
 title: Add repeated-label diagonal einsum
-status: todo
+status: done
 priority: p1
 dependencies: [einsum-binary-gemm-slice]
 related: []
-scopes: [runtime, macros, tests]
+scopes: [runtime, macros, tests, docs]
 shared_scopes: [ticketing]
-paths: []
+paths: [docs/einsum-contract.md]
 tags: [einsum-implementation]
 ---
 # Add repeated-label diagonal einsum

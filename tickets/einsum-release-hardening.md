@@ -7,7 +7,7 @@ dependencies: [einsum-device-dtype-gradient-matrix]
 related: []
 scopes: [runtime, macros, tests, docs, tooling]
 shared_scopes: [ticketing]
-paths: []
+paths: [docs/einsum-contract.md]
 tags: [einsum-implementation]
 ---
 # Complete einsum documentation packaging and release gates

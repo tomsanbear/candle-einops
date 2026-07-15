@@ -6,7 +6,22 @@
 
 This library is a fork of [einops](https://github.com/VasanthakumarV/einops) intended to bring support for einops to [Candle](https://github.com/huggingface/candle). Thank you @VasanthakumarV for such a fantastic macro based library to build off. The original library was implemented with TCH as the backing library and was based on the [einops](https://github.com/arogozhnikov/einops) python library.
 
-For the most part everything from the original library has remained and only the device/dtype bindings have been altered. I do have plans to port `einsum` functionality to this library in the future.
+For the most part everything from the original library has remained and only the device/dtype bindings have been altered.
+
+## Project scope and old prototypes
+
+This crate currently focuses on rearrange, reduce, and repeat operations. It does not
+provide `einsum`, and `einsum` is not part of the current Candle modernization work.
+The remote `AddEinsumSupport` branch contains only an incomplete parser prototype
+based on Candle 0.4, so it is retained as historical reference rather than a basis
+for implementation. Any future `einsum` effort should begin with a new design after
+the current API is stable.
+
+The remote `latest-candle` branch's unpinned Candle git dependency and the open
+Candle 0.8 dependency update in
+[PR #5](https://github.com/tomsanbear/candle-einops/pull/5) are likewise superseded
+by the stable-version upgrade tracked in this repository. They should not be merged
+into the modernization branch.
 
 Difference from the python version:
 

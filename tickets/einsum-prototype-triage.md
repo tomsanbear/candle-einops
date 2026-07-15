@@ -1,7 +1,7 @@
 ---
 id: einsum-prototype-triage
 title: Triage the einsum prototype and stale branches
-status: in-progress
+status: done
 priority: p2
 dependencies: []
 related: [release-readiness]
@@ -9,9 +9,6 @@ scopes: [docs]
 shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization, follow-up]
-claimed_from: todo
-assignee: codex-einsum
-lease_expires_at: 1784123738
 ---
 # Triage the einsum prototype and stale branches
 

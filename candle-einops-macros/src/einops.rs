@@ -1,4 +1,6 @@
 mod parse;
+#[cfg(test)]
+mod properties;
 mod tokens;
 
 use proc_macro_crate::{FoundCrate, crate_name};

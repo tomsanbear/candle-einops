@@ -1,5 +1,5 @@
-error: einsum accepts at most two operand expressions
- --> tests/ui/fail/einsum-operand-count.rs:4:48
+error: einsum equation has 2 inputs but received 3 operand expressions
+ --> tests/ui/fail/einsum-operand-count.rs:4:21
   |
 4 |     let _ = einsum!("row, row -> row", (), (), ());
-  |                                                ^
+  |                     ^^^^^^^^^^^^^^^^^

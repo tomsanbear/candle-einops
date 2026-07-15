@@ -40,15 +40,6 @@ impl Equation {
             .split_once("->")
             .ok_or_else(|| syn::Error::new(literal.span(), "missing einsum output"))?;
         let input_lists = input_text.split(',').collect::<Vec<_>>();
-        if input_lists.len() > 2 {
-            return Err(syn::Error::new(
-                literal.span(),
-                format!(
-                    "einsum supports at most two input axis lists; equation contains {}",
-                    input_lists.len()
-                ),
-            ));
-        }
         if output_text.contains(',') {
             return Err(syn::Error::new(
                 literal.span(),
@@ -321,12 +312,6 @@ impl Parse for Invocation {
             if input.is_empty() {
                 break;
             }
-            if operands.len() == 2 {
-                return Err(syn::Error::new(
-                    input.span(),
-                    "einsum accepts at most two operand expressions",
-                ));
-            }
             operands.push(input.parse::<syn::Expr>()?);
             if input.is_empty() {
                 break;
@@ -368,7 +353,8 @@ impl ToTokens for Invocation {
             .iter()
             .zip(operands)
             .map(|(ident, operand)| quote!(let #ident = #operand;));
-        let execution = if equation.requires_runtime_normalization() {
+        let execution = if equation.operands.len() > 2 || equation.requires_runtime_normalization()
+        {
             let patterns = equation.operands.iter().map(|pattern| {
                 let labels = pattern
                     .axes
@@ -400,12 +386,20 @@ impl ToTokens for Invocation {
                     &#operand,
                     #spec,
                 ))
-            } else {
+            } else if equation.operands.len() == 2 {
                 let left = &operand_idents[0];
                 let right = &operand_idents[1];
                 quote!(#runtime_crate::__private::execute_binary_ellipsis_einsum(
                     &#left,
                     &#right,
+                    #spec,
+                ))
+            } else {
+                let operand_refs = operand_idents.iter().map(
+                    |operand| quote!(#runtime_crate::__private::einsum_operand_ref(&#operand)),
+                );
+                quote!(#runtime_crate::__private::execute_nary_einsum(
+                    &[#(#operand_refs),*],
                     #spec,
                 ))
             }

@@ -341,6 +341,7 @@ where
     let capture = ellipsis_capture(operand, 0, spec.operands[0])?;
     let normalized = normalize_ellipsis_operand(operand, spec.operands[0], capture, capture, 0)?;
     let input_axes = expand_axis_pattern(spec.operands[0], capture, true);
+    let (normalized, input_axes) = normalize_repeated_axes(normalized, input_axes, 0)?;
     let output_axes = expand_axis_pattern(spec.output, capture, false);
     validate_expanded_output(&[&input_axes], &output_axes)?;
     let permutation = output_axes
@@ -388,6 +389,8 @@ where
         normalize_ellipsis_operand(right, spec.operands[1], captures[1], maximum_capture, 1)?;
     let left_axes = expand_axis_pattern(spec.operands[0], maximum_capture, true);
     let right_axes = expand_axis_pattern(spec.operands[1], maximum_capture, true);
+    let (left, left_axes) = normalize_repeated_axes(left, left_axes, 0)?;
+    let (right, right_axes) = normalize_repeated_axes(right, right_axes, 1)?;
     let output_axes = expand_axis_pattern(spec.output, maximum_capture, false);
     validate_expanded_output(&[&left_axes, &right_axes], &output_axes)?;
     let plan = classify_expanded_binary(&left_axes, &right_axes, &output_axes);
@@ -492,6 +495,143 @@ fn normalize_ellipsis_operand(
         })?;
     }
     Ok(normalized)
+}
+
+fn normalize_repeated_axes<'a>(
+    mut operand: Tensor,
+    mut axes: Vec<ExpandedAxis<'a>>,
+    operand_index: usize,
+) -> Result<(Tensor, Vec<ExpandedAxis<'a>>)> {
+    loop {
+        let Some(repeated_axis) = axes
+            .iter()
+            .copied()
+            .find(|axis| axes.iter().filter(|candidate| **candidate == *axis).count() > 1)
+        else {
+            return Ok((operand, axes));
+        };
+        let positions = axes
+            .iter()
+            .enumerate()
+            .filter_map(|(position, axis)| (*axis == repeated_axis).then_some(position))
+            .collect::<Vec<_>>();
+        let extent = operand.dims()[positions[0]];
+        for &position in &positions[1..] {
+            let other = operand.dims()[position];
+            if other != extent {
+                candle_core::bail!(
+                    "einsum operand {operand_index} repeated label `{}` has unequal extents {extent} and {other}",
+                    repeated_axis.display_name()
+                )
+            }
+        }
+
+        let other_positions = (0..axes.len())
+            .filter(|position| !positions.contains(position))
+            .collect::<Vec<_>>();
+        let adjacency_permutation = positions
+            .iter()
+            .chain(&other_positions)
+            .copied()
+            .collect::<Vec<_>>();
+        let device = operand.device().clone();
+        let adjacent = if adjacency_permutation.iter().copied().eq(0..axes.len()) {
+            operand
+        } else {
+            operand
+                .permute(adjacency_permutation.as_slice())
+                .map_err(|error| {
+                    error.context(format!(
+                        "einsum operand {operand_index} diagonal adjacency permutation"
+                    ))
+                })?
+        };
+
+        let (repeated_flat_extent, diagonal_stride) =
+            checked_diagonal_layout(extent, positions.len(), operand_index)?;
+        let mut flattened_shape = vec![repeated_flat_extent];
+        flattened_shape.extend_from_slice(&adjacent.dims()[positions.len()..]);
+        let flattened = adjacent.reshape(flattened_shape).map_err(|error| {
+            error.context(format!(
+                "einsum operand {operand_index} repeated-axis flatten"
+            ))
+        })?;
+
+        let mut diagonal_indices = Vec::with_capacity(extent);
+        for coordinate in 0..extent {
+            let index = coordinate.checked_mul(diagonal_stride).ok_or_else(|| {
+                candle_core::Error::msg(format!(
+                    "einsum operand {operand_index} diagonal index overflows usize"
+                ))
+            })?;
+            diagonal_indices.push(u32::try_from(index).map_err(|_| {
+                candle_core::Error::msg(format!(
+                    "einsum operand {operand_index} diagonal index {index} exceeds u32"
+                ))
+            })?);
+        }
+        let indices = Tensor::from_vec(diagonal_indices, extent, &device).map_err(|error| {
+            error.context(format!(
+                "einsum operand {operand_index} device-local diagonal indices"
+            ))
+        })?;
+        let selected = flattened.index_select(&indices, 0).map_err(|error| {
+            error.context(format!(
+                "einsum operand {operand_index} differentiable diagonal selection"
+            ))
+        })?;
+
+        let result_order = std::iter::once(positions[0])
+            .chain(other_positions.iter().copied())
+            .collect::<Vec<_>>();
+        let desired_order = (0..axes.len())
+            .filter(|position| !positions[1..].contains(position))
+            .collect::<Vec<_>>();
+        let restoration = desired_order
+            .iter()
+            .map(|position| {
+                result_order
+                    .iter()
+                    .position(|candidate| candidate == position)
+                    .expect("diagonal result order contains every surviving axis")
+            })
+            .collect::<Vec<_>>();
+        operand = if restoration.iter().copied().eq(0..restoration.len()) {
+            selected
+        } else {
+            selected.permute(restoration.as_slice()).map_err(|error| {
+                error.context(format!(
+                    "einsum operand {operand_index} diagonal axis restoration"
+                ))
+            })?
+        };
+        axes = desired_order
+            .iter()
+            .map(|&position| axes[position])
+            .collect();
+    }
+}
+
+fn checked_diagonal_layout(
+    extent: usize,
+    multiplicity: usize,
+    operand_index: usize,
+) -> Result<(usize, usize)> {
+    let mut diagonal_stride = 0_usize;
+    let mut power = 1_usize;
+    for _ in 0..multiplicity {
+        diagonal_stride = diagonal_stride.checked_add(power).ok_or_else(|| {
+            candle_core::Error::msg(format!(
+                "einsum operand {operand_index} diagonal stride overflows usize"
+            ))
+        })?;
+        power = power.checked_mul(extent).ok_or_else(|| {
+            candle_core::Error::msg(format!(
+                "einsum operand {operand_index} repeated-axis extent product overflows usize"
+            ))
+        })?;
+    }
+    Ok((power, diagonal_stride))
 }
 
 fn expand_axis_pattern<'a>(
@@ -805,5 +945,12 @@ mod tests {
             &[2, 2, 4, 2]
         );
         Ok(())
+    }
+
+    #[test]
+    fn diagonal_layout_arithmetic_is_checked() {
+        assert!(checked_diagonal_layout(usize::MAX, 2, 0).is_err());
+        assert_eq!(checked_diagonal_layout(3, 3, 0).unwrap(), (27, 13));
+        assert_eq!(checked_diagonal_layout(0, 3, 0).unwrap(), (0, 1));
     }
 }

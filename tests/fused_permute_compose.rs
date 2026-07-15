@@ -147,6 +147,61 @@ impl Backend for &DefaultBackend {
     }
 }
 
+#[derive(Clone, Debug)]
+struct FailingFusedBackend(RecordingBackend);
+
+impl Backend for FailingFusedBackend {
+    type Output = Self;
+    fn shape(self) -> Vec<usize> {
+        self.0.shape
+    }
+    fn reshape(self, _shape: &[usize]) -> Result<Self::Output> {
+        self.0.calls.borrow_mut().push("reshape");
+        Ok(self)
+    }
+    fn transpose(self, _axes: &[usize]) -> Result<Self::Output> {
+        self.0.calls.borrow_mut().push("transpose");
+        Ok(self)
+    }
+    fn permute_and_compose(
+        self,
+        _permutation: &[usize],
+        _output_shape: &[usize],
+        _group_lengths: &[usize],
+    ) -> Result<Self::Output>
+    where
+        Self::Output: Backend<Output = Self::Output>,
+    {
+        self.0.calls.borrow_mut().push("fused");
+        candle_core::bail!("selected fused failure")
+    }
+    fn reduce_axes(self, _axes: &mut [(usize, Operation)]) -> Result<Self::Output> {
+        unreachable!()
+    }
+    fn add_axes(self, _naxes: usize, _positions: &[(usize, usize)]) -> Result<Self::Output> {
+        unreachable!()
+    }
+}
+
+impl Backend for &FailingFusedBackend {
+    type Output = FailingFusedBackend;
+    fn shape(self) -> Vec<usize> {
+        self.0.shape.clone()
+    }
+    fn reshape(self, shape: &[usize]) -> Result<Self::Output> {
+        self.clone().reshape(shape)
+    }
+    fn transpose(self, axes: &[usize]) -> Result<Self::Output> {
+        self.clone().transpose(axes)
+    }
+    fn reduce_axes(self, axes: &mut [(usize, Operation)]) -> Result<Self::Output> {
+        self.clone().reduce_axes(axes)
+    }
+    fn add_axes(self, naxes: usize, positions: &[(usize, usize)]) -> Result<Self::Output> {
+        self.clone().add_axes(naxes, positions)
+    }
+}
+
 #[test]
 fn fused_codegen_is_narrow_and_default_backend_remains_compatible() -> Result<()> {
     let recording = RecordingBackend::new(&[2, 3, 4]);
@@ -171,6 +226,12 @@ fn fused_codegen_is_narrow_and_default_backend_remains_compatible() -> Result<()
     let calls = repeat.calls.clone();
     let _ = einops!("a b -> b (a repeated:2)", repeat)?;
     assert_eq!(&*calls.borrow(), &["transpose", "repeat", "reshape"]);
+
+    let failing = FailingFusedBackend(RecordingBackend::new(&[2, 3, 4]));
+    let calls = failing.0.calls.clone();
+    let error = einops!("a b c -> c (a b)", failing).expect_err("selected failure propagates");
+    assert!(error.to_string().contains("selected fused failure"));
+    assert_eq!(&*calls.borrow(), &["fused"]);
     Ok(())
 }
 

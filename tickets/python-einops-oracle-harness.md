@@ -1,16 +1,13 @@
 ---
 id: python-einops-oracle-harness
 title: Establish a locked Python einops oracle harness
-status: in-progress
+status: done
 priority: p0
 dependencies: []
 related: []
 scopes: [parity]
 shared_scopes: [ticketing]
 tags: [python-einops-parity]
-claimed_from: todo
-assignee: codex-root
-lease_expires_at: 1784137007
 ---
 # Establish a locked Python einops oracle harness
 
@@ -34,3 +31,11 @@ needed by the Rust parity slices.
 - Request ordering and responses are deterministic and replayable by seed/case id.
 - Scalars, zero-sized axes, finite floating values, and normalized failures are covered.
 
+## Completion evidence
+
+- Red: `python3 -m unittest discover -s parity/tests -v` failed because the
+  specified `oracle` module did not exist.
+- Green: `uv lock --project parity --check`, `uv sync --project parity
+  --frozen`, and the six-test unittest/Hypothesis suite pass against the locked
+  Python 3.12.10 environment.
+- Scope guard passes for the complete `parity/` slice.

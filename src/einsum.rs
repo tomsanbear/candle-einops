@@ -2336,7 +2336,35 @@ fn checked_product(dimensions: &[usize], category: &str) -> Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use candle_core::{DType, Device, Var};
+    use candle_core::{DType, Device, Storage, Var};
+
+    fn storage_address(tensor: &Tensor) -> *const Storage {
+        let (storage, _) = tensor.storage_and_layout();
+        std::ptr::from_ref(&*storage)
+    }
+
+    #[test]
+    fn canonical_group_packing_recovers_a_storage_sharing_view() -> Result<()> {
+        let source = Tensor::arange(0f32, 24., &Device::Cpu)?.reshape((4, 2, 3))?;
+        let canonical = source.permute((1, 2, 0))?;
+        assert!(!canonical.is_contiguous());
+        let historical = canonical.reshape((1, 6, 4))?;
+        assert_ne!(storage_address(&historical), storage_address(&source));
+
+        let packed = pack_canonical_operand(
+            &canonical,
+            &[1, 6, 4],
+            &[0, 2, 1],
+            "test canonical operand",
+        )?;
+        assert_eq!(packed.dims(), [1, 6, 4]);
+        assert_eq!(storage_address(&packed), storage_address(&source));
+        assert_eq!(
+            packed.flatten_all()?.to_vec1::<f32>()?,
+            historical.flatten_all()?.to_vec1::<f32>()?
+        );
+        Ok(())
+    }
 
     #[test]
     fn rejects_invalid_runtime_specs_without_panicking() -> Result<()> {

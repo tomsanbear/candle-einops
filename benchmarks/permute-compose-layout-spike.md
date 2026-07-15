@@ -15,8 +15,16 @@ by transpose; NCHW to `n (h w) c` becomes reshape `[n,c,h*w]` followed by a
 group transpose. Candle's public `permute` and contiguous `reshape` operations
 preserve storage, offsets, and autograd.
 
-The spike prototype lives only in the benchmark crate. No production runtime
-or macro path is changed by this ticket.
+The selected public-view plan is now implemented by the production Backend and
+macro path. The benchmark keeps the exact four spike scenarios: the library
+side measures production fusion and the reference side forces the historical
+expanded permutation followed by reshape.
+
+A five-sample production smoke run measured 7.708 us and 6.625 us construction
+medians for `c (a b)` and `n (h w) c`, versus 8.402 ms and 8.313 ms for the
+forced historical route. Immediate contiguous consumption remained neutral at
+0.996x and 1.003x (production/reference). The JSON evidence remains ignored
+under `target/benchmarks/permute-compose-production.json`.
 
 ## CPU measurements
 

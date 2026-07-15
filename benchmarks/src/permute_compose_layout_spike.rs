@@ -440,15 +440,6 @@ impl PermuteComposeScenario {
             Mode::Consume => tensor.contiguous(),
         }
     }
-
-    fn desired_groups(&self) -> &'static [Vec<usize>] {
-        static C_AB: std::sync::OnceLock<Vec<Vec<usize>>> = std::sync::OnceLock::new();
-        static N_HW_C: std::sync::OnceLock<Vec<Vec<usize>>> = std::sync::OnceLock::new();
-        match self.pattern {
-            Pattern::CAb => C_AB.get_or_init(|| vec![vec![2], vec![0, 1]]),
-            Pattern::NHwC => N_HW_C.get_or_init(|| vec![vec![0], vec![2, 3], vec![1]]),
-        }
-    }
 }
 
 impl Scenario for PermuteComposeScenario {
@@ -493,10 +484,12 @@ impl Scenario for PermuteComposeScenario {
     }
 
     fn run_reference(&self, inputs: &[Tensor]) -> CandleResult<Tensor> {
-        let (output, plan) = run_public_fusion_prototype(&inputs[0], self.desired_groups())?;
-        if !matches!(plan, PublicFusionPlan::ReorderedPublicViews { .. }) {
-            candle_core::bail!("benchmark candidate unexpectedly lost its public-view plan")
-        }
+        let output = match self.pattern {
+            Pattern::CAb => inputs[0].permute([2, 0, 1])?.reshape(&[32, 64 * 48])?,
+            Pattern::NHwC => inputs[0]
+                .permute([0, 2, 3, 1])?
+                .reshape(&[8, 32 * 16, 24])?,
+        };
         self.maybe_consume(output)
     }
 
@@ -504,7 +497,7 @@ impl Scenario for PermuteComposeScenario {
         if library.dims() != reference.dims() {
             candle_core::bail!("permute-compose outputs have different shapes")
         }
-        if self.mode == Mode::Construct && (!library.is_contiguous() || reference.is_contiguous()) {
+        if self.mode == Mode::Construct && (library.is_contiguous() || !reference.is_contiguous()) {
             candle_core::bail!("construct layout did not discriminate copy from candidate view")
         }
         if self.mode == Mode::Consume && (!library.is_contiguous() || !reference.is_contiguous()) {

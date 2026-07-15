@@ -9,7 +9,8 @@ use criterion::Criterion;
 use serde::Serialize;
 
 use crate::{
-    Estimate, Fingerprint, RESULT_SCHEMA_VERSION, Scenario, ScenarioId, WorkUnits, summarize,
+    DeviceSynchronizer, Estimate, Fingerprint, Operation, RESULT_SCHEMA_VERSION, Scenario,
+    ScenarioId, WorkUnits, criterion_operation, prepare, summarize,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -802,22 +803,25 @@ impl Scenario for NetworkScenario {
 
 pub fn criterion_benchmarks(criterion: &mut Criterion) {
     let device = Device::Cpu;
+    let synchronizer = DeviceSynchronizer(&device);
     for scenario in network_scenarios() {
-        let inputs = scenario.setup(&device).expect("n-ary network setup");
+        let prepared = prepare(&scenario, &device).expect("n-ary network setup");
         let id = scenario.id().as_str();
-        criterion.bench_function(&format!("{id}/current"), |bencher| {
-            bencher.iter(|| {
-                let output = scenario.run_library(black_box(&inputs)).expect("current");
-                device.synchronize().expect("CPU sync");
-                black_box(output)
-            });
-        });
-        criterion.bench_function(&format!("{id}/selected"), |bencher| {
-            bencher.iter(|| {
-                let output = scenario.run_reference(black_box(&inputs)).expect("exact");
-                device.synchronize().expect("CPU sync");
-                black_box(output)
-            });
-        });
+        criterion_operation(
+            criterion,
+            &format!("{id}/current"),
+            &prepared,
+            Operation::Library,
+            &synchronizer,
+            "current n-ary sample must succeed",
+        );
+        criterion_operation(
+            criterion,
+            &format!("{id}/selected"),
+            &prepared,
+            Operation::Reference,
+            &synchronizer,
+            "selected n-ary sample must succeed",
+        );
     }
 }

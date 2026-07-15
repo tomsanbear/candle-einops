@@ -8,8 +8,8 @@ use criterion::Criterion;
 use serde::Serialize;
 
 use crate::{
-    Clock, Estimate, Fingerprint, RESULT_SCHEMA_VERSION, Scenario, ScenarioId, Synchronizer,
-    WorkUnits, summarize,
+    Clock, DeviceSynchronizer, Estimate, Fingerprint, Operation, RESULT_SCHEMA_VERSION, Scenario,
+    ScenarioId, Synchronizer, WorkUnits, criterion_operation, prepare, summarize,
 };
 
 #[derive(Debug)]
@@ -369,24 +369,25 @@ pub fn scenarios() -> &'static [DiagonalScenario] {
 
 pub fn criterion_benchmarks(criterion: &mut Criterion) {
     let device = Device::Cpu;
+    let synchronizer = DeviceSynchronizer(&device);
     for scenario in scenarios() {
-        let inputs = scenario.setup(&device).expect("diagonal setup");
+        let prepared = prepare(scenario, &device).expect("diagonal setup");
         let id = scenario.id().as_str();
-        criterion.bench_function(&format!("{id}/current"), |bencher| {
-            bencher.iter(|| {
-                let output = scenario.run_library(black_box(&inputs)).expect("current");
-                device.synchronize().expect("CPU sync");
-                black_box(output)
-            });
-        });
-        criterion.bench_function(&format!("{id}/cached-flat-gather"), |bencher| {
-            bencher.iter(|| {
-                let output = scenario
-                    .run_reference(black_box(&inputs))
-                    .expect("candidate");
-                device.synchronize().expect("CPU sync");
-                black_box(output)
-            });
-        });
+        criterion_operation(
+            criterion,
+            &format!("{id}/current"),
+            &prepared,
+            Operation::Library,
+            &synchronizer,
+            "current diagonal sample must succeed",
+        );
+        criterion_operation(
+            criterion,
+            &format!("{id}/cached-flat-gather"),
+            &prepared,
+            Operation::Reference,
+            &synchronizer,
+            "diagonal candidate sample must succeed",
+        );
     }
 }

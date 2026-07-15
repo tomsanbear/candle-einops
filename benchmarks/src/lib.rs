@@ -138,6 +138,14 @@ pub enum Operation {
     Reference,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SamplingOrderPolicy {
+    #[default]
+    FixedLibraryThenReference,
+    AlternatingLibraryThenReference,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ConfidenceInterval {
     pub confidence_level: f64,
@@ -162,7 +170,7 @@ pub struct PairMeasurement {
     pub library: SampleSet,
     pub reference: SampleSet,
     pub library_to_reference_ratio: f64,
-    pub order: [Operation; 2],
+    pub order_policy: SamplingOrderPolicy,
 }
 
 pub fn measure_pair(
@@ -176,19 +184,19 @@ pub fn measure_pair(
     }
     let mut library = Vec::with_capacity(sample_count);
     let mut reference = Vec::with_capacity(sample_count);
-    for _ in 0..sample_count {
-        library.push(measure_operation(
-            prepared,
-            Operation::Library,
-            synchronizer,
-            clock,
-        )?);
-        reference.push(measure_operation(
-            prepared,
-            Operation::Reference,
-            synchronizer,
-            clock,
-        )?);
+    for sample in 0..sample_count {
+        let order = if sample.is_multiple_of(2) {
+            [Operation::Library, Operation::Reference]
+        } else {
+            [Operation::Reference, Operation::Library]
+        };
+        for operation in order {
+            let duration = measure_operation(prepared, operation, synchronizer, clock)?;
+            match operation {
+                Operation::Library => library.push(duration),
+                Operation::Reference => reference.push(duration),
+            }
+        }
     }
     let library_estimate = summarize(&library);
     let reference_estimate = summarize(&reference);
@@ -203,8 +211,28 @@ pub fn measure_pair(
             estimate: reference_estimate,
         },
         library_to_reference_ratio: ratio,
-        order: [Operation::Library, Operation::Reference],
+        order_policy: SamplingOrderPolicy::AlternatingLibraryThenReference,
     })
+}
+
+fn run_operation(prepared: &PreparedScenario<'_>, operation: Operation) -> Result<Tensor> {
+    match operation {
+        Operation::Library => prepared.scenario.run_library(&prepared.inputs),
+        Operation::Reference => prepared.scenario.run_reference(&prepared.inputs),
+    }
+}
+
+/// Executes one Criterion operation and waits for asynchronous device work while
+/// keeping the result alive. Criterion owns the surrounding timing interval.
+pub fn run_synchronized_operation(
+    prepared: &PreparedScenario<'_>,
+    operation: Operation,
+    synchronizer: &dyn Synchronizer,
+) -> Result<Tensor> {
+    let output = run_operation(prepared, operation)?;
+    black_box(&output);
+    synchronizer.synchronize()?;
+    Ok(black_box(output))
 }
 
 fn measure_operation(
@@ -215,10 +243,7 @@ fn measure_operation(
 ) -> Result<u64> {
     synchronizer.synchronize()?;
     let started = clock.now_ns();
-    let output = match operation {
-        Operation::Library => prepared.scenario.run_library(&prepared.inputs)?,
-        Operation::Reference => prepared.scenario.run_reference(&prepared.inputs)?,
-    };
+    let output = run_operation(prepared, operation)?;
     black_box(&output);
     synchronizer.synchronize()?;
     let finished = clock.now_ns();
@@ -337,6 +362,8 @@ pub struct BenchmarkRecord {
     pub library: Estimate,
     pub reference: Estimate,
     pub library_to_reference_ratio: f64,
+    #[serde(default)]
+    pub sampling_order_policy: SamplingOrderPolicy,
     pub fingerprint: Fingerprint,
 }
 
@@ -355,6 +382,7 @@ impl BenchmarkRecord {
             library: measurement.library.estimate.clone(),
             reference: measurement.reference.estimate.clone(),
             library_to_reference_ratio: measurement.library_to_reference_ratio,
+            sampling_order_policy: measurement.order_policy,
             fingerprint,
         };
         record.validate()?;
@@ -519,6 +547,18 @@ impl ProductScenario {
     }
 }
 
+pub(crate) fn deterministic_f32_values(elements: usize, stream: usize) -> Vec<f32> {
+    (0..elements)
+        .map(|index| {
+            let value = index
+                .wrapping_mul(37)
+                .wrapping_add(stream.wrapping_mul(101))
+                % 251;
+            (value as f32 - 125.) / 64.
+        })
+        .collect()
+}
+
 pub fn product_scenarios() -> [ProductScenario; 4] {
     [
         ProductScenario::one_axis("product/sequential-vs-balanced/k-8", 8),
@@ -634,32 +674,32 @@ pub fn binary_fast_path_scenarios() -> Vec<BinaryFastPathScenario> {
         BinaryFastPathScenario {
             id: "einsum/binary/outer-overhead",
             mechanism: Outer,
-            dimensions: [1, 8, 1, 8],
+            dimensions: [1, 7, 1, 9],
         },
         BinaryFastPathScenario {
             id: "einsum/binary/outer-throughput",
             mechanism: Outer,
-            dimensions: [1, 512, 1, 512],
+            dimensions: [1, 480, 1, 544],
         },
         BinaryFastPathScenario {
             id: "einsum/binary/rank2-matmul-overhead",
             mechanism: Rank2Matmul,
-            dimensions: [1, 8, 8, 8],
+            dimensions: [1, 7, 8, 9],
         },
         BinaryFastPathScenario {
             id: "einsum/binary/rank2-matmul-throughput",
             mechanism: Rank2Matmul,
-            dimensions: [1, 128, 128, 128],
+            dimensions: [1, 120, 128, 136],
         },
         BinaryFastPathScenario {
             id: "einsum/binary/rank3-matmul-overhead",
             mechanism: Rank3Matmul,
-            dimensions: [2, 8, 8, 8],
+            dimensions: [2, 7, 8, 9],
         },
         BinaryFastPathScenario {
             id: "einsum/binary/rank3-matmul-throughput",
             mechanism: Rank3Matmul,
-            dimensions: [8, 64, 64, 64],
+            dimensions: [8, 56, 64, 72],
         },
     ]
 }
@@ -690,23 +730,17 @@ impl Scenario for BinaryFastPathScenario {
 
     fn setup(&self, device: &Device) -> Result<Vec<Tensor>> {
         let [b, m, k, n] = self.dimensions;
+        let tensor = |shape: &[usize], stream| {
+            let elements = shape.iter().product();
+            Tensor::from_vec(deterministic_f32_values(elements, stream), shape, device)
+        };
         match self.mechanism {
-            BinaryMechanism::Hadamard => Ok(vec![
-                Tensor::ones(m, candle_core::DType::F32, device)?,
-                Tensor::ones(m, candle_core::DType::F32, device)?,
-            ]),
-            BinaryMechanism::Outer => Ok(vec![
-                Tensor::ones(m, candle_core::DType::F32, device)?,
-                Tensor::ones(n, candle_core::DType::F32, device)?,
-            ]),
-            BinaryMechanism::Rank2Matmul => Ok(vec![
-                Tensor::ones((m, k), candle_core::DType::F32, device)?,
-                Tensor::ones((k, n), candle_core::DType::F32, device)?,
-            ]),
-            BinaryMechanism::Rank3Matmul => Ok(vec![
-                Tensor::ones((b, m, k), candle_core::DType::F32, device)?,
-                Tensor::ones((b, k, n), candle_core::DType::F32, device)?,
-            ]),
+            BinaryMechanism::Hadamard => Ok(vec![tensor(&[m], 1)?, tensor(&[m], 2)?]),
+            BinaryMechanism::Outer => Ok(vec![tensor(&[m], 3)?, tensor(&[n], 4)?]),
+            BinaryMechanism::Rank2Matmul => Ok(vec![tensor(&[m, k], 5)?, tensor(&[k, n], 6)?]),
+            BinaryMechanism::Rank3Matmul => {
+                Ok(vec![tensor(&[b, m, k], 7)?, tensor(&[b, k, n], 8)?])
+            }
         }
     }
 
@@ -1038,40 +1072,57 @@ impl Scenario for RepeatBroadcastScenario {
     }
 }
 
+pub(crate) fn criterion_operation(
+    criterion: &mut Criterion,
+    name: &str,
+    prepared: &PreparedScenario<'_>,
+    operation: Operation,
+    synchronizer: &dyn Synchronizer,
+    failure: &'static str,
+) {
+    synchronizer
+        .synchronize()
+        .expect("Criterion pre-synchronization must succeed");
+    criterion.bench_function(name, |bencher| {
+        bencher
+            .iter(|| run_synchronized_operation(prepared, operation, synchronizer).expect(failure));
+    });
+}
+
 pub fn criterion_plumbing_benchmark(criterion: &mut Criterion) {
     let device = Device::Cpu;
     let scenario = PlumbingScenario;
     let prepared = prepare(&scenario, &device).expect("plumbing setup must succeed");
     let synchronizer = DeviceSynchronizer(&device);
-    let clock = MonotonicClock;
-    criterion.bench_function("plumbing/smoke-untracked", |bencher| {
-        bencher.iter(|| {
-            measure_operation(&prepared, Operation::Library, &synchronizer, &clock)
-                .expect("plumbing sample must succeed")
-        });
-    });
+    criterion_operation(
+        criterion,
+        "plumbing/smoke-untracked",
+        &prepared,
+        Operation::Library,
+        &synchronizer,
+        "plumbing sample must succeed",
+    );
 }
 
 pub fn criterion_product_benchmarks(criterion: &mut Criterion) {
     let device = Device::Cpu;
+    let synchronizer = DeviceSynchronizer(&device);
     for scenario in product_scenarios() {
         let prepared = prepare(&scenario, &device).expect("product setup must succeed");
-        criterion.bench_function(scenario.id().as_str(), |bencher| {
-            bencher.iter(|| {
-                black_box(
-                    scenario
-                        .run_library(&prepared.inputs)
-                        .expect("product sample must succeed"),
-                )
-            });
-        });
+        criterion_operation(
+            criterion,
+            scenario.id().as_str(),
+            &prepared,
+            Operation::Library,
+            &synchronizer,
+            "product sample must succeed",
+        );
     }
 }
 
 pub fn criterion_binary_fast_paths(criterion: &mut Criterion) {
     let device = Device::Cpu;
     let synchronizer = DeviceSynchronizer(&device);
-    let clock = MonotonicClock;
     for scenario in binary_fast_path_scenarios() {
         let prepared = prepare(&scenario, &device).expect("binary fast-path setup must succeed");
         for operation in [Operation::Library, Operation::Reference] {
@@ -1083,12 +1134,14 @@ pub fn criterion_binary_fast_paths(criterion: &mut Criterion) {
                     Operation::Reference => "reference",
                 }
             );
-            criterion.bench_function(&name, |bencher| {
-                bencher.iter(|| {
-                    measure_operation(&prepared, operation, &synchronizer, &clock)
-                        .expect("binary fast-path sample must succeed")
-                });
-            });
+            criterion_operation(
+                criterion,
+                &name,
+                &prepared,
+                operation,
+                &synchronizer,
+                "binary fast-path sample must succeed",
+            );
         }
     }
 }
@@ -1096,7 +1149,6 @@ pub fn criterion_binary_fast_paths(criterion: &mut Criterion) {
 pub fn criterion_reduction_fusion(criterion: &mut Criterion) {
     let device = Device::Cpu;
     let synchronizer = DeviceSynchronizer(&device);
-    let clock = MonotonicClock;
     for scenario in reduction_fusion_scenarios() {
         let prepared = prepare(&scenario, &device).expect("reduction fusion setup must succeed");
         for operation in [Operation::Library, Operation::Reference] {
@@ -1108,12 +1160,14 @@ pub fn criterion_reduction_fusion(criterion: &mut Criterion) {
                     Operation::Reference => "reference",
                 }
             );
-            criterion.bench_function(&name, |bencher| {
-                bencher.iter(|| {
-                    measure_operation(&prepared, operation, &synchronizer, &clock)
-                        .expect("reduction fusion sample must succeed")
-                });
-            });
+            criterion_operation(
+                criterion,
+                &name,
+                &prepared,
+                operation,
+                &synchronizer,
+                "reduction fusion sample must succeed",
+            );
         }
     }
 }
@@ -1121,7 +1175,6 @@ pub fn criterion_reduction_fusion(criterion: &mut Criterion) {
 pub fn criterion_repeat_broadcast(criterion: &mut Criterion) {
     let device = Device::Cpu;
     let synchronizer = DeviceSynchronizer(&device);
-    let clock = MonotonicClock;
     for scenario in repeat_broadcast_scenarios() {
         let prepared = prepare(&scenario, &device).expect("repeat broadcast setup must succeed");
         for operation in [Operation::Library, Operation::Reference] {
@@ -1133,12 +1186,14 @@ pub fn criterion_repeat_broadcast(criterion: &mut Criterion) {
                     Operation::Reference => "reference",
                 }
             );
-            criterion.bench_function(&name, |bencher| {
-                bencher.iter(|| {
-                    measure_operation(&prepared, operation, &synchronizer, &clock)
-                        .expect("repeat broadcast sample must succeed")
-                });
-            });
+            criterion_operation(
+                criterion,
+                &name,
+                &prepared,
+                operation,
+                &synchronizer,
+                "repeat broadcast sample must succeed",
+            );
         }
     }
 }

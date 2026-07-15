@@ -1,12 +1,13 @@
 //! Benchmark-only broadcast-aware GEMM strategies and structural probes.
 
-use std::hint::black_box;
-
 use candle_core::{Device, Result, Tensor};
 use criterion::Criterion;
 
 use crate::diagonal_spike::cpu_storage_id;
-use crate::{Scenario, ScenarioId, WorkUnits};
+use crate::{
+    DeviceSynchronizer, Operation, Scenario, ScenarioId, WorkUnits, criterion_operation,
+    deterministic_f32_values, prepare,
+};
 
 #[derive(Debug)]
 pub struct EagerExpansionProbe {
@@ -301,14 +302,20 @@ impl Scenario for BroadcastScenario {
     }
 
     fn setup(&self, device: &Device) -> Result<Vec<Tensor>> {
-        let tensor = |shape: &[usize]| Tensor::ones(shape, candle_core::DType::F32, device);
+        let tensor = |shape: &[usize], stream| {
+            let elements = shape.iter().product();
+            Tensor::from_vec(deterministic_f32_values(elements, stream), shape, device)
+        };
         match self.case {
-            BroadcastCase::Left => Ok(vec![tensor(&[1, 32, 32])?, tensor(&[32, 32, 32])?]),
-            BroadcastCase::Right => Ok(vec![tensor(&[32, 32, 32])?, tensor(&[1, 32, 32])?]),
-            BroadcastCase::Both => Ok(vec![tensor(&[8, 1, 32, 32])?, tensor(&[1, 8, 32, 32])?]),
+            BroadcastCase::Left => Ok(vec![tensor(&[1, 32, 32], 11)?, tensor(&[32, 32, 32], 12)?]),
+            BroadcastCase::Right => Ok(vec![tensor(&[32, 32, 32], 13)?, tensor(&[1, 32, 32], 14)?]),
+            BroadcastCase::Both => Ok(vec![
+                tensor(&[8, 1, 32, 32], 15)?,
+                tensor(&[1, 8, 32, 32], 16)?,
+            ]),
             BroadcastCase::LayoutHostile => Ok(vec![
-                tensor(&[16, 32, 32])?.transpose(1, 2)?,
-                tensor(&[16, 32, 32])?,
+                tensor(&[16, 32, 32], 17)?.transpose(1, 2)?,
+                tensor(&[16, 32, 32], 18)?,
             ]),
         }
     }
@@ -350,24 +357,25 @@ impl Scenario for BroadcastScenario {
 
 pub fn criterion_benchmarks(criterion: &mut Criterion) {
     let device = Device::Cpu;
+    let synchronizer = DeviceSynchronizer(&device);
     for scenario in broadcast_scenarios() {
-        let inputs = scenario.setup(&device).expect("broadcast GEMM setup");
+        let prepared = prepare(scenario, &device).expect("broadcast GEMM setup");
         let id = scenario.id().as_str();
-        criterion.bench_function(&format!("{id}/eager"), |bencher| {
-            bencher.iter(|| {
-                let output = scenario.run_library(black_box(&inputs)).expect("eager");
-                device.synchronize().expect("CPU sync");
-                black_box(output)
-            });
-        });
-        criterion.bench_function(&format!("{id}/selected"), |bencher| {
-            bencher.iter(|| {
-                let output = scenario
-                    .run_reference(black_box(&inputs))
-                    .expect("selected");
-                device.synchronize().expect("CPU sync");
-                black_box(output)
-            });
-        });
+        criterion_operation(
+            criterion,
+            &format!("{id}/eager"),
+            &prepared,
+            Operation::Library,
+            &synchronizer,
+            "eager broadcast GEMM sample must succeed",
+        );
+        criterion_operation(
+            criterion,
+            &format!("{id}/selected"),
+            &prepared,
+            Operation::Reference,
+            &synchronizer,
+            "selected broadcast GEMM sample must succeed",
+        );
     }
 }

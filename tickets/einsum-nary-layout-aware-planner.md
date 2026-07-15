@@ -5,7 +5,7 @@ status: in-progress
 priority: p1
 dependencies: [einsum-nary-cost-model-spike]
 related: [einsum-nary-cost-model-spike]
-scopes: [runtime]
+scopes: [runtime, tooling]
 shared_scopes: [tests, benchmarks, ticketing]
 tags: [performance-0.2, conditional]
 claimed_from: todo

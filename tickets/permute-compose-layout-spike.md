@@ -1,13 +1,16 @@
 ---
 id: permute-compose-layout-spike
 title: Determine viable permute and composition layout fusion
-status: todo
+status: in-progress
 priority: p1
 dependencies: [performance-harness-foundation, identity-reshape-elision]
 related: [fused-permute-compose-layout]
 scopes: []
 shared_scopes: [tests, benchmarks, docs, ticketing]
 tags: [performance-0.2]
+claimed_from: todo
+assignee: behavior-tests
+lease_expires_at: 1784149770
 ---
 # Determine viable permute and composition layout fusion
 

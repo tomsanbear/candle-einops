@@ -16,12 +16,14 @@ struct AxisId(usize);
 #[derive(Debug)]
 struct Operand {
     axes: Vec<AxisId>,
+    ellipsis_position: Option<usize>,
 }
 
 #[derive(Debug)]
 struct Equation {
     operands: Vec<Operand>,
     output: Vec<AxisId>,
+    output_ellipsis_position: Option<usize>,
     names: Vec<String>,
 }
 
@@ -58,10 +60,10 @@ impl Equation {
         let mut names = Vec::new();
         let mut operands = Vec::with_capacity(input_lists.len());
         for input in input_lists {
-            let labels = parse_labels(input, literal.span())?;
-            let mut local_names = Vec::with_capacity(labels.len());
-            let mut axes = Vec::with_capacity(labels.len());
-            for label in labels {
+            let axis_list = parse_axis_list(input, literal.span(), "operand axis list")?;
+            let mut local_names = Vec::with_capacity(axis_list.labels.len());
+            let mut axes = Vec::with_capacity(axis_list.labels.len());
+            for label in axis_list.labels {
                 if local_names.contains(&label) {
                     return Err(syn::Error::new(
                         literal.span(),
@@ -78,13 +80,26 @@ impl Equation {
                 local_names.push(label);
                 axes.push(axis);
             }
-            operands.push(Operand { axes });
+            operands.push(Operand {
+                axes,
+                ellipsis_position: axis_list.ellipsis_position,
+            });
         }
 
-        let output_labels = parse_labels(output_text, literal.span())?;
-        let mut output = Vec::with_capacity(output_labels.len());
-        let mut output_names = Vec::with_capacity(output_labels.len());
-        for label in output_labels {
+        let output_axis_list = parse_axis_list(output_text, literal.span(), "output axis list")?;
+        if output_axis_list.ellipsis_position.is_some()
+            && !operands
+                .iter()
+                .any(|operand| operand.ellipsis_position.is_some())
+        {
+            return Err(syn::Error::new(
+                literal.span(),
+                "einsum output `..` requires an input `..`",
+            ));
+        }
+        let mut output = Vec::with_capacity(output_axis_list.labels.len());
+        let mut output_names = Vec::with_capacity(output_axis_list.labels.len());
+        for label in output_axis_list.labels {
             if output_names.contains(&label) {
                 return Err(syn::Error::new(
                     literal.span(),
@@ -104,8 +119,17 @@ impl Equation {
         Ok(Self {
             operands,
             output,
+            output_ellipsis_position: output_axis_list.ellipsis_position,
             names,
         })
+    }
+
+    fn has_ellipsis(&self) -> bool {
+        self.output_ellipsis_position.is_some()
+            || self
+                .operands
+                .iter()
+                .any(|operand| operand.ellipsis_position.is_some())
     }
 
     fn unary_permutation(&self) -> Vec<usize> {
@@ -238,15 +262,23 @@ struct BinaryPlan {
     output_permutation: Vec<usize>,
 }
 
-fn parse_labels(text: &str, span: Span) -> syn::Result<Vec<String>> {
-    text.split_whitespace()
-        .map(|label| {
-            if label == ".." {
+struct AxisList {
+    labels: Vec<String>,
+    ellipsis_position: Option<usize>,
+}
+
+fn parse_axis_list(text: &str, span: Span, kind: &str) -> syn::Result<AxisList> {
+    let mut labels = Vec::new();
+    let mut ellipsis_position = None;
+    for label in text.split_whitespace() {
+        if label == ".." {
+            if ellipsis_position.replace(labels.len()).is_some() {
                 return Err(syn::Error::new(
                     span,
-                    "einsum `..` is reserved for ellipsis support",
+                    format!("einsum {kind} contains more than one `..`"),
                 ));
             }
+        } else {
             let mut characters = label.chars();
             let valid_start = characters
                 .next()
@@ -259,9 +291,13 @@ fn parse_labels(text: &str, span: Span) -> syn::Result<Vec<String>> {
                     format!("invalid einsum axis label `{label}`"),
                 ));
             }
-            Ok(label.to_owned())
-        })
-        .collect()
+            labels.push(label.to_owned());
+        }
+    }
+    Ok(AxisList {
+        labels,
+        ellipsis_position,
+    })
 }
 
 struct Invocation {
@@ -328,7 +364,48 @@ impl ToTokens for Invocation {
             .iter()
             .zip(operands)
             .map(|(ident, operand)| quote!(let #ident = #operand;));
-        let execution = if equation.operands.len() == 1 {
+        let execution = if equation.has_ellipsis() {
+            let patterns = equation.operands.iter().map(|pattern| {
+                let labels = pattern
+                    .axes
+                    .iter()
+                    .map(|axis| equation.names[axis.0].clone())
+                    .collect::<Vec<_>>();
+                let position = option_tokens(pattern.ellipsis_position);
+                quote!(#runtime_crate::__private::EinsumAxisPattern::new(
+                    &[#(#labels),*],
+                    #position,
+                ))
+            });
+            let output_labels = equation
+                .output
+                .iter()
+                .map(|axis| equation.names[axis.0].clone())
+                .collect::<Vec<_>>();
+            let output_position = option_tokens(equation.output_ellipsis_position);
+            let spec = quote!(#runtime_crate::__private::EllipsisEinsumSpec::new(
+                &[#(#patterns),*],
+                #runtime_crate::__private::EinsumAxisPattern::new(
+                    &[#(#output_labels),*],
+                    #output_position,
+                ),
+            ));
+            if equation.operands.len() == 1 {
+                let operand = &operand_idents[0];
+                quote!(#runtime_crate::__private::execute_unary_ellipsis_einsum(
+                    &#operand,
+                    #spec,
+                ))
+            } else {
+                let left = &operand_idents[0];
+                let right = &operand_idents[1];
+                quote!(#runtime_crate::__private::execute_binary_ellipsis_einsum(
+                    &#left,
+                    &#right,
+                    #spec,
+                ))
+            }
+        } else if equation.operands.len() == 1 {
             let operand = &operand_idents[0];
             let input_rank = equation.operands[0].axes.len();
             let output_rank = equation.output.len();
@@ -384,6 +461,13 @@ impl ToTokens for Invocation {
     }
 }
 
+fn option_tokens(value: Option<usize>) -> TokenStream {
+    match value {
+        Some(value) => quote!(::core::option::Option::Some(#value)),
+        None => quote!(::core::option::Option::None),
+    }
+}
+
 fn runtime_crate_path() -> syn::Result<syn::Path> {
     match crate_name("candle-einops") {
         Ok(FoundCrate::Itself) => Ok(syn::parse_quote!(::candle_einops)),
@@ -430,5 +514,16 @@ mod tests {
         assert_eq!(plan.contracted_labels, ["inner"]);
         assert_eq!(plan.right_free_rank, 1);
         assert_eq!(plan.output_permutation, [2, 0, 1]);
+    }
+
+    #[test]
+    fn records_ellipsis_positions_without_changing_named_axes() {
+        let literal: syn::LitStr =
+            syn::parse_quote!("row .. inner, .. inner column -> row .. column");
+        let equation = Equation::parse(&literal).expect("valid ellipsis equation");
+        assert_eq!(equation.operands[0].ellipsis_position, Some(1));
+        assert_eq!(equation.operands[1].ellipsis_position, Some(0));
+        assert_eq!(equation.output_ellipsis_position, Some(1));
+        assert_eq!(equation.operands[0].axes.len(), 2);
     }
 }

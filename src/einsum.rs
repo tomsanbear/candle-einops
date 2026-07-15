@@ -120,7 +120,8 @@ impl<'a> EinsumAxisPattern<'a> {
     }
 }
 
-/// Runtime-rank-dependent plan for an equation containing ellipses.
+/// Runtime-normalized plan for an equation containing ellipses, repeated
+/// labels, or more than two operands.
 #[doc(hidden)]
 #[derive(Clone, Copy, Debug)]
 pub struct EllipsisEinsumSpec<'a> {
@@ -393,7 +394,134 @@ where
     let (right, right_axes) = normalize_repeated_axes(right, right_axes, 1)?;
     let output_axes = expand_axis_pattern(spec.output, maximum_capture, false);
     validate_expanded_output(&[&left_axes, &right_axes], &output_axes)?;
-    let plan = classify_expanded_binary(&left_axes, &right_axes, &output_axes);
+    execute_expanded_binary(&left, &right, &left_axes, &right_axes, &output_axes)
+}
+
+/// Converts one generated operand binding to the tensor reference used by the
+/// arbitrary-arity runtime ABI.
+#[doc(hidden)]
+pub fn einsum_operand_ref<T>(operand: &T) -> &Tensor
+where
+    T: AsRef<Tensor> + ?Sized,
+{
+    operand.as_ref()
+}
+
+/// Normalizes and greedily contracts an arbitrary number of operands.
+#[doc(hidden)]
+pub fn execute_nary_einsum(operands: &[&Tensor], spec: EllipsisEinsumSpec<'_>) -> Result<Tensor> {
+    if operands.is_empty() {
+        candle_core::bail!("invalid n-ary einsum plan: at least one operand is required")
+    }
+    if spec.operands.len() != operands.len() {
+        candle_core::bail!(
+            "invalid n-ary einsum plan: received {} tensors but {} operand patterns",
+            operands.len(),
+            spec.operands.len()
+        )
+    }
+    let first = operands[0];
+    for (index, operand) in operands.iter().copied().enumerate().skip(1) {
+        if operand.dtype() != first.dtype() {
+            candle_core::bail!(
+                "einsum operands have different dtypes: operand 0 {:?}, operand {index} {:?}",
+                first.dtype(),
+                operand.dtype()
+            )
+        }
+        if !operand.device().same_device(first.device()) {
+            candle_core::bail!(
+                "einsum operands are on different devices: operand 0 {:?}, operand {index} {:?}",
+                first.device(),
+                operand.device()
+            )
+        }
+    }
+
+    let captures = operands
+        .iter()
+        .zip(spec.operands)
+        .enumerate()
+        .map(|(index, (operand, pattern))| ellipsis_capture(operand, index, *pattern))
+        .collect::<Result<Vec<_>>>()?;
+    let maximum_capture = captures.iter().copied().max().unwrap_or(0);
+    let mut planned = Vec::with_capacity(operands.len());
+    for (index, ((operand, pattern), capture)) in
+        operands.iter().zip(spec.operands).zip(captures).enumerate()
+    {
+        let normalized =
+            normalize_ellipsis_operand(operand, *pattern, capture, maximum_capture, index)?;
+        let axes = expand_axis_pattern(*pattern, maximum_capture, true);
+        let (tensor, axes) = normalize_repeated_axes(normalized, axes, index)?;
+        planned.push(PlannedOperand {
+            tensor,
+            axes,
+            stable_ordinal: index,
+        });
+    }
+    let output_axes = expand_axis_pattern(spec.output, maximum_capture, false);
+    let input_axes = planned
+        .iter()
+        .map(|operand| operand.axes.as_slice())
+        .collect::<Vec<_>>();
+    validate_expanded_output(&input_axes, &output_axes)?;
+    validate_nary_broadcasts(&planned)?;
+    let global_axis_order = stable_axis_order(&planned);
+
+    while planned.len() > 1 {
+        let selected = select_nary_pair_with_order(&planned, &output_axes, &global_axis_order)?;
+        let right = planned.remove(selected.right);
+        let left = planned.remove(selected.left);
+        let tensor = execute_expanded_binary(
+            &left.tensor,
+            &right.tensor,
+            &left.axes,
+            &right.axes,
+            &selected.output_axes,
+        )?;
+        planned.insert(
+            selected.left,
+            PlannedOperand {
+                tensor,
+                axes: selected.output_axes,
+                stable_ordinal: left.stable_ordinal.min(right.stable_ordinal),
+            },
+        );
+    }
+
+    let final_operand = planned
+        .pop()
+        .expect("non-empty n-ary plan retains one operand");
+    let permutation = output_axes
+        .iter()
+        .chain(
+            final_operand
+                .axes
+                .iter()
+                .filter(|axis| !output_axes.contains(axis)),
+        )
+        .map(|axis| {
+            final_operand
+                .axes
+                .iter()
+                .position(|candidate| candidate == axis)
+                .expect("validated final n-ary output axis")
+        })
+        .collect::<Vec<_>>();
+    execute_unary_einsum(
+        &final_operand.tensor,
+        UnaryEinsumSpec::new(final_operand.axes.len(), output_axes.len(), &permutation),
+    )
+}
+
+fn execute_expanded_binary(
+    left: &Tensor,
+    right: &Tensor,
+    left_axes: &[ExpandedAxis<'_>],
+    right_axes: &[ExpandedAxis<'_>],
+    output_axes: &[ExpandedAxis<'_>],
+) -> Result<Tensor> {
+    let plan = classify_expanded_binary(left_axes, right_axes, output_axes);
     let batch_label_storage = plan
         .batch
         .iter()
@@ -413,8 +541,8 @@ where
         .map(String::as_str)
         .collect::<Vec<_>>();
     execute_binary_einsum(
-        &left,
-        &right,
+        left,
+        right,
         BinaryEinsumSpec::new(
             [left_axes.len(), right_axes.len()],
             [&plan.left_reductions, &plan.right_reductions],
@@ -428,6 +556,230 @@ where
             &plan.output_permutation,
         ),
     )
+}
+
+struct PlannedOperand<'a> {
+    tensor: Tensor,
+    axes: Vec<ExpandedAxis<'a>>,
+    stable_ordinal: usize,
+}
+
+impl<'a> PlannedOperand<'a> {
+    #[cfg(test)]
+    fn new_for_test(
+        shape: (usize, usize),
+        labels: &[&'a str],
+        stable_ordinal: usize,
+    ) -> Result<Self> {
+        Ok(Self {
+            tensor: Tensor::zeros(shape, candle_core::DType::F32, &candle_core::Device::Cpu)?,
+            axes: labels.iter().copied().map(ExpandedAxis::Named).collect(),
+            stable_ordinal,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct PairEstimate<'a> {
+    left: usize,
+    right: usize,
+    output_axes: Vec<ExpandedAxis<'a>>,
+    output_elements: u128,
+    flops: u128,
+}
+
+fn stable_axis_order<'a>(operands: &[PlannedOperand<'a>]) -> Vec<ExpandedAxis<'a>> {
+    let mut axes = Vec::new();
+    let mut ordered = operands.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|operand| operand.stable_ordinal);
+    for operand in ordered {
+        for &axis in &operand.axes {
+            if !axes.contains(&axis) {
+                axes.push(axis);
+            }
+        }
+    }
+    axes
+}
+
+fn validate_nary_broadcasts(operands: &[PlannedOperand<'_>]) -> Result<()> {
+    let mut dimensions = Vec::<(ExpandedAxis<'_>, usize)>::new();
+    for operand in operands {
+        for (&axis, &extent) in operand.axes.iter().zip(operand.tensor.dims()) {
+            if let Some((_, resolved)) = dimensions
+                .iter_mut()
+                .find(|(candidate, _)| *candidate == axis)
+            {
+                *resolved = resolve_extent(&axis.display_name(), *resolved, extent)?;
+            } else {
+                dimensions.push((axis, extent));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+fn select_nary_pair<'a>(
+    operands: &[PlannedOperand<'a>],
+    final_output: &[ExpandedAxis<'a>],
+) -> Result<PairEstimate<'a>> {
+    let global_axis_order = stable_axis_order(operands);
+    select_nary_pair_with_order(operands, final_output, &global_axis_order)
+}
+
+fn select_nary_pair_with_order<'a>(
+    operands: &[PlannedOperand<'a>],
+    final_output: &[ExpandedAxis<'a>],
+    global_axis_order: &[ExpandedAxis<'a>],
+) -> Result<PairEstimate<'a>> {
+    if operands.len() < 2 {
+        candle_core::bail!("invalid n-ary einsum planner state: fewer than two operands")
+    }
+    let mut best: Option<PairEstimate<'a>> = None;
+    for left in 0..operands.len() - 1 {
+        for right in left + 1..operands.len() {
+            let candidate =
+                estimate_pair_with_order(operands, left, right, final_output, global_axis_order)?;
+            let candidate_key = (
+                candidate.output_elements,
+                candidate.flops,
+                operands[left].stable_ordinal,
+                operands[right].stable_ordinal,
+                left,
+                right,
+            );
+            let replace = best.as_ref().is_none_or(|current| {
+                candidate_key
+                    < (
+                        current.output_elements,
+                        current.flops,
+                        operands[current.left].stable_ordinal,
+                        operands[current.right].stable_ordinal,
+                        current.left,
+                        current.right,
+                    )
+            });
+            if replace {
+                best = Some(candidate);
+            }
+        }
+    }
+    best.ok_or_else(|| candle_core::Error::msg("n-ary einsum planner found no operand pair"))
+}
+
+#[cfg(test)]
+fn estimate_pair<'a>(
+    operands: &[PlannedOperand<'a>],
+    left: usize,
+    right: usize,
+    final_output: &[ExpandedAxis<'a>],
+) -> Result<PairEstimate<'a>> {
+    let global_axis_order = stable_axis_order(operands);
+    estimate_pair_with_order(operands, left, right, final_output, &global_axis_order)
+}
+
+fn estimate_pair_with_order<'a>(
+    operands: &[PlannedOperand<'a>],
+    left: usize,
+    right: usize,
+    final_output: &[ExpandedAxis<'a>],
+    global_axis_order: &[ExpandedAxis<'a>],
+) -> Result<PairEstimate<'a>> {
+    let left_operand = operands.get(left).ok_or_else(|| {
+        candle_core::Error::msg(format!(
+            "n-ary einsum planner left index {left} is out of range"
+        ))
+    })?;
+    let right_operand = operands.get(right).ok_or_else(|| {
+        candle_core::Error::msg(format!(
+            "n-ary einsum planner right index {right} is out of range"
+        ))
+    })?;
+    if left >= right {
+        candle_core::bail!("n-ary einsum planner pair must be ordered, received ({left}, {right})")
+    }
+
+    let mut pair_axes = Vec::new();
+    for &axis in left_operand.axes.iter().chain(&right_operand.axes) {
+        if !pair_axes.contains(&axis) {
+            pair_axes.push(axis);
+        }
+    }
+    let mut live_axes = final_output.to_vec();
+    for (index, operand) in operands.iter().enumerate() {
+        if index != left && index != right {
+            for &axis in &operand.axes {
+                if !live_axes.contains(&axis) {
+                    live_axes.push(axis);
+                }
+            }
+        }
+    }
+    let output_axes = global_axis_order
+        .iter()
+        .copied()
+        .filter(|axis| pair_axes.contains(axis) && live_axes.contains(axis))
+        .collect::<Vec<_>>();
+    let output_extents = output_axes
+        .iter()
+        .map(|axis| pair_axis_extent(left_operand, right_operand, *axis))
+        .collect::<Result<Vec<_>>>()?;
+    let flop_extents = pair_axes
+        .iter()
+        .map(|axis| pair_axis_extent(left_operand, right_operand, *axis))
+        .collect::<Result<Vec<_>>>()?;
+    let output_elements = checked_nary_product(&output_extents).map_err(|error| {
+        error.context(format!(
+            "einsum n-ary pair ({left}, {right}) intermediate estimate"
+        ))
+    })?;
+    let flops = checked_nary_product(&flop_extents).map_err(|error| {
+        error.context(format!("einsum n-ary pair ({left}, {right}) FLOP estimate"))
+    })?;
+    Ok(PairEstimate {
+        left,
+        right,
+        output_axes,
+        output_elements,
+        flops,
+    })
+}
+
+fn pair_axis_extent(
+    left: &PlannedOperand<'_>,
+    right: &PlannedOperand<'_>,
+    axis: ExpandedAxis<'_>,
+) -> Result<usize> {
+    let left_extent = left
+        .axes
+        .iter()
+        .position(|candidate| *candidate == axis)
+        .map(|position| left.tensor.dims()[position]);
+    let right_extent = right
+        .axes
+        .iter()
+        .position(|candidate| *candidate == axis)
+        .map(|position| right.tensor.dims()[position]);
+    match (left_extent, right_extent) {
+        (Some(left), Some(right)) => resolve_extent(&axis.display_name(), left, right),
+        (Some(extent), None) | (None, Some(extent)) => Ok(extent),
+        (None, None) => candle_core::bail!(
+            "invalid n-ary einsum planner axis `{}` is absent from both operands",
+            axis.display_name()
+        ),
+    }
+}
+
+fn checked_nary_product(extents: &[usize]) -> Result<u128> {
+    if extents.contains(&0) {
+        return Ok(0);
+    }
+    extents.iter().try_fold(1_u128, |product, &extent| {
+        product
+            .checked_mul(extent as u128)
+            .ok_or_else(|| candle_core::Error::msg("einsum n-ary cost estimate overflows u128"))
+    })
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -957,9 +1309,9 @@ mod tests {
     #[test]
     fn nary_planner_avoids_a_pathological_left_to_right_intermediate() -> Result<()> {
         let operands = vec![
-            PlannedOperand::new_for_test((100, 2), &["a", "b"])?,
-            PlannedOperand::new_for_test((2, 100), &["b", "c"])?,
-            PlannedOperand::new_for_test((100, 2), &["c", "d"])?,
+            PlannedOperand::new_for_test((100, 2), &["a", "b"], 0)?,
+            PlannedOperand::new_for_test((2, 100), &["b", "c"], 1)?,
+            PlannedOperand::new_for_test((100, 2), &["c", "d"], 2)?,
         ];
         let output = [ExpandedAxis::Named("a"), ExpandedAxis::Named("d")];
         let left_to_right = estimate_pair(&operands, 0, 1, &output)?;
@@ -973,9 +1325,9 @@ mod tests {
     #[test]
     fn nary_planner_breaks_equal_cost_ties_by_operand_order() -> Result<()> {
         let operands = vec![
-            PlannedOperand::new_for_test((2, 2), &["a", "b"])?,
-            PlannedOperand::new_for_test((2, 2), &["b", "c"])?,
-            PlannedOperand::new_for_test((2, 2), &["c", "d"])?,
+            PlannedOperand::new_for_test((2, 2), &["a", "b"], 0)?,
+            PlannedOperand::new_for_test((2, 2), &["b", "c"], 1)?,
+            PlannedOperand::new_for_test((2, 2), &["c", "d"], 2)?,
         ];
         let output = [ExpandedAxis::Named("a"), ExpandedAxis::Named("d")];
         let selected = select_nary_pair(&operands, &output)?;

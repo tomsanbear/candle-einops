@@ -212,6 +212,104 @@ fn evaluate(equation: &str, operands: &[HostTensor]) -> OracleResult<HostTensor>
     HostTensor::new(&output_shape, &values)
 }
 
+fn evaluate_ellipsis(equation: &str, operands: &[HostTensor]) -> OracleResult<HostTensor> {
+    let Some((input_text, output_text)) = equation.split_once("->") else {
+        return Err("equation requires an explicit `->`".into());
+    };
+    if output_text.contains("->") {
+        return Err("equation must contain exactly one `->`".into());
+    }
+    let input_texts = input_text.split(',').collect::<Vec<_>>();
+    if input_texts.len() != operands.len() {
+        return Err("equation and operand counts differ".into());
+    }
+
+    let mut patterns = Vec::with_capacity(operands.len());
+    let mut maximum_capture = 0;
+    let mut any_input_ellipsis = false;
+    for (index, (text, operand)) in input_texts.iter().zip(operands).enumerate() {
+        let tokens = text.split_whitespace().collect::<Vec<_>>();
+        let ellipses = tokens
+            .iter()
+            .enumerate()
+            .filter_map(|(position, token)| (*token == "..").then_some(position))
+            .collect::<Vec<_>>();
+        if ellipses.len() > 1 {
+            return Err(format!("operand {index} contains more than one `..`"));
+        }
+        let explicit = tokens.len() - ellipses.len();
+        let capture =
+            if ellipses.is_empty() {
+                if operand.shape.len() != explicit {
+                    return Err(format!("operand {index} rank mismatch"));
+                }
+                0
+            } else {
+                any_input_ellipsis = true;
+                operand.shape.len().checked_sub(explicit).ok_or_else(|| {
+                    format!("operand {index} rank is too small for its explicit axes")
+                })?
+            };
+        maximum_capture = maximum_capture.max(capture);
+        patterns.push((tokens, ellipses.first().copied(), capture));
+    }
+
+    let output_tokens = output_text.split_whitespace().collect::<Vec<_>>();
+    let output_ellipses = output_tokens
+        .iter()
+        .copied()
+        .filter(|token| *token == "..")
+        .count();
+    if output_ellipses > 1 {
+        return Err("output contains more than one `..`".into());
+    }
+    if output_ellipses == 1 && !any_input_ellipsis {
+        return Err("output `..` requires an input `..`".into());
+    }
+    let synthetic = (0..maximum_capture)
+        .map(|index| format!("ellipsis_axis_{index}"))
+        .collect::<Vec<_>>();
+
+    let mut normalized = Vec::with_capacity(operands.len());
+    let mut expanded_inputs = Vec::with_capacity(operands.len());
+    for ((tokens, ellipsis, capture), operand) in patterns.into_iter().zip(operands) {
+        let insertion = ellipsis.unwrap_or(0);
+        let missing = maximum_capture - capture;
+        let mut shape = operand.shape.clone();
+        shape.splice(insertion..insertion, std::iter::repeat_n(1, missing));
+        normalized.push(HostTensor::new(&shape, &operand.values)?);
+
+        let mut expanded = Vec::new();
+        if ellipsis.is_none() {
+            expanded.extend(synthetic.iter().cloned());
+        }
+        for token in tokens {
+            if token == ".." {
+                expanded.extend(synthetic.iter().cloned());
+            } else {
+                expanded.push(token.to_owned());
+            }
+        }
+        expanded_inputs.push(expanded.join(" "));
+    }
+    let mut expanded_output = Vec::new();
+    for token in output_tokens {
+        if token == ".." {
+            expanded_output.extend(synthetic.iter().cloned());
+        } else {
+            expanded_output.push(token.to_owned());
+        }
+    }
+    evaluate(
+        &format!(
+            "{} -> {}",
+            expanded_inputs.join(", "),
+            expanded_output.join(" ")
+        ),
+        &normalized,
+    )
+}
+
 fn evaluate_once<'a>(
     equation: &str,
     operand_expressions: Vec<Box<dyn FnOnce() -> HostTensor + 'a>>,
@@ -386,4 +484,76 @@ fn operand_expressions_are_evaluated_once_from_left_to_right() {
 
     assert_eq!(evaluation_order.into_inner(), ["left", "right"]);
     assert_eq!(output, tensor(&[], &[31.]));
+}
+
+#[test]
+fn ellipsis_oracle_covers_zero_one_many_and_right_aligned_captures() {
+    let matrix = tensor(&[2, 3], &[1., 2., 3., 4., 5., 6.]);
+    assert_eq!(
+        evaluate_ellipsis(
+            "row .. column -> column .. row",
+            std::slice::from_ref(&matrix)
+        ),
+        evaluate("row column -> column row", std::slice::from_ref(&matrix))
+    );
+
+    let rank_three = tensor(&[2, 2, 3], &(1..=12).map(f64::from).collect::<Vec<_>>());
+    assert_eq!(
+        evaluate_ellipsis(
+            "row .. column -> column .. row",
+            std::slice::from_ref(&rank_three)
+        ),
+        evaluate(
+            "row e0 column -> column e0 row",
+            std::slice::from_ref(&rank_three)
+        )
+    );
+    assert_eq!(
+        evaluate_ellipsis(".. column -> column ..", std::slice::from_ref(&rank_three)),
+        evaluate(
+            "e0 e1 column -> column e0 e1",
+            std::slice::from_ref(&rank_three)
+        )
+    );
+
+    let left = tensor(&[2, 1, 2, 3], &(1..=12).map(f64::from).collect::<Vec<_>>());
+    let right = tensor(&[4, 3, 2], &(1..=24).map(f64::from).collect::<Vec<_>>());
+    let normalized_right = tensor(&[1, 4, 3, 2], &right.values);
+    assert_eq!(
+        evaluate_ellipsis(
+            ".. row inner, .. inner column -> row .. column",
+            &[left.clone(), right]
+        ),
+        evaluate(
+            "e0 e1 row inner, e0 e1 inner column -> row e0 e1 column",
+            &[left, normalized_right]
+        )
+    );
+}
+
+#[test]
+fn ellipsis_oracle_covers_reduction_scalars_zero_dims_and_errors() {
+    let tensor3 = tensor(&[2, 2, 3], &(1..=12).map(f64::from).collect::<Vec<_>>());
+    assert_eq!(
+        evaluate_ellipsis(".. feature -> feature", std::slice::from_ref(&tensor3)),
+        evaluate("e0 e1 feature -> feature", std::slice::from_ref(&tensor3))
+    );
+    let scalar = tensor(&[], &[7.]);
+    assert_eq!(
+        evaluate_ellipsis(".. -> ..", std::slice::from_ref(&scalar)),
+        Ok(scalar)
+    );
+    let empty = tensor(&[0, 2, 3], &[]);
+    assert_eq!(
+        evaluate_ellipsis(".. feature -> .. feature", std::slice::from_ref(&empty)),
+        Ok(empty)
+    );
+
+    let vector = tensor(&[3], &[1., 2., 3.]);
+    assert!(evaluate_ellipsis(".. row inner -> .. row", std::slice::from_ref(&vector)).is_err());
+    assert!(evaluate_ellipsis(".. .. row -> row", std::slice::from_ref(&vector)).is_err());
+    assert!(evaluate_ellipsis("row -> .. row", std::slice::from_ref(&vector)).is_err());
+    let left = tensor(&[2, 3, 1], &[1.; 6]);
+    let right = tensor(&[4, 1], &[1.; 4]);
+    assert!(evaluate_ellipsis(".. feature, .. feature -> .. feature", &[left, right]).is_err());
 }

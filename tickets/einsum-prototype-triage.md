@@ -1,6 +1,6 @@
 ---
 id: einsum-prototype-triage
-title: Triage the einsum prototype and stale branches
+title: Record the einsum prototype and stale-branch disposition
 status: done
 priority: p2
 dependencies: []
@@ -10,15 +10,17 @@ shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization, follow-up]
 ---
-# Triage the einsum prototype and stale branches
+# Record the einsum prototype and stale-branch disposition
 
 ## Goal
 
-Make an explicit decision about unfinished einsum work and obsolete upgrade branches.
+Record the decision that led from the prototype to the supported einsum
+initiative and dispose of obsolete upgrade branches.
 
 ## Gap
 
-The README promises future einsum support while AddEinsumSupport and latest-candle are diverged experiments based on old dependencies.
+The AddEinsumSupport and latest-candle experiments diverged on old dependencies;
+their useful semantics were carried into the completed einsum initiative.
 
 ## Work
 

@@ -17,6 +17,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Added the supported `einsum!` API: unary permutation and reduction, binary
+  broadcast and GEMM-lowered contraction, right-aligned ellipsis handling,
+  repeated-label diagonals and traces, and deterministic arbitrary-arity
+  greedy contraction planning.
+- Defined einsum dtype, device, gradient, scalar, zero-axis, evaluation-order,
+  and error contracts, with rename-safe and keyword-alias expansion coverage.
+- Added bounded deterministic parser/IR never-unwind properties and compile-fail
+  diagnostics for malformed einsum equations.
 - Added product reductions with `prod(...)`.
 - Added compile-time diagnostics for malformed expressions and invalid axis
   relationships.
@@ -38,6 +46,10 @@ All notable changes to this project are documented here. The format follows
 - Add `?` or explicit error handling to every `einops!` call.
 - Update custom `Backend` implementations so all transformations except
   `shape` return `candle_core::Result<Self::Output>`.
+- `einsum!` is now supported in 0.2.0. Add `?` or explicitly handle its Candle
+  result just as for `einops!`.
+- Depend on the runtime crate rather than the implementation crate. The hidden
+  macro/runtime ABI is coupled at exactly 0.2.0.
 
 ### Release plan
 
@@ -59,8 +71,18 @@ cargo +stable clippy --workspace --all-targets --all-features -- -D warnings \
   -A dead-code -A clippy::excessive-precision -A clippy::identity-op \
   -A clippy::map-flatten
 RUSTDOCFLAGS="-D warnings" cargo +stable doc --workspace --all-features --no-deps
-cargo +stable package --workspace
+RUSTDOCFLAGS="-D warnings" cargo +stable test --doc --workspace --all-features
+python3 .github/scripts/validate_ci_policy.py
+python3 .github/scripts/validate_artifact_policy.py
+python3 .github/scripts/validate_einsum_release.py
+actionlint .github/workflows/ci.yml
+cargo deny --all-features check
+python3 .github/scripts/test_published_artifacts.py
 ```
+
+The artifact gate packages and unpacks both crates in dependency order, runs
+their tests and doctests with warnings denied, and executes normal, renamed,
+and keyword-alias downstream consumers without publishing to a registry.
 
 Publishing, tagging, and creating a GitHub release remain deliberate manual
 steps and are not performed by the release-readiness work.

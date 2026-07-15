@@ -1,8 +1,15 @@
 //! Compile-time einops-style tensor transformations for Candle.
 //!
 //! The [`einops!`] macro combines rearrange, reduce, repeat, composition, and
-//! decomposition operations. [`einsum!`] provides explicit-output unary and
-//! binary tensor contractions. Backend failures are returned as Candle errors.
+//! decomposition operations. [`einsum!`] provides explicit-output,
+//! arbitrary-arity Einstein summation. Backend failures are returned as Candle
+//! errors.
+//!
+//! Einsum equations require exactly one `->`, use whitespace-delimited named
+//! axes, and have one comma-separated input list per operand. Axes omitted from
+//! the output are summed, `..` captures right-aligned runtime axes, and repeated
+//! labels select diagonals. See the repository's `docs/einsum-contract.md` for
+//! the complete supported contract.
 //!
 //! ```
 //! use candle_core::{Device, Result, Tensor};

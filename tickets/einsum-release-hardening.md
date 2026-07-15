@@ -21,7 +21,10 @@ Declare einsum complete only when explicit labels, arbitrary arity, broadcasting
 
 ## Work
 
-Replace the README's historical no-einsum statement with syntax and migration documentation. Settle exact macro/runtime private-ABI version coupling, add renamed-dependency and packaged-artifact execution, bounded parser/property fuzzing, examples, changelog, and release checklist updates.
+Document syntax and migration for the supported API. Settle exact macro/runtime
+private-ABI version coupling, add renamed-dependency and packaged-artifact
+execution, bounded parser/property fuzzing, examples, changelog, and release
+checklist updates.
 
 ## TDD
 

@@ -14,18 +14,23 @@ tags: [einsum-implementation]
 
 ## Required outcome
 
-Define the public equation contract and an implementation-independent reference before production code exists.
+Define the public equation contract and an implementation-independent reference
+used by the production implementation.
 
 ## Contract
 
 - Syntax is whitespace-delimited named axes with a mandatory explicit arrow: `"batch i k, batch k j -> batch i j"`.
 - Operand expressions evaluate exactly once, left to right; calls return `candle_core::Result<Tensor>`.
 - Omitted labels reduce, retained shared labels broadcast when equal or one, output labels are unique and originate in an input.
-- Scalars and zero-sized axes are valid. Repeated input labels and `..` are reserved for their dedicated slices.
+- Scalars and zero-sized axes are valid. Dedicated implementation slices added
+  repeated input labels and `..` under this same frozen contract.
 
 ## Red-first work
 
-Add public-facing tests that cannot compile because `einsum!` does not yet exist, plus a small host `Vec<f64>` interpreter and checked-in expected cases for unary transpose/reduction, dot, outer, Hadamard broadcast, matvec, matmul, and batched contraction.
+The initial red tests established the public surface before implementation. The
+completed suite retains a small host `Vec<f64>` interpreter and checked-in
+expected cases for unary transpose/reduction, dot, outer, Hadamard broadcast,
+matvec, matmul, and batched contraction.
 
 ## Acceptance
 

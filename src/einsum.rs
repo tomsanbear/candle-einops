@@ -349,6 +349,27 @@ where
     } else {
         requested_execution
     };
+
+    if execution == BinaryExecution::CanonicalMatmul {
+        let canonical = spec.batch_rank <= 1
+            && spec.left_free_rank == 1
+            && spec.contracted_rank == 1
+            && spec.right_free_rank == 1
+            && spec.reduction_axes.iter().all(|axes| axes.is_empty())
+            && spec
+                .permutations
+                .iter()
+                .all(|permutation| permutation.iter().copied().eq(0..permutation.len()));
+        if !canonical {
+            candle_core::bail!("invalid binary einsum plan: direct matmul path is not canonical")
+        }
+    }
+
+    if execution != BinaryExecution::Multiply && (b == 0 || m == 0 || k == 0 || n == 0) {
+        let output = graph_preserving_zero(&left, &right, &canonical_output_shape)?;
+        return apply_output_permutation(output, spec.output_permutation);
+    }
+
     if execution == BinaryExecution::Multiply {
         if spec.contracted_rank != 0 {
             candle_core::bail!(
@@ -374,18 +395,6 @@ where
     }
 
     if execution == BinaryExecution::CanonicalMatmul {
-        let canonical = spec.batch_rank <= 1
-            && spec.left_free_rank == 1
-            && spec.contracted_rank == 1
-            && spec.right_free_rank == 1
-            && spec.reduction_axes.iter().all(|axes| axes.is_empty())
-            && spec
-                .permutations
-                .iter()
-                .all(|permutation| permutation.iter().copied().eq(0..permutation.len()));
-        if !canonical {
-            candle_core::bail!("invalid binary einsum plan: direct matmul path is not canonical")
-        }
         let left = broadcast_if_needed(&left, &left_shape, "einsum binary left broadcast")?;
         let right = broadcast_if_needed(&right, &right_shape, "einsum binary right broadcast")?;
         let output = left
@@ -411,6 +420,21 @@ where
         .reshape(canonical_output_shape)
         .map_err(|error| error.context("einsum binary canonical output reshape"))?;
     apply_output_permutation(output, spec.output_permutation)
+}
+
+fn graph_preserving_zero(left: &Tensor, right: &Tensor, shape: &[usize]) -> Result<Tensor> {
+    let zero_anchor = |operand: &Tensor, side: &'static str| {
+        operand
+            .unsqueeze(0)
+            .and_then(|operand| operand.narrow(0, 0, 0))
+            .and_then(|operand| operand.sum_all())
+            .map_err(|error| error.context(format!("einsum binary {side} zero anchor")))
+    };
+    zero_anchor(left, "left")?
+        .add(&zero_anchor(right, "right")?)
+        .map_err(|error| error.context("einsum binary zero anchors"))?
+        .broadcast_as(shape)
+        .map_err(|error| error.context("einsum binary zero output broadcast"))
 }
 
 /// Expands and executes a unary equation containing an ellipsis.

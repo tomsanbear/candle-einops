@@ -1,16 +1,13 @@
 ---
 id: einsum-binary-fastpaths
 title: Add non-contraction and canonical GEMM fast paths
-status: in-progress
+status: done
 priority: p0
 dependencies: [performance-harness-foundation]
 related: [einsum-broadcast-gemm-spike]
 scopes: [runtime, macros]
 shared_scopes: [tests, benchmarks, ticketing]
 tags: [performance-0.2]
-claimed_from: todo
-assignee: behavior-tests
-lease_expires_at: 1784143072
 ---
 # Add non-contraction and canonical GEMM fast paths
 

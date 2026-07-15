@@ -23,4 +23,3 @@ serde_json = { version = "=1.0.149" }
 [[bench]]
 name = "measurement"
 harness = false
-

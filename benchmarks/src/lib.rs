@@ -16,6 +16,7 @@ pub mod binary_operand_packing;
 pub mod broadcast_gemm_spike;
 pub mod diagonal_spike;
 pub mod extended_compose;
+pub mod extrema_spike;
 pub mod nary_cost_model_spike;
 pub mod permute_compose_layout_spike;
 

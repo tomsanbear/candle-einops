@@ -1,7 +1,7 @@
 ---
 id: model-n-ary-lowering-submissions-and-layouts
 title: Model n-ary lowering submissions and layouts
-status: todo
+status: in-progress
 priority: p1
 dependencies: [add-layout-aware-binary-einsum-operand-packing]
 related: [einsum-nary-layout-aware-planner]
@@ -9,6 +9,9 @@ scopes: [runtime]
 shared_scopes: [tests, benchmarks, ticketing]
 paths: []
 tags: [kernel-enqueue-hardening]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784157644
 ---
 # Model n-ary lowering submissions and layouts
 

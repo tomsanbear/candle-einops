@@ -2692,6 +2692,28 @@ mod tests {
         );
     }
 
+    #[test]
+    fn nary_pair_model_counts_local_reduction_and_core_submission() -> Result<()> {
+        let state = vec![
+            planner_meta(
+                0,
+                &[("m", 2), ("k", 3), ("discard", 5)],
+                NaryLayoutEstimate::Contiguous,
+            ),
+            planner_meta(1, &[("k", 3), ("n", 7)], NaryLayoutEstimate::Contiguous),
+        ];
+        let output = [ExpandedAxis::Named("m"), ExpandedAxis::Named("n")];
+        let order = named_axes(&["m", "k", "discard", "n"]);
+        let (estimate, intermediate) = model_pair_details(&state, 0, 1, &output, &order)?;
+
+        assert_eq!(estimate.submissions, 2, "one reduction plus one GEMM");
+        assert_eq!(estimate.flops, 30 + 42, "reduction work plus GEMM work");
+        assert_eq!(estimate.output_elements, 14);
+        assert_eq!(estimate.copy_bytes, 0);
+        assert_eq!(intermediate.layout, NaryLayoutEstimate::Contiguous);
+        Ok(())
+    }
+
     fn planner_meta(
         ordinal: usize,
         axes: &[(&'static str, usize)],

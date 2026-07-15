@@ -13,6 +13,12 @@ at three output sizes and structurally records zero GEMM submissions.
 Identity reshape elision owns one contiguous control and one non-contiguous
 input at the same size, each measured as view construction and explicit
 contiguous consumption.
+The permute-plus-composition layout spike owns only `c (a b)` and
+`n (h w) c` candidates at equal element counts. Each compares the current
+permute-then-reshape copy with a spike-only public-operation prototype that
+reshapes contiguous groups before permuting them, in construction and explicit
+contiguous-consumption modes. The construction result exposes copy avoidance;
+the consumption result shows when the same copy is merely deferred.
 
 Use the repository wrapper for every supported operation:
 

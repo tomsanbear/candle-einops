@@ -4,7 +4,16 @@
 //! custom strides. Candle exposes layout inspection, but its safe public tensor
 //! constructors cannot attach an arbitrary layout to shared storage.
 
-use candle_core::{Result as CandleResult, Tensor};
+use std::mem::size_of;
+
+use candle_core::{Device, Result as CandleResult, Tensor};
+use candle_einops::einops;
+use criterion::Criterion;
+
+use crate::{
+    DeviceSynchronizer, Operation, Scenario, ScenarioId, WorkUnits, criterion_operation,
+    deterministic_f32_values, prepare,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LayoutSpec {
@@ -374,4 +383,160 @@ fn contiguous_strides(dims: &[usize]) -> Result<Vec<usize>, ClassifierError> {
             .ok_or(ClassifierError::StrideOverflow)?;
     }
     Ok(output)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Pattern {
+    CAb,
+    NHwC,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Mode {
+    Construct,
+    Consume,
+}
+
+pub struct PermuteComposeScenario {
+    id: &'static str,
+    pattern: Pattern,
+    mode: Mode,
+}
+
+#[must_use]
+pub fn scenarios() -> [PermuteComposeScenario; 4] {
+    [
+        PermuteComposeScenario {
+            id: "layout/permute-compose/c-ab/construct",
+            pattern: Pattern::CAb,
+            mode: Mode::Construct,
+        },
+        PermuteComposeScenario {
+            id: "layout/permute-compose/c-ab/consume",
+            pattern: Pattern::CAb,
+            mode: Mode::Consume,
+        },
+        PermuteComposeScenario {
+            id: "layout/permute-compose/n-hw-c/construct",
+            pattern: Pattern::NHwC,
+            mode: Mode::Construct,
+        },
+        PermuteComposeScenario {
+            id: "layout/permute-compose/n-hw-c/consume",
+            pattern: Pattern::NHwC,
+            mode: Mode::Consume,
+        },
+    ]
+}
+
+impl PermuteComposeScenario {
+    const ELEMENTS: usize = 98_304;
+
+    fn maybe_consume(&self, tensor: Tensor) -> CandleResult<Tensor> {
+        match self.mode {
+            Mode::Construct => Ok(tensor),
+            Mode::Consume => tensor.contiguous(),
+        }
+    }
+
+    fn desired_groups(&self) -> &'static [Vec<usize>] {
+        static C_AB: std::sync::OnceLock<Vec<Vec<usize>>> = std::sync::OnceLock::new();
+        static N_HW_C: std::sync::OnceLock<Vec<Vec<usize>>> = std::sync::OnceLock::new();
+        match self.pattern {
+            Pattern::CAb => C_AB.get_or_init(|| vec![vec![2], vec![0, 1]]),
+            Pattern::NHwC => N_HW_C.get_or_init(|| vec![vec![0], vec![2, 3], vec![1]]),
+        }
+    }
+}
+
+impl Scenario for PermuteComposeScenario {
+    fn id(&self) -> ScenarioId {
+        ScenarioId::new(self.id)
+    }
+
+    fn tracked(&self) -> bool {
+        true
+    }
+
+    fn work(&self) -> WorkUnits {
+        let traversals = match self.mode {
+            Mode::Construct => 1,
+            Mode::Consume => 2,
+        };
+        WorkUnits::new(
+            Self::ELEMENTS as u64,
+            (Self::ELEMENTS * traversals * size_of::<f32>()) as u64,
+            None,
+        )
+    }
+
+    fn setup(&self, device: &Device) -> CandleResult<Vec<Tensor>> {
+        let shape: &[usize] = match self.pattern {
+            Pattern::CAb => &[64, 48, 32],
+            Pattern::NHwC => &[8, 24, 32, 16],
+        };
+        Ok(vec![Tensor::from_vec(
+            deterministic_f32_values(Self::ELEMENTS, 41),
+            shape,
+            device,
+        )?])
+    }
+
+    fn run_library(&self, inputs: &[Tensor]) -> CandleResult<Tensor> {
+        let output = match self.pattern {
+            Pattern::CAb => einops!("a b c -> c (a b)", &inputs[0])?,
+            Pattern::NHwC => einops!("n c h w -> n (h w) c", &inputs[0])?,
+        };
+        self.maybe_consume(output)
+    }
+
+    fn run_reference(&self, inputs: &[Tensor]) -> CandleResult<Tensor> {
+        let (output, plan) = run_public_fusion_prototype(&inputs[0], self.desired_groups())?;
+        if !matches!(plan, PublicFusionPlan::ReorderedPublicViews { .. }) {
+            candle_core::bail!("benchmark candidate unexpectedly lost its public-view plan")
+        }
+        self.maybe_consume(output)
+    }
+
+    fn check(&self, library: &Tensor, reference: &Tensor) -> CandleResult<()> {
+        if library.dims() != reference.dims() {
+            candle_core::bail!("permute-compose outputs have different shapes")
+        }
+        if self.mode == Mode::Construct && (!library.is_contiguous() || reference.is_contiguous()) {
+            candle_core::bail!("construct layout did not discriminate copy from candidate view")
+        }
+        if self.mode == Mode::Consume && (!library.is_contiguous() || !reference.is_contiguous()) {
+            candle_core::bail!("consume outputs must both be contiguous")
+        }
+        if library.flatten_all()?.to_vec1::<f32>()? != reference.flatten_all()?.to_vec1::<f32>()? {
+            candle_core::bail!("permute-compose outputs have different values")
+        }
+        Ok(())
+    }
+}
+
+pub fn criterion_benchmarks(criterion: &mut Criterion) {
+    let device = Device::Cpu;
+    let synchronizer = DeviceSynchronizer(&device);
+    for scenario in scenarios() {
+        let prepared = prepare(&scenario, &device).expect("permute-compose setup must succeed");
+        for operation in [Operation::Library, Operation::Reference] {
+            let name = format!(
+                "{}/{}",
+                scenario.id().as_str(),
+                match operation {
+                    Operation::Library => "library",
+                    Operation::Reference => "reference",
+                }
+            );
+            criterion_operation(
+                criterion,
+                &name,
+                &prepared,
+                operation,
+                &synchronizer,
+                "permute-compose sample must succeed",
+            );
+        }
+    }
 }

@@ -1,7 +1,7 @@
 ---
 id: parser-never-unwinds-properties
 title: Property-test parser and token planning against unwinds
-status: todo
+status: done
 priority: p1
 dependencies: [grouped-rhs-error-propagation, decomposition-arithmetic-safety, macro-axis-invariant-hardening, macro-expansion-hygiene]
 related: []

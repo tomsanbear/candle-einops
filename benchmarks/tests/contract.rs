@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use candle_core::{Device, Result, Tensor};
 use candle_einops_benchmarks::{
     Backend, BenchmarkRecord, Clock, Fingerprint, Operation, Scenario, ScenarioId, Synchronizer,
-    WorkUnits, measure_pair, prepare,
+    WorkUnits, binary_fast_path_scenarios, measure_pair, prepare,
 };
 
 #[derive(Clone)]
@@ -17,6 +17,24 @@ impl EventLog {
     fn take(&self) -> Vec<&'static str> {
         std::mem::take(&mut *self.0.lock().expect("event log lock"))
     }
+}
+
+#[test]
+fn binary_fast_path_scenarios_are_tracked_unique_and_correct() -> Result<()> {
+    let scenarios = binary_fast_path_scenarios();
+    assert_eq!(scenarios.len(), 8);
+    let mut ids = scenarios
+        .iter()
+        .map(|scenario| scenario.id().as_str())
+        .collect::<Vec<_>>();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), 8);
+    for scenario in &scenarios {
+        assert!(scenario.tracked());
+        prepare(scenario, &Device::Cpu)?;
+    }
+    Ok(())
 }
 
 struct ContractScenario {

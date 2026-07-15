@@ -168,12 +168,60 @@ impl<'a> BinaryEinsumSpec<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BinaryExecution {
+    Multiply,
+    CanonicalMatmul,
+    General,
+}
+
 /// Executes a binary GEMM-lowered explicit-output einsum plan.
 #[doc(hidden)]
 pub fn execute_binary_einsum<L, R>(
     left: &L,
     right: &R,
     spec: BinaryEinsumSpec<'_>,
+) -> Result<Tensor>
+where
+    L: AsRef<Tensor> + ?Sized,
+    R: AsRef<Tensor> + ?Sized,
+{
+    execute_binary_with(left, right, spec, BinaryExecution::General)
+}
+
+/// Executes a binary equation with no contracted labels as broadcast multiplication.
+#[doc(hidden)]
+pub fn execute_binary_multiply<L, R>(
+    left: &L,
+    right: &R,
+    spec: BinaryEinsumSpec<'_>,
+) -> Result<Tensor>
+where
+    L: AsRef<Tensor> + ?Sized,
+    R: AsRef<Tensor> + ?Sized,
+{
+    execute_binary_with(left, right, spec, BinaryExecution::Multiply)
+}
+
+/// Executes a canonical rank-two or rank-three contraction with direct matmul.
+#[doc(hidden)]
+pub fn execute_canonical_binary_einsum<L, R>(
+    left: &L,
+    right: &R,
+    spec: BinaryEinsumSpec<'_>,
+) -> Result<Tensor>
+where
+    L: AsRef<Tensor> + ?Sized,
+    R: AsRef<Tensor> + ?Sized,
+{
+    execute_binary_with(left, right, spec, BinaryExecution::CanonicalMatmul)
+}
+
+fn execute_binary_with<L, R>(
+    left: &L,
+    right: &R,
+    spec: BinaryEinsumSpec<'_>,
+    requested_execution: BinaryExecution,
 ) -> Result<Tensor>
 where
     L: AsRef<Tensor> + ?Sized,
@@ -287,6 +335,65 @@ where
     let k = checked_product(&contracted_dims, "contracted (K)")?;
     let n = checked_product(right_free_dims, "right-free (N)")?;
 
+    let mut canonical_output_shape = batch_dims.clone();
+    canonical_output_shape.extend_from_slice(left_free_dims);
+    canonical_output_shape.extend_from_slice(right_free_dims);
+    validate_permutation(
+        spec.output_permutation,
+        canonical_output_shape.len(),
+        "output",
+    )?;
+
+    let execution = if spec.contracted_rank == 0 {
+        BinaryExecution::Multiply
+    } else {
+        requested_execution
+    };
+    if execution == BinaryExecution::Multiply {
+        if spec.contracted_rank != 0 {
+            candle_core::bail!(
+                "invalid binary einsum plan: multiply fast path received contracted axes"
+            )
+        }
+        let mut left = left;
+        for _ in 0..spec.right_free_rank {
+            left = left.unsqueeze(left.rank()).map_err(|error| {
+                error.context("einsum binary multiply left free-axis alignment")
+            })?;
+        }
+        let mut right = right;
+        for _ in 0..spec.left_free_rank {
+            right = right.unsqueeze(spec.batch_rank).map_err(|error| {
+                error.context("einsum binary multiply right free-axis alignment")
+            })?;
+        }
+        let output = left
+            .broadcast_mul(&right)
+            .map_err(|error| error.context("einsum binary broadcast multiplication"))?;
+        return apply_output_permutation(output, spec.output_permutation);
+    }
+
+    if execution == BinaryExecution::CanonicalMatmul {
+        let canonical = spec.batch_rank <= 1
+            && spec.left_free_rank == 1
+            && spec.contracted_rank == 1
+            && spec.right_free_rank == 1
+            && spec.reduction_axes.iter().all(|axes| axes.is_empty())
+            && spec
+                .permutations
+                .iter()
+                .all(|permutation| permutation.iter().copied().eq(0..permutation.len()));
+        if !canonical {
+            candle_core::bail!("invalid binary einsum plan: direct matmul path is not canonical")
+        }
+        let left = broadcast_if_needed(&left, &left_shape, "einsum binary left broadcast")?;
+        let right = broadcast_if_needed(&right, &right_shape, "einsum binary right broadcast")?;
+        let output = left
+            .matmul(&right)
+            .map_err(|error| error.context("einsum binary B/M/K/N matmul"))?;
+        return apply_output_permutation(output, spec.output_permutation);
+    }
+
     let left = left
         .broadcast_as(left_shape)
         .map_err(|error| error.context("einsum binary left broadcast"))?
@@ -300,30 +407,10 @@ where
     let output = left
         .matmul(&right)
         .map_err(|error| error.context("einsum binary B/M/K/N matmul"))?;
-
-    let mut canonical_output_shape = batch_dims;
-    canonical_output_shape.extend_from_slice(left_free_dims);
-    canonical_output_shape.extend_from_slice(right_free_dims);
-    validate_permutation(
-        spec.output_permutation,
-        canonical_output_shape.len(),
-        "output",
-    )?;
     let output = output
         .reshape(canonical_output_shape)
         .map_err(|error| error.context("einsum binary canonical output reshape"))?;
-    if spec
-        .output_permutation
-        .iter()
-        .copied()
-        .eq(0..spec.output_permutation.len())
-    {
-        Ok(output)
-    } else {
-        output
-            .permute(spec.output_permutation)
-            .map_err(|error| error.context("einsum binary explicit output permutation"))
-    }
+    apply_output_permutation(output, spec.output_permutation)
 }
 
 /// Expands and executes a unary equation containing an ellipsis.
@@ -1140,6 +1227,26 @@ fn dynamic_permutation<T: Eq>(current: &[T], desired: &[T]) -> Vec<usize> {
                 .expect("validated ellipsis classification")
         })
         .collect()
+}
+
+fn broadcast_if_needed(tensor: &Tensor, shape: &[usize], context: &'static str) -> Result<Tensor> {
+    if tensor.dims() == shape {
+        Ok(tensor.clone())
+    } else {
+        tensor
+            .broadcast_as(shape)
+            .map_err(|error| error.context(context))
+    }
+}
+
+fn apply_output_permutation(output: Tensor, permutation: &[usize]) -> Result<Tensor> {
+    if permutation.iter().copied().eq(0..permutation.len()) {
+        Ok(output)
+    } else {
+        output
+            .permute(permutation)
+            .map_err(|error| error.context("einsum binary explicit output permutation"))
+    }
 }
 
 fn prepare_operand(

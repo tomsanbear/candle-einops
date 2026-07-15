@@ -1,8 +1,9 @@
 # Performance harness
 
 This standalone, unpublished crate owns measurement methodology. It deliberately
-contains only an untracked plumbing scenario; mechanism benchmarks are added by
-separate tickets.
+contains an untracked plumbing scenario, product-reduction and diagonal-lowering
+spikes, plus paired binary einsum fast-path scenarios for Hadamard, outer,
+rank-2 GEMM, and rank-3 batched GEMM.
 
 Use the repository wrapper for every supported operation:
 

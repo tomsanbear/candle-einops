@@ -234,6 +234,33 @@ impl Equation {
             output_permutation,
         }
     }
+
+    fn binary_lowering(&self) -> BinaryLowering {
+        let plan = self.binary_plan();
+        if plan.contracted_labels.is_empty() {
+            return BinaryLowering::Multiply;
+        }
+        let identity = |permutation: &[usize]| permutation.iter().copied().eq(0..permutation.len());
+        if plan.reduction_axes.iter().all(Vec::is_empty)
+            && plan.permutations.iter().all(|value| identity(value))
+            && plan.batch_labels.len() <= 1
+            && plan.left_free_rank == 1
+            && plan.contracted_labels.len() == 1
+            && plan.right_free_rank == 1
+            && identity(&plan.output_permutation)
+        {
+            BinaryLowering::CanonicalMatmul
+        } else {
+            BinaryLowering::General
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BinaryLowering {
+    Multiply,
+    CanonicalMatmul,
+    General,
 }
 
 fn permutation_from(current: &[AxisId], desired: &[AxisId]) -> Vec<usize> {
@@ -424,6 +451,7 @@ impl ToTokens for Invocation {
         } else {
             let left = &operand_idents[0];
             let right = &operand_idents[1];
+            let lowering = equation.binary_lowering();
             let plan = equation.binary_plan();
             let [left_rank, right_rank] = plan.input_ranks;
             let [left_reductions, right_reductions] = plan.reduction_axes;
@@ -435,8 +463,13 @@ impl ToTokens for Invocation {
             let batch_labels = plan.batch_labels;
             let contracted_labels = plan.contracted_labels;
             let output_permutation = plan.output_permutation;
+            let executor = match lowering {
+                BinaryLowering::Multiply => quote!(execute_binary_multiply),
+                BinaryLowering::CanonicalMatmul => quote!(execute_canonical_binary_einsum),
+                BinaryLowering::General => quote!(execute_binary_einsum),
+            };
             quote!(
-                #runtime_crate::__private::execute_binary_einsum(
+                #runtime_crate::__private::#executor(
                     &#left,
                     &#right,
                     #runtime_crate::__private::BinaryEinsumSpec::new(
@@ -530,7 +563,10 @@ mod tests {
             lowering("feature, feature -> feature"),
             BinaryLowering::Multiply
         );
-        assert_eq!(lowering("row, column -> row column"), BinaryLowering::Multiply);
+        assert_eq!(
+            lowering("row, column -> row column"),
+            BinaryLowering::Multiply
+        );
         assert_eq!(
             lowering("row inner, inner column -> row column"),
             BinaryLowering::CanonicalMatmul

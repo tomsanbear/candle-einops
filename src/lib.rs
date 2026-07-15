@@ -87,9 +87,11 @@
 //! operand in a multi-operand equation must have the same dtype and reside on
 //! the same device; mismatches return a contextual [`candle_core::Error`].
 //! Unary permutations preserve every dtype supported by the corresponding
-//! Candle operation. Contractions lower through Candle matrix multiplication
-//! and therefore inherit its dtype and device support: unsupported
-//! combinations return an error rather than being silently converted.
+//! Candle operation. Binary equations without contracted labels use Candle
+//! multiplication, including its integer and BF16 support. True contractions
+//! lower through Candle matrix multiplication and therefore inherit its dtype
+//! and device support: unsupported combinations return an error rather than
+//! being silently converted.
 //!
 //! Einsum execution is assembled from tracked public Candle operations, so
 //! floating-point inputs participate in Candle autograd. Accelerator execution
@@ -130,7 +132,8 @@ pub mod __private {
     pub use crate::einsum::{
         BinaryEinsumSpec, EinsumAxisPattern, EllipsisEinsumSpec, UnaryEinsumSpec,
         einsum_operand_ref, execute_binary_einsum, execute_binary_ellipsis_einsum,
-        execute_nary_einsum, execute_unary_einsum, execute_unary_ellipsis_einsum,
+        execute_binary_multiply, execute_canonical_binary_einsum, execute_nary_einsum,
+        execute_unary_einsum, execute_unary_ellipsis_einsum,
     };
 }
 

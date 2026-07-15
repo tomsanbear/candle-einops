@@ -2,12 +2,13 @@
 
 use std::fmt;
 use std::hint::black_box;
+use std::mem::size_of;
 use std::process::Command;
 use std::sync::OnceLock;
 use std::time::Instant;
 
 use candle_core::{Device, Result, Tensor};
-use candle_einops::einops;
+use candle_einops::{einops, einsum};
 use criterion::Criterion;
 use serde::{Deserialize, Serialize};
 
@@ -600,6 +601,157 @@ impl Scenario for ProductScenario {
     }
 }
 
+#[derive(Clone, Copy)]
+enum BinaryMechanism {
+    Hadamard,
+    Outer,
+    Rank2Matmul,
+    Rank3Matmul,
+}
+
+pub struct BinaryFastPathScenario {
+    id: &'static str,
+    mechanism: BinaryMechanism,
+    dimensions: [usize; 4],
+}
+
+#[must_use]
+pub fn binary_fast_path_scenarios() -> Vec<BinaryFastPathScenario> {
+    use BinaryMechanism::{Hadamard, Outer, Rank2Matmul, Rank3Matmul};
+    vec![
+        BinaryFastPathScenario {
+            id: "einsum/binary/hadamard-overhead",
+            mechanism: Hadamard,
+            dimensions: [1, 32, 1, 1],
+        },
+        BinaryFastPathScenario {
+            id: "einsum/binary/hadamard-throughput",
+            mechanism: Hadamard,
+            dimensions: [1, 262_144, 1, 1],
+        },
+        BinaryFastPathScenario {
+            id: "einsum/binary/outer-overhead",
+            mechanism: Outer,
+            dimensions: [1, 8, 1, 8],
+        },
+        BinaryFastPathScenario {
+            id: "einsum/binary/outer-throughput",
+            mechanism: Outer,
+            dimensions: [1, 512, 1, 512],
+        },
+        BinaryFastPathScenario {
+            id: "einsum/binary/rank2-matmul-overhead",
+            mechanism: Rank2Matmul,
+            dimensions: [1, 8, 8, 8],
+        },
+        BinaryFastPathScenario {
+            id: "einsum/binary/rank2-matmul-throughput",
+            mechanism: Rank2Matmul,
+            dimensions: [1, 128, 128, 128],
+        },
+        BinaryFastPathScenario {
+            id: "einsum/binary/rank3-matmul-overhead",
+            mechanism: Rank3Matmul,
+            dimensions: [2, 8, 8, 8],
+        },
+        BinaryFastPathScenario {
+            id: "einsum/binary/rank3-matmul-throughput",
+            mechanism: Rank3Matmul,
+            dimensions: [8, 64, 64, 64],
+        },
+    ]
+}
+
+impl Scenario for BinaryFastPathScenario {
+    fn id(&self) -> ScenarioId {
+        ScenarioId::new(self.id)
+    }
+
+    fn tracked(&self) -> bool {
+        true
+    }
+
+    fn work(&self) -> WorkUnits {
+        let [b, m, k, n] = self.dimensions;
+        let (inputs, output, flops) = match self.mechanism {
+            BinaryMechanism::Hadamard => (m * 2, m, m),
+            BinaryMechanism::Outer => (m + n, m * n, m * n),
+            BinaryMechanism::Rank2Matmul => (m * k + k * n, m * n, 2 * m * k * n),
+            BinaryMechanism::Rank3Matmul => (b * (m * k + k * n), b * m * n, 2 * b * m * k * n),
+        };
+        WorkUnits::new(
+            u64::try_from(output).expect("bounded benchmark elements"),
+            u64::try_from((inputs + output) * size_of::<f32>()).expect("bounded benchmark bytes"),
+            Some(u64::try_from(flops).expect("bounded benchmark FLOPs")),
+        )
+    }
+
+    fn setup(&self, device: &Device) -> Result<Vec<Tensor>> {
+        let [b, m, k, n] = self.dimensions;
+        match self.mechanism {
+            BinaryMechanism::Hadamard => Ok(vec![
+                Tensor::ones(m, candle_core::DType::F32, device)?,
+                Tensor::ones(m, candle_core::DType::F32, device)?,
+            ]),
+            BinaryMechanism::Outer => Ok(vec![
+                Tensor::ones(m, candle_core::DType::F32, device)?,
+                Tensor::ones(n, candle_core::DType::F32, device)?,
+            ]),
+            BinaryMechanism::Rank2Matmul => Ok(vec![
+                Tensor::ones((m, k), candle_core::DType::F32, device)?,
+                Tensor::ones((k, n), candle_core::DType::F32, device)?,
+            ]),
+            BinaryMechanism::Rank3Matmul => Ok(vec![
+                Tensor::ones((b, m, k), candle_core::DType::F32, device)?,
+                Tensor::ones((b, k, n), candle_core::DType::F32, device)?,
+            ]),
+        }
+    }
+
+    fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {
+        match self.mechanism {
+            BinaryMechanism::Hadamard => {
+                einsum!("feature, feature -> feature", &inputs[0], &inputs[1])
+            }
+            BinaryMechanism::Outer => einsum!("row, column -> row column", &inputs[0], &inputs[1]),
+            BinaryMechanism::Rank2Matmul => einsum!(
+                "row inner, inner column -> row column",
+                &inputs[0],
+                &inputs[1]
+            ),
+            BinaryMechanism::Rank3Matmul => einsum!(
+                "batch row inner, batch inner column -> batch row column",
+                &inputs[0],
+                &inputs[1]
+            ),
+        }
+    }
+
+    fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
+        match self.mechanism {
+            BinaryMechanism::Hadamard => inputs[0].mul(&inputs[1]),
+            BinaryMechanism::Outer => inputs[0]
+                .unsqueeze(1)?
+                .broadcast_mul(&inputs[1].unsqueeze(0)?),
+            BinaryMechanism::Rank2Matmul | BinaryMechanism::Rank3Matmul => {
+                inputs[0].matmul(&inputs[1])
+            }
+        }
+    }
+
+    fn check(&self, library: &Tensor, reference: &Tensor) -> Result<()> {
+        if library.dims() != reference.dims() {
+            candle_core::bail!("binary fast-path outputs have different shapes")
+        }
+        let library = library.flatten_all()?.to_vec1::<f32>()?;
+        let reference = reference.flatten_all()?.to_vec1::<f32>()?;
+        if library != reference {
+            candle_core::bail!("binary fast-path outputs have different values")
+        }
+        Ok(())
+    }
+}
+
 pub fn criterion_plumbing_benchmark(criterion: &mut Criterion) {
     let device = Device::Cpu;
     let scenario = PlumbingScenario;
@@ -627,5 +779,30 @@ pub fn criterion_product_benchmarks(criterion: &mut Criterion) {
                 )
             });
         });
+    }
+}
+
+pub fn criterion_binary_fast_paths(criterion: &mut Criterion) {
+    let device = Device::Cpu;
+    let synchronizer = DeviceSynchronizer(&device);
+    let clock = MonotonicClock;
+    for scenario in binary_fast_path_scenarios() {
+        let prepared = prepare(&scenario, &device).expect("binary fast-path setup must succeed");
+        for operation in [Operation::Library, Operation::Reference] {
+            let name = format!(
+                "{}/{}",
+                scenario.id().as_str(),
+                match operation {
+                    Operation::Library => "library",
+                    Operation::Reference => "reference",
+                }
+            );
+            criterion.bench_function(&name, |bencher| {
+                bencher.iter(|| {
+                    measure_operation(&prepared, operation, &synchronizer, &clock)
+                        .expect("binary fast-path sample must succeed")
+                });
+            });
+        }
     }
 }

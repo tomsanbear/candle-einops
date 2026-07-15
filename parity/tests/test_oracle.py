@@ -11,7 +11,7 @@ from hypothesis import given, settings, strategies as st
 PARITY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PARITY_ROOT))
 
-from oracle import evaluate_request, serve  # noqa: E402
+from oracle import PROTOCOL_VERSION, evaluate_request, serve  # noqa: E402
 
 
 class OracleContractTests(unittest.TestCase):
@@ -115,7 +115,16 @@ class OracleContractTests(unittest.TestCase):
 
         serve(stdin, stdout)
 
-        responses = [json.loads(line) for line in stdout.getvalue().splitlines()]
+        messages = [json.loads(line) for line in stdout.getvalue().splitlines()]
+        self.assertEqual(
+            messages[0],
+            {
+                "kind": "hello",
+                "protocol_version": PROTOCOL_VERSION,
+                "service": "candle-einops-python-oracle",
+            },
+        )
+        responses = messages[1:]
         self.assertEqual([item["case_id"] for item in responses], ["case-0", "case-1", "case-2"])
 
     @settings(max_examples=64, derandomize=True, deadline=None)

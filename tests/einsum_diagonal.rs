@@ -209,3 +209,19 @@ fn interleaved_f32_gradient_matches_one_flat_selection() -> Result<()> {
         "interleaved f32 gradient",
     )
 }
+
+#[test]
+fn selected_zero_extent_diagonal_preserves_shape_and_backward_edge() -> Result<()> {
+    let input = Var::from_vec(Vec::<f32>::new(), (2, 0, 0), &Device::Cpu)?;
+    let output = einsum!("batch i i -> batch i", input.as_tensor())?;
+    assert_eq!(output.dims(), &[2, 0]);
+    let gradients = output.sum_all()?.backward()?;
+    assert_eq!(
+        gradients
+            .get(input.as_tensor())
+            .expect("selected empty gather keeps the input edge")
+            .dims(),
+        &[2, 0, 0]
+    );
+    Ok(())
+}

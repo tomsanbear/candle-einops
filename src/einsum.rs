@@ -1798,6 +1798,16 @@ mod tests {
             RepeatedAxisLoweringPlan::Sequential
         );
         assert_eq!(
+            plan_repeated_axis_lowering(
+                &[256, 256, 256, 256],
+                &named_axes(&["i", "j", "i", "j"]),
+                true,
+                0,
+            )?,
+            RepeatedAxisLoweringPlan::Sequential,
+            "u32::MAX is Candle's zero-fill index sentinel"
+        );
+        assert_eq!(
             plan_repeated_axis_lowering(&[2, 0, 0], &named_axes(&["batch", "i", "i"]), true, 0,)?,
             RepeatedAxisLoweringPlan::OriginalFlatGather {
                 output_shape: vec![2, 0],

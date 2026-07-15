@@ -1087,6 +1087,38 @@ fn sequential_diagonal_would_materialize(
     }
 }
 
+fn sequential_adjacency_is_always_identity(original_axes: &[ExpandedAxis<'_>]) -> bool {
+    if original_axes
+        .first()
+        .is_some_and(|first| original_axes.iter().all(|axis| axis == first))
+    {
+        return true;
+    }
+    let mut axes = original_axes.to_vec();
+    loop {
+        let Some(repeated_axis) = axes
+            .iter()
+            .copied()
+            .find(|axis| axes.iter().filter(|candidate| **candidate == *axis).count() > 1)
+        else {
+            return true;
+        };
+        let positions = axes
+            .iter()
+            .enumerate()
+            .filter_map(|(position, axis)| (*axis == repeated_axis).then_some(position))
+            .collect::<Vec<_>>();
+        if positions.iter().copied().ne(0..positions.len()) {
+            return false;
+        }
+        axes = axes
+            .iter()
+            .enumerate()
+            .filter_map(|(position, axis)| (!positions[1..].contains(&position)).then_some(*axis))
+            .collect();
+    }
+}
+
 fn original_flat_gather_offsets(
     dims: &[usize],
     axes: &[ExpandedAxis<'_>],
@@ -1173,7 +1205,10 @@ fn plan_repeated_axis_lowering(
     operand_index: usize,
 ) -> Result<RepeatedAxisLoweringPlan> {
     validate_repeated_extents(dims, axes, operand_index)?;
-    if !original_contiguous || sequential_diagonal_would_materialize(dims, axes) != Some(true) {
+    if !original_contiguous
+        || sequential_adjacency_is_always_identity(axes)
+        || sequential_diagonal_would_materialize(dims, axes) != Some(true)
+    {
         return Ok(RepeatedAxisLoweringPlan::Sequential);
     }
     let Some((output_shape, offsets)) = original_flat_gather_offsets(dims, axes, operand_index)?
@@ -1261,15 +1296,6 @@ fn normalize_repeated_axes<'a>(
             .filter_map(|(position, axis)| (*axis == repeated_axis).then_some(position))
             .collect::<Vec<_>>();
         let extent = operand.dims()[positions[0]];
-        for &position in &positions[1..] {
-            let other = operand.dims()[position];
-            if other != extent {
-                candle_core::bail!(
-                    "einsum operand {operand_index} repeated label `{}` has unequal extents {extent} and {other}",
-                    repeated_axis.display_name()
-                )
-            }
-        }
 
         let other_positions = (0..axes.len())
             .filter(|position| !positions.contains(position))

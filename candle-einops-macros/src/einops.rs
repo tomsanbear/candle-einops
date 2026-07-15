@@ -258,9 +258,7 @@ impl quote::ToTokens for ParsedExpression {
             (proc_macro2::TokenStream::new(), false)
         };
 
-        let static_fusion = if decomposition_tokens.is_empty()
-            && reduce_tokens.is_empty()
-            && repeat_tokens.is_empty()
+        let static_fusion = if repeat_tokens.is_empty()
             && !permute_tokens.is_empty()
             && !composition_tokens.is_empty()
         {
@@ -419,6 +417,14 @@ impl quote::ToTokens for ParsedExpression {
             quote!(let #shape_ident = #runtime_crate::Backend::shape(&#tensor_ident);)
         };
 
+        let fused_shape_tokens = if fused_tokens.is_empty()
+            || (decomposition_tokens.is_empty() && reduce_tokens.is_empty())
+        {
+            proc_macro2::TokenStream::new()
+        } else {
+            quote!(let #shape_ident = #runtime_crate::Backend::shape(&#tensor_ident);)
+        };
+
         let code = quote! {(|| -> #runtime_crate::Result<_> {
             #error_tokens
 
@@ -434,6 +440,7 @@ impl quote::ToTokens for ParsedExpression {
 
             #reduce_tokens
 
+            #fused_shape_tokens
             #fused_tokens
             #permute_tokens
 

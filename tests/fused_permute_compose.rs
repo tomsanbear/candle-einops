@@ -371,6 +371,32 @@ fn tensor_selected_views_preserve_values_storage_offsets_and_gradients() -> Resu
     assert_values_equal(&nhwc, &nhwc_old)?;
     assert_eq!(nhwc.stride(), [105, 1, 35]);
     assert_eq!(storage_address(&nhwc), storage_address(&nchw));
+
+    let selected_input = Var::from_vec(
+        (0..48).map(|value| value as f32 / 7.).collect(),
+        (2, 2, 3, 4),
+        &device,
+    )?;
+    let reference_input = Var::from_vec(
+        (0..48).map(|value| value as f32 / 7.).collect(),
+        (2, 2, 3, 4),
+        &device,
+    )?;
+    let selected = einops!("sum(reduced) a b c -> c (a b)", selected_input.as_tensor())?;
+    let reference = reference_input
+        .sum(0)?
+        .permute((2, 0, 1))?
+        .reshape((4, 6))?;
+    assert_values_equal(&selected, &reference)?;
+    let weights = Tensor::arange(1f32, 25., &device)?.reshape((4, 6))?;
+    let selected_gradients = selected.mul(&weights)?.sum_all()?.backward()?;
+    let reference_gradients = reference.mul(&weights)?.sum_all()?.backward()?;
+    assert_values_equal(
+        selected_gradients.get(selected_input.as_tensor()).unwrap(),
+        reference_gradients
+            .get(reference_input.as_tensor())
+            .unwrap(),
+    )?;
     Ok(())
 }
 

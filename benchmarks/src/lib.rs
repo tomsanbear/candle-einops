@@ -840,23 +840,18 @@ impl ZeroKScenario {
             hypothetical_contraction_flops: 0,
             gemm_submissions: 0,
             current_public_operations: 3,
-            candidate_public_operations: 3,
+            candidate_public_operations: 2,
             current_temporary_elements: 2,
             candidate_temporary_elements: 0,
         }
     }
 
-    fn graph_preserving_reference(&self, left: &Tensor, right: &Tensor) -> Result<Tensor> {
-        let anchor = |operand: &Tensor| operand.unsqueeze(0)?.narrow(0, 0, 0)?.sum_all();
-        anchor(left)?
-            .add(&anchor(right)?)?
-            .broadcast_as((self.rows, self.columns))
-    }
 }
 
 pub fn zero_k_cat_candidate(left: &Tensor, right: &Tensor, shape: &[usize]) -> Result<Tensor> {
-    let anchor = |operand: &Tensor| operand.unsqueeze(0)?.narrow(0, 0, 0)?.sum_all();
-    anchor(left)?.add(&anchor(right)?)?.broadcast_as(shape)
+    Tensor::cat(&[&left.flatten_all()?, &right.flatten_all()?], 0)?
+        .sum_all()?
+        .broadcast_as(shape)
 }
 
 impl Scenario for ZeroKScenario {
@@ -893,7 +888,7 @@ impl Scenario for ZeroKScenario {
     }
 
     fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        self.graph_preserving_reference(&inputs[0], &inputs[1])
+        zero_k_cat_candidate(&inputs[0], &inputs[1], &[self.rows, self.columns])
     }
 
     fn check(&self, library: &Tensor, reference: &Tensor) -> Result<()> {

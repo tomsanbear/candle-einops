@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod broadcast_gemm_spike;
 pub mod diagonal_spike;
+pub mod nary_cost_model_spike;
 
 #[cfg(all(feature = "cuda", feature = "metal"))]
 compile_error!("benchmark backends `cuda` and `metal` are mutually exclusive");

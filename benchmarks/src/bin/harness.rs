@@ -7,6 +7,7 @@ use candle_einops_benchmarks::{
     BenchmarkRecord, DeviceSynchronizer, Fingerprint, MonotonicClock, PlumbingScenario, Scenario,
     binary_fast_path_scenarios, broadcast_gemm_spike, diagonal_spike, measure_pair, prepare,
     product_scenarios, reduction_fusion_scenarios, repeat_broadcast_scenarios,
+    nary_cost_model_spike,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -39,6 +40,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let binary = binary_fast_path_scenarios();
     let reductions = reduction_fusion_scenarios();
     let repeats = repeat_broadcast_scenarios();
+    let nary_costs = nary_cost_model_spike::network_scenarios();
     let mut scenarios: Vec<&dyn Scenario> = if include_plumbing {
         vec![&plumbing]
     } else {
@@ -61,6 +63,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .iter()
                 .map(|scenario| scenario as &dyn Scenario),
         );
+        scenarios.extend(nary_costs.iter().map(|scenario| scenario as &dyn Scenario));
     }
     let selected = scenarios
         .into_iter()

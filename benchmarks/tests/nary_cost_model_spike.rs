@@ -14,8 +14,10 @@ fn bounded_exact_planner_beats_output_greedy_on_frozen_counterexamples() -> Resu
         let exact = plan_bounded_exact(&fixture.model, CostWeights::CPU)?;
         assert!(
             exact.metrics.score < greedy.metrics.score,
-            "{} must remain a greedy counterexample",
-            fixture.id
+            "{} must remain a greedy counterexample: greedy {:?}, exact {:?}",
+            fixture.id,
+            greedy.metrics,
+            exact.metrics
         );
         assert!(exact.metrics.flops <= greedy.metrics.flops);
         assert!(exact.metrics.peak_live_elements <= greedy.metrics.peak_live_elements);
@@ -97,7 +99,7 @@ fn model_checks_overflow_zero_k_and_broadcast_materialization() -> Result<()> {
     assert_eq!(estimate_pair(&zero_k, 0, 1)?.flops, 0);
 
     let broadcast = network_fixtures()
-        .iter()
+        .into_iter()
         .find(|fixture| fixture.kind == FixtureKind::BroadcastHeavy)
         .unwrap();
     let estimate = estimate_pair(&broadcast.model, 0, 1)?;

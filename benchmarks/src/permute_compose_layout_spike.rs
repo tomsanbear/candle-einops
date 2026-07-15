@@ -4,6 +4,8 @@
 //! custom strides. Candle exposes layout inspection, but its safe public tensor
 //! constructors cannot attach an arbitrary layout to shared storage.
 
+use candle_core::{Result as CandleResult, Tensor};
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LayoutSpec {
     dims: Vec<usize>,
@@ -72,6 +74,186 @@ pub enum ClassifierError {
     InvalidGroups,
     ElementCountOverflow,
     StrideOverflow,
+    TooManyGroups,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PublicFusionPlan {
+    ExistingIdentityElision,
+    ExistingRouteView {
+        expanded_permutation: Vec<usize>,
+        output_dims: Vec<usize>,
+    },
+    ReorderedPublicViews {
+        pre_permutation: Vec<usize>,
+        reshape_dims: Vec<usize>,
+        post_permutation: Vec<usize>,
+    },
+    Fallback {
+        expanded_permutation: Vec<usize>,
+        output_dims: Vec<usize>,
+    },
+}
+
+/// Finds a safe public-operation plan for the requested output groups.
+///
+/// Each group contains original input axes in the logical flatten order. A
+/// candidate is viable only when some ordering of whole groups makes the actual
+/// input layout C-contiguous under Candle's exact singleton/zero rules. The
+/// plan then permutes whole groups back after reshaping; it never constructs a
+/// tensor from arbitrary strides.
+pub fn classify_public_fusion(
+    input: &LayoutSpec,
+    desired_groups: &[Vec<usize>],
+) -> Result<PublicFusionPlan, ClassifierError> {
+    validate_original_axis_groups(input.dims.len(), desired_groups)?;
+    let expanded_permutation = desired_groups.iter().flatten().copied().collect::<Vec<_>>();
+    let output_dims = group_products(&input.dims, desired_groups)?;
+    if expanded_permutation.iter().copied().eq(0..input.dims.len())
+        && desired_groups.iter().all(|group| group.len() == 1)
+    {
+        return Ok(PublicFusionPlan::ExistingIdentityElision);
+    }
+    let desired_dims = expanded_permutation
+        .iter()
+        .map(|&axis| input.dims[axis])
+        .collect::<Vec<_>>();
+    let desired_strides = expanded_permutation
+        .iter()
+        .map(|&axis| input.strides[axis])
+        .collect::<Vec<_>>();
+    if is_c_contiguous(&desired_dims, &desired_strides)? {
+        return Ok(PublicFusionPlan::ExistingRouteView {
+            expanded_permutation,
+            output_dims,
+        });
+    }
+    if desired_groups.len() > 8 {
+        return Err(ClassifierError::TooManyGroups);
+    }
+
+    for group_order in permutations(desired_groups.len()) {
+        let pre_permutation = group_order
+            .iter()
+            .flat_map(|&group| desired_groups[group].iter().copied())
+            .collect::<Vec<_>>();
+        let dims = pre_permutation
+            .iter()
+            .map(|&axis| input.dims[axis])
+            .collect::<Vec<_>>();
+        let strides = pre_permutation
+            .iter()
+            .map(|&axis| input.strides[axis])
+            .collect::<Vec<_>>();
+        if !is_c_contiguous(&dims, &strides)? {
+            continue;
+        }
+        let reshape_dims = group_order
+            .iter()
+            .map(|&group| output_dims[group])
+            .collect::<Vec<_>>();
+        let post_permutation = (0..desired_groups.len())
+            .map(|desired| {
+                group_order
+                    .iter()
+                    .position(|&group| group == desired)
+                    .expect("group order is a permutation")
+            })
+            .collect::<Vec<_>>();
+        return Ok(PublicFusionPlan::ReorderedPublicViews {
+            pre_permutation,
+            reshape_dims,
+            post_permutation,
+        });
+    }
+
+    Ok(PublicFusionPlan::Fallback {
+        expanded_permutation,
+        output_dims,
+    })
+}
+
+pub fn run_public_fusion_prototype(
+    input: &Tensor,
+    desired_groups: &[Vec<usize>],
+) -> CandleResult<(Tensor, PublicFusionPlan)> {
+    let spec = LayoutSpec::new(input.dims(), input.stride(), input.layout().start_offset())
+        .map_err(|error| candle_core::Error::Msg(format!("invalid spike layout: {error:?}")))?;
+    let plan = classify_public_fusion(&spec, desired_groups)
+        .map_err(|error| candle_core::Error::Msg(format!("invalid fusion request: {error:?}")))?;
+    let output = match &plan {
+        PublicFusionPlan::ExistingIdentityElision => input.clone(),
+        PublicFusionPlan::ExistingRouteView {
+            expanded_permutation,
+            output_dims,
+        }
+        | PublicFusionPlan::Fallback {
+            expanded_permutation,
+            output_dims,
+        } => input
+            .permute(expanded_permutation.as_slice())?
+            .reshape(output_dims.as_slice())?,
+        PublicFusionPlan::ReorderedPublicViews {
+            pre_permutation,
+            reshape_dims,
+            post_permutation,
+        } => input
+            .permute(pre_permutation.as_slice())?
+            .reshape(reshape_dims.as_slice())?
+            .permute(post_permutation.as_slice())?,
+    };
+    Ok((output, plan))
+}
+
+fn validate_original_axis_groups(
+    rank: usize,
+    groups: &[Vec<usize>],
+) -> Result<(), ClassifierError> {
+    if groups.iter().any(Vec::is_empty) {
+        return Err(ClassifierError::InvalidGroups);
+    }
+    let mut axes = groups.iter().flatten().copied().collect::<Vec<_>>();
+    axes.sort_unstable();
+    if axes != (0..rank).collect::<Vec<_>>() {
+        return Err(ClassifierError::InvalidGroups);
+    }
+    Ok(())
+}
+
+fn group_products(dims: &[usize], groups: &[Vec<usize>]) -> Result<Vec<usize>, ClassifierError> {
+    groups
+        .iter()
+        .map(|group| {
+            group.iter().try_fold(1usize, |product, &axis| {
+                product
+                    .checked_mul(dims[axis])
+                    .ok_or(ClassifierError::ElementCountOverflow)
+            })
+        })
+        .collect()
+}
+
+fn permutations(count: usize) -> Vec<Vec<usize>> {
+    fn extend(prefix: &mut Vec<usize>, remaining: &mut Vec<usize>, output: &mut Vec<Vec<usize>>) {
+        if remaining.is_empty() {
+            output.push(prefix.clone());
+            return;
+        }
+        for index in 0..remaining.len() {
+            let item = remaining.remove(index);
+            prefix.push(item);
+            extend(prefix, remaining, output);
+            prefix.pop();
+            remaining.insert(index, item);
+        }
+    }
+    let mut output = Vec::new();
+    extend(
+        &mut Vec::with_capacity(count),
+        &mut (0..count).collect(),
+        &mut output,
+    );
+    output
 }
 
 pub fn classify_permute_compose(

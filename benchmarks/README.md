@@ -22,6 +22,9 @@ the consumption result shows when the same copy is merely deferred.
 The extended-composition matrix applies the same two-mode distinction only to
 the newly eligible runtime-ellipsis and post-reduction paths; it intentionally
 does not add redundant shape-size variants.
+The extrema spike compares sequential two-axis min/max lowering with a single
+collapsed reduction across adjacent trailing, adjacent leading, and strided
+trailing layouts; it does not duplicate sum/mean or add shape-size variants.
 
 Use the repository wrapper for every supported operation:
 

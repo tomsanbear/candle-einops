@@ -5,7 +5,8 @@ use candle_einops_benchmarks::broadcast_gemm_spike::broadcast_scenarios;
 use candle_einops_benchmarks::{
     Backend, BenchmarkRecord, Clock, Fingerprint, Operation, SamplingOrderPolicy, Scenario,
     ScenarioId, Synchronizer, WorkUnits, binary_fast_path_scenarios, binary_operand_packing,
-    extended_compose, identity_reshape_scenarios, measure_pair, permute_compose_layout_spike,
+    extended_compose, extrema_spike, identity_reshape_scenarios, measure_pair,
+    permute_compose_layout_spike,
     prepare, reduction_fusion_scenarios, repeat_broadcast_scenarios, run_synchronized_operation,
     zero_k_scenarios,
 };
@@ -56,6 +57,31 @@ fn extended_compose_is_two_mechanisms_in_construct_and_consume_modes() -> Result
             "layout/extended-compose/runtime-ellipsis/consume",
             "layout/extended-compose/post-reduction/construct",
             "layout/extended-compose/post-reduction/consume",
+        ]
+    );
+    for scenario in scenarios {
+        assert!(scenario.tracked());
+        prepare(scenario, &Device::Cpu)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn extrema_spike_is_three_layouts_for_min_and_max() -> Result<()> {
+    let scenarios = extrema_spike::scenarios();
+    assert_eq!(scenarios.len(), 6);
+    assert_eq!(
+        scenarios
+            .iter()
+            .map(|scenario| scenario.id().as_str())
+            .collect::<Vec<_>>(),
+        [
+            "spike/extrema/contiguous-trailing/min",
+            "spike/extrema/contiguous-trailing/max",
+            "spike/extrema/contiguous-leading/min",
+            "spike/extrema/contiguous-leading/max",
+            "spike/extrema/strided-trailing/min",
+            "spike/extrema/strided-trailing/max",
         ]
     );
     for scenario in scenarios {

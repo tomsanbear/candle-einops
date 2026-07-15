@@ -1,16 +1,13 @@
 ---
 id: fused-permute-compose-layout
 title: Implement selected permute and composition fusion
-status: in-progress
+status: done
 priority: p2
 dependencies: [permute-compose-layout-spike]
 related: []
 scopes: [runtime, macros]
 shared_scopes: [tests, benchmarks, ticketing]
 tags: [performance-0.2, conditional]
-claimed_from: todo
-assignee: behavior-tests
-lease_expires_at: 1784152716
 ---
 # Implement selected permute and composition fusion
 

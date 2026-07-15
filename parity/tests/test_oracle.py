@@ -4,6 +4,9 @@ import sys
 import unittest
 from pathlib import Path
 
+import numpy as np
+from hypothesis import given, settings, strategies as st
+
 
 PARITY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PARITY_ROOT))
@@ -114,6 +117,41 @@ class OracleContractTests(unittest.TestCase):
 
         responses = [json.loads(line) for line in stdout.getvalue().splitlines()]
         self.assertEqual([item["case_id"] for item in responses], ["case-0", "case-1", "case-2"])
+
+    @settings(max_examples=64, derandomize=True, deadline=None)
+    @given(
+        rows=st.integers(min_value=0, max_value=5),
+        columns=st.integers(min_value=0, max_value=5),
+        data=st.data(),
+    )
+    def test_randomized_rearrange_contract(
+        self,
+        rows: int,
+        columns: int,
+        data,
+    ) -> None:
+        values = data.draw(
+            st.lists(
+                st.integers(min_value=-32, max_value=32),
+                min_size=rows * columns,
+                max_size=rows * columns,
+            )
+        )
+        response = evaluate_request(
+            {
+                "case_id": f"hypothesis-{rows}-{columns}",
+                "operation": "rearrange",
+                "pattern": "rows columns -> columns rows",
+                "shape": [rows, columns],
+                "values": values,
+                "axes_lengths": {},
+            }
+        )
+        expected = np.asarray(values, dtype=np.float64).reshape(rows, columns).T
+
+        self.assertTrue(response["ok"], response)
+        self.assertEqual(response["shape"], list(expected.shape))
+        self.assertEqual(response["values"], expected.reshape(-1).tolist())
 
 
 if __name__ == "__main__":

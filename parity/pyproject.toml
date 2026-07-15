@@ -1,0 +1,13 @@
+[project]
+name = "candle-einops-parity"
+version = "0.1.0"
+description = "Locked Python einops oracle for candle-einops integration tests"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "einops==0.8.2",
+    "hypothesis==6.156.6",
+    "numpy==2.5.1",
+]
+
+[tool.uv]
+package = false

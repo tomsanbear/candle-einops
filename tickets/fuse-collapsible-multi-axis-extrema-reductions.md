@@ -1,7 +1,7 @@
 ---
 id: fuse-collapsible-multi-axis-extrema-reductions
 title: Fuse collapsible multi-axis extrema reductions
-status: todo
+status: in-progress
 priority: p1
 dependencies: [spike-multi-axis-extrema-reduction-lowering]
 related: [homogeneous-reduction-fusion]
@@ -9,6 +9,9 @@ scopes: [runtime]
 shared_scopes: [tests, ticketing]
 paths: []
 tags: [kernel-enqueue-hardening]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784159066
 ---
 ## Goal
 Lower adjacent homogeneous min/max runs through one public Candle reduction only when their axes collapse as a storage-sharing view.

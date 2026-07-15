@@ -506,7 +506,13 @@ mod tests {
             (3, Operation::Prod),
         ];
         let runs = plan_reduction_runs(&mut excluded);
-        assert_eq!(runs.len(), 4, "min and prod must remain one call per axis");
+        assert_eq!(
+            runs.len(),
+            3,
+            "adjacent min may collapse; prod remains sequential"
+        );
+        assert_eq!(runs[0].axes, [1, 0]);
+        assert!(matches!(runs[0].operation, Operation::Min));
     }
 
     #[test]
@@ -536,6 +542,19 @@ mod tests {
             (2, Operation::Sum),
         ])?;
         assert_eq!(backend_reduction_call_count(), 3);
+
+        reset_backend_reduction_call_count();
+        (&input).reduce_axes(&mut [(1, Operation::Min), (2, Operation::Min)])?;
+        assert_eq!(backend_reduction_call_count(), 1);
+
+        let strided = input.permute([0, 2, 1])?;
+        reset_backend_reduction_call_count();
+        let selected = (&strided).reduce_axes(&mut [(1, Operation::Max), (2, Operation::Max)])?;
+        assert_eq!(backend_reduction_call_count(), 2);
+        assert_eq!(
+            selected.to_vec1::<f32>()?,
+            strided.max(2)?.max(1)?.to_vec1::<f32>()?
+        );
         Ok(())
     }
 

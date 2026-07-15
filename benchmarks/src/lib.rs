@@ -1179,6 +1179,124 @@ impl Scenario for RepeatBroadcastScenario {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum IdentityReshapeLayout {
+    Contiguous,
+    NonContiguous,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum IdentityReshapeMode {
+    Construct,
+    Consume,
+}
+
+pub struct IdentityReshapeScenario {
+    id: &'static str,
+    layout: IdentityReshapeLayout,
+    mode: IdentityReshapeMode,
+}
+
+#[must_use]
+pub fn identity_reshape_scenarios() -> [IdentityReshapeScenario; 4] {
+    use IdentityReshapeLayout::{Contiguous, NonContiguous};
+    use IdentityReshapeMode::{Construct, Consume};
+    [
+        IdentityReshapeScenario {
+            id: "reshape/identity/contiguous/construct",
+            layout: Contiguous,
+            mode: Construct,
+        },
+        IdentityReshapeScenario {
+            id: "reshape/identity/contiguous/consume",
+            layout: Contiguous,
+            mode: Consume,
+        },
+        IdentityReshapeScenario {
+            id: "reshape/identity/non-contiguous/construct",
+            layout: NonContiguous,
+            mode: Construct,
+        },
+        IdentityReshapeScenario {
+            id: "reshape/identity/non-contiguous/consume",
+            layout: NonContiguous,
+            mode: Consume,
+        },
+    ]
+}
+
+impl IdentityReshapeScenario {
+    const SIDE: usize = 512;
+
+    fn maybe_consume(&self, tensor: Tensor) -> Result<Tensor> {
+        match self.mode {
+            IdentityReshapeMode::Construct => Ok(tensor),
+            IdentityReshapeMode::Consume => tensor.contiguous(),
+        }
+    }
+}
+
+impl Scenario for IdentityReshapeScenario {
+    fn id(&self) -> ScenarioId {
+        ScenarioId::new(self.id)
+    }
+
+    fn tracked(&self) -> bool {
+        true
+    }
+
+    fn work(&self) -> WorkUnits {
+        let elements = Self::SIDE * Self::SIDE;
+        let traversals = match self.mode {
+            IdentityReshapeMode::Construct => 1,
+            IdentityReshapeMode::Consume => 2,
+        };
+        WorkUnits::new(
+            elements as u64,
+            (elements * traversals * size_of::<f32>()) as u64,
+            None,
+        )
+    }
+
+    fn setup(&self, device: &Device) -> Result<Vec<Tensor>> {
+        let elements = Self::SIDE * Self::SIDE;
+        let input = Tensor::from_vec(
+            deterministic_f32_values(elements, 31),
+            (Self::SIDE, Self::SIDE),
+            device,
+        )?;
+        let input = match self.layout {
+            IdentityReshapeLayout::Contiguous => input,
+            IdentityReshapeLayout::NonContiguous => input.permute([1, 0])?,
+        };
+        Ok(vec![input])
+    }
+
+    fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {
+        let reshaped = candle_einops::Backend::reshape(&inputs[0], inputs[0].dims())?;
+        self.maybe_consume(reshaped)
+    }
+
+    fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
+        self.maybe_consume(inputs[0].clone())
+    }
+
+    fn check(&self, library: &Tensor, reference: &Tensor) -> Result<()> {
+        if library.dims() != reference.dims() {
+            candle_core::bail!("identity reshape outputs have different shapes")
+        }
+        let expected_contiguous = self.mode == IdentityReshapeMode::Consume
+            || self.layout == IdentityReshapeLayout::Contiguous;
+        if library.is_contiguous() != expected_contiguous {
+            candle_core::bail!("identity reshape output has an unexpected layout")
+        }
+        if library.flatten_all()?.to_vec1::<f32>()? != reference.flatten_all()?.to_vec1::<f32>()? {
+            candle_core::bail!("identity reshape outputs have different values")
+        }
+        Ok(())
+    }
+}
+
 pub(crate) fn criterion_operation(
     criterion: &mut Criterion,
     name: &str,
@@ -1326,6 +1444,32 @@ pub fn criterion_repeat_broadcast(criterion: &mut Criterion) {
                 operation,
                 &synchronizer,
                 "repeat broadcast sample must succeed",
+            );
+        }
+    }
+}
+
+pub fn criterion_identity_reshape(criterion: &mut Criterion) {
+    let device = Device::Cpu;
+    let synchronizer = DeviceSynchronizer(&device);
+    for scenario in identity_reshape_scenarios() {
+        let prepared = prepare(&scenario, &device).expect("identity reshape setup must succeed");
+        for operation in [Operation::Library, Operation::Reference] {
+            let name = format!(
+                "{}/{}",
+                scenario.id().as_str(),
+                match operation {
+                    Operation::Library => "library",
+                    Operation::Reference => "reference",
+                }
+            );
+            criterion_operation(
+                criterion,
+                &name,
+                &prepared,
+                operation,
+                &synchronizer,
+                "identity reshape sample must succeed",
             );
         }
     }

@@ -10,6 +10,9 @@ and one two-axis family, each split into view-construction and
 materializing-consumption modes.
 The zero-length contraction family measures graph-preserving zero construction
 at three output sizes and structurally records zero GEMM submissions.
+Identity reshape elision owns one contiguous control and one non-contiguous
+input at the same size, each measured as view construction and explicit
+contiguous consumption.
 
 Use the repository wrapper for every supported operation:
 

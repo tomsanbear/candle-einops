@@ -63,6 +63,12 @@ fn backend_reduction_call_count() -> usize {
 pub trait Backend {
     type Output;
     fn shape(self) -> Vec<usize>;
+    /// Reshapes a tensor while preserving its storage and layout when the
+    /// requested dimensions are already exact.
+    ///
+    /// Call [`Tensor::contiguous`] explicitly when contiguous storage is
+    /// required; an identity reshape no longer provides accidental
+    /// materialization for non-contiguous inputs.
     fn reshape(self, shape: &[usize]) -> Result<Self::Output>;
     fn transpose(self, axes: &[usize]) -> Result<Self::Output>;
     fn reduce_axes(self, axes_operations: &mut [(usize, Operation)]) -> Result<Self::Output>;

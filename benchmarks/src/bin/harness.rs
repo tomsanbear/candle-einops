@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use candle_core::Device;
 use candle_einops_benchmarks::{
     BenchmarkRecord, DeviceSynchronizer, Fingerprint, MonotonicClock, PlumbingScenario, Scenario,
-    binary_fast_path_scenarios, broadcast_gemm_spike, diagonal_spike, measure_pair,
-    nary_cost_model_spike, prepare, product_scenarios, reduction_fusion_scenarios,
+    binary_fast_path_scenarios, broadcast_gemm_spike, diagonal_spike, identity_reshape_scenarios,
+    measure_pair, nary_cost_model_spike, prepare, product_scenarios, reduction_fusion_scenarios,
     repeat_broadcast_scenarios, zero_k_scenarios,
 };
 
@@ -41,6 +41,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let zero_k = zero_k_scenarios();
     let reductions = reduction_fusion_scenarios();
     let repeats = repeat_broadcast_scenarios();
+    let identity_reshapes = identity_reshape_scenarios();
     let nary_costs = nary_cost_model_spike::network_scenarios();
     let mut scenarios: Vec<&dyn Scenario> = if include_plumbing {
         vec![&plumbing]
@@ -60,6 +61,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         scenarios.extend(zero_k.iter().map(|scenario| scenario as &dyn Scenario));
         scenarios.extend(reductions.iter().map(|scenario| scenario as &dyn Scenario));
         scenarios.extend(repeats.iter().map(|scenario| scenario as &dyn Scenario));
+        scenarios.extend(
+            identity_reshapes
+                .iter()
+                .map(|scenario| scenario as &dyn Scenario),
+        );
         scenarios.extend(
             broadcast_gemm_spike::broadcast_scenarios()
                 .iter()

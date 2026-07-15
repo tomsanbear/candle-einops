@@ -4,9 +4,9 @@ use candle_core::{Device, Result, Tensor};
 use candle_einops_benchmarks::broadcast_gemm_spike::broadcast_scenarios;
 use candle_einops_benchmarks::{
     Backend, BenchmarkRecord, Clock, Fingerprint, Operation, SamplingOrderPolicy, Scenario,
-    ScenarioId, Synchronizer, WorkUnits, binary_fast_path_scenarios, measure_pair, prepare,
-    reduction_fusion_scenarios, repeat_broadcast_scenarios, run_synchronized_operation,
-    zero_k_scenarios,
+    ScenarioId, Synchronizer, WorkUnits, binary_fast_path_scenarios, identity_reshape_scenarios,
+    measure_pair, prepare, reduction_fusion_scenarios, repeat_broadcast_scenarios,
+    run_synchronized_operation, zero_k_scenarios,
 };
 
 #[derive(Clone)]
@@ -112,6 +112,31 @@ fn repeat_broadcast_scenarios_are_exactly_the_ticket_owned_matrix() -> Result<()
             "repeat/broadcast/two-axis/consume",
         ]
     );
+    for scenario in &scenarios {
+        assert!(scenario.tracked());
+        prepare(scenario, &Device::Cpu)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn identity_reshape_scenarios_are_exactly_one_layout_pair_in_two_modes() -> Result<()> {
+    let scenarios = identity_reshape_scenarios();
+    assert_eq!(
+        scenarios
+            .iter()
+            .map(|scenario| scenario.id().as_str())
+            .collect::<Vec<_>>(),
+        [
+            "reshape/identity/contiguous/construct",
+            "reshape/identity/contiguous/consume",
+            "reshape/identity/non-contiguous/construct",
+            "reshape/identity/non-contiguous/consume",
+        ]
+    );
+    let work = scenarios.iter().map(Scenario::work).collect::<Vec<_>>();
+    assert_eq!(work[0], work[2]);
+    assert_eq!(work[1], work[3]);
     for scenario in &scenarios {
         assert!(scenario.tracked());
         prepare(scenario, &Device::Cpu)?;

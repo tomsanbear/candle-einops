@@ -1,7 +1,7 @@
 use candle_einops_benchmarks::{
-    broadcast_gemm_spike, criterion_binary_fast_paths, criterion_plumbing_benchmark,
-    criterion_product_benchmarks, criterion_reduction_fusion, criterion_repeat_broadcast,
-    criterion_zero_k, diagonal_spike, nary_cost_model_spike,
+    broadcast_gemm_spike, criterion_binary_fast_paths, criterion_identity_reshape,
+    criterion_plumbing_benchmark, criterion_product_benchmarks, criterion_reduction_fusion,
+    criterion_repeat_broadcast, criterion_zero_k, diagonal_spike, nary_cost_model_spike,
 };
 use criterion::{criterion_group, criterion_main};
 
@@ -14,6 +14,7 @@ criterion_group!(
     criterion_zero_k,
     criterion_reduction_fusion,
     criterion_repeat_broadcast,
+    criterion_identity_reshape,
     broadcast_gemm_spike::criterion_benchmarks,
     nary_cost_model_spike::criterion_benchmarks
 );

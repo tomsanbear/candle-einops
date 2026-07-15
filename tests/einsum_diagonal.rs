@@ -106,3 +106,101 @@ fn diagonal_cpu_gradients_match_direct_candle_index_selection() -> Result<()> {
         "diagonal gradient",
     )
 }
+
+#[test]
+fn interleaved_triple_and_multiple_groups_match_one_flat_selection() -> Result<()> {
+    let interleaved = Tensor::arange(0f32, 36f32, &Device::Cpu)?.reshape((2, 3, 2, 3))?;
+    let interleaved_indices = Tensor::new(&[0u32, 7, 14, 21, 28, 35], &Device::Cpu)?;
+    let interleaved_expected = interleaved
+        .flatten_all()?
+        .index_select(&interleaved_indices, 0)?
+        .reshape((2, 3))?;
+    assert_close(
+        &einsum!("i j i j -> i j", &interleaved)?,
+        &interleaved_expected,
+        "interleaved diagonal",
+    )?;
+
+    let triple = Tensor::arange(0f32, 24f32, &Device::Cpu)?.reshape((2, 3, 2, 2))?;
+    let triple_indices = Tensor::new(&[0u32, 4, 8, 15, 19, 23], &Device::Cpu)?;
+    let triple_expected = triple
+        .flatten_all()?
+        .index_select(&triple_indices, 0)?
+        .reshape((2, 3))?;
+    assert_close(
+        &einsum!("i j i i -> i j", &triple)?,
+        &triple_expected,
+        "triple diagonal",
+    )?;
+
+    let multiple = Tensor::arange(0f32, 72f32, &Device::Cpu)?.reshape((2, 3, 2, 2, 3))?;
+    let mut offsets = Vec::new();
+    for i in 0..2u32 {
+        for j in 0..3u32 {
+            for k in 0..2u32 {
+                offsets.push(i * 42 + j * 13 + k * 3);
+            }
+        }
+    }
+    let multiple_indices = Tensor::from_vec(offsets, 12, &Device::Cpu)?;
+    let multiple_expected = multiple
+        .flatten_all()?
+        .index_select(&multiple_indices, 0)?
+        .reshape((2, 3, 2))?;
+    assert_close(
+        &einsum!("i j i k j -> i j k", &multiple)?,
+        &multiple_expected,
+        "multiple repeated groups",
+    )
+}
+
+#[test]
+fn selected_diagonal_preserves_f32_f64_u32_and_noncontiguous_values() -> Result<()> {
+    for dtype in [DType::F32, DType::F64, DType::U32] {
+        let input = Tensor::arange(0u32, 36u32, &Device::Cpu)?
+            .reshape((2, 3, 2, 3))?
+            .to_dtype(dtype)?;
+        let expected = input
+            .flatten_all()?
+            .index_select(&Tensor::new(&[0u32, 7, 14, 21, 28, 35], &Device::Cpu)?, 0)?
+            .reshape((2, 3))?;
+        let actual = einsum!("i j i j -> i j", &input)?;
+        assert_eq!(actual.dtype(), dtype);
+        assert!(actual.device().same_device(input.device()));
+        assert_eq!(flat_f32(&actual)?, flat_f32(&expected)?);
+    }
+
+    let noncontiguous = Tensor::arange(0f32, 36f32, &Device::Cpu)?
+        .reshape((3, 2, 3, 2))?
+        .permute((1, 0, 3, 2))?;
+    assert!(!noncontiguous.is_contiguous());
+    let values = noncontiguous.to_vec4::<f32>()?;
+    let expected = (0..2)
+        .map(|i| (0..3).map(|j| values[i][j][i][j]).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        einsum!("i j i j -> i j", &noncontiguous)?.to_vec2::<f32>()?,
+        expected
+    );
+    Ok(())
+}
+
+#[test]
+fn interleaved_f32_gradient_matches_one_flat_selection() -> Result<()> {
+    let values = (0..36).map(|value| value as f32 / 7.).collect::<Vec<_>>();
+    let macro_input = Var::from_vec(values.clone(), (2, 3, 2, 3), &Device::Cpu)?;
+    let direct_input = Var::from_vec(values, (2, 3, 2, 3), &Device::Cpu)?;
+    let indices = Tensor::new(&[0u32, 7, 14, 21, 28, 35], &Device::Cpu)?;
+    let macro_output = einsum!("i j i j -> i j", macro_input.as_tensor())?;
+    let direct_output = direct_input
+        .flatten_all()?
+        .index_select(&indices, 0)?
+        .reshape((2, 3))?;
+    let macro_gradients = macro_output.sum_all()?.backward()?;
+    let direct_gradients = direct_output.sum_all()?.backward()?;
+    assert_close(
+        macro_gradients.get(macro_input.as_tensor()).expect("macro gradient"),
+        direct_gradients.get(direct_input.as_tensor()).expect("direct gradient"),
+        "interleaved f32 gradient",
+    )
+}

@@ -1437,6 +1437,91 @@ mod tests {
         assert_eq!(checked_diagonal_layout(0, 3, 0).unwrap(), (0, 1));
     }
 
+    fn named_axes(labels: &[&'static str]) -> Vec<ExpandedAxis<'static>> {
+        labels.iter().copied().map(ExpandedAxis::Named).collect()
+    }
+
+    #[test]
+    fn diagonal_plan_selects_only_when_sequential_flatten_would_copy() -> Result<()> {
+        assert_eq!(
+            plan_repeated_axis_lowering(&[3, 3], &named_axes(&["i", "i"]), true, 0)?,
+            RepeatedAxisLoweringPlan::Sequential
+        );
+        assert_eq!(
+            plan_repeated_axis_lowering(
+                &[2, 3, 3],
+                &named_axes(&["batch", "i", "i"]),
+                true,
+                0,
+            )?,
+            RepeatedAxisLoweringPlan::OriginalFlatGather {
+                output_shape: vec![2, 3],
+                offsets: vec![0, 4, 8, 9, 13, 17],
+            }
+        );
+        assert_eq!(
+            plan_repeated_axis_lowering(
+                &[2, 3, 2, 3],
+                &named_axes(&["i", "j", "i", "j"]),
+                true,
+                0,
+            )?,
+            RepeatedAxisLoweringPlan::OriginalFlatGather {
+                output_shape: vec![2, 3],
+                offsets: vec![0, 7, 14, 21, 28, 35],
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn diagonal_plan_preserves_fallbacks_and_checks_zero_before_offsets() -> Result<()> {
+        assert_eq!(
+            plan_repeated_axis_lowering(
+                &[2, 3, 2, 3],
+                &named_axes(&["i", "j", "i", "j"]),
+                false,
+                0,
+            )?,
+            RepeatedAxisLoweringPlan::Sequential
+        );
+        assert_eq!(
+            plan_repeated_axis_lowering(
+                &[2, 65_536, 65_536],
+                &named_axes(&["batch", "i", "i"]),
+                true,
+                0,
+            )?,
+            RepeatedAxisLoweringPlan::Sequential
+        );
+        assert_eq!(
+            plan_repeated_axis_lowering(
+                &[2, 0, 0],
+                &named_axes(&["batch", "i", "i"]),
+                true,
+                0,
+            )?,
+            RepeatedAxisLoweringPlan::OriginalFlatGather {
+                output_shape: vec![2, 0],
+                offsets: vec![],
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn diagonal_plan_validates_every_repeated_extent_before_arithmetic() {
+        let error = plan_repeated_axis_lowering(
+            &[usize::MAX, usize::MAX, 2, 3],
+            &named_axes(&["i", "i", "j", "j"]),
+            true,
+            0,
+        )
+        .expect_err("the later unequal group must be rejected first");
+        assert!(error.to_string().contains("repeated label `j`"));
+        assert!(error.to_string().contains("unequal extents 2 and 3"));
+    }
+
     #[test]
     fn nary_planner_avoids_a_pathological_left_to_right_intermediate() -> Result<()> {
         let operands = vec![

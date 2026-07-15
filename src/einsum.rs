@@ -1,4 +1,4 @@
-use candle_core::{Result, Tensor};
+use candle_core::{DType, Result, Tensor};
 
 /// Validated compile-time plan for the unary explicit-output einsum slice.
 #[doc(hidden)]
@@ -521,6 +521,34 @@ where
 /// Normalizes and greedily contracts an arbitrary number of operands.
 #[doc(hidden)]
 pub fn execute_nary_einsum(operands: &[&Tensor], spec: EllipsisEinsumSpec<'_>) -> Result<Tensor> {
+    execute_nary_einsum_internal(operands, spec, NaryExecutionStrategy::Selected)
+        .map(|(tensor, _)| tensor)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NaryExecutionStrategy {
+    Selected,
+    StreamingGreedy,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct NaryExecutionTrace {
+    used_exact: bool,
+    member_sequence: Vec<(u64, u64)>,
+    final_permutations: usize,
+    intermediates: Vec<NaryIntermediateTrace>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct NaryIntermediateTrace {
+    canonical: bool,
+}
+
+fn execute_nary_einsum_internal<'a>(
+    operands: &[&Tensor],
+    spec: EllipsisEinsumSpec<'a>,
+    strategy: NaryExecutionStrategy,
+) -> Result<(Tensor, NaryExecutionTrace)> {
     if operands.is_empty() {
         candle_core::bail!("invalid n-ary einsum plan: at least one operand is required")
     }
@@ -568,6 +596,7 @@ pub fn execute_nary_einsum(operands: &[&Tensor], spec: EllipsisEinsumSpec<'_>) -
             tensor,
             axes,
             stable_ordinal: index,
+            members: 1_u64.checked_shl(index as u32).unwrap_or(0),
         });
     }
     let output_axes = expand_axis_pattern(spec.output, maximum_capture, false);
@@ -579,25 +608,98 @@ pub fn execute_nary_einsum(operands: &[&Tensor], spec: EllipsisEinsumSpec<'_>) -
     validate_nary_broadcasts(&planned)?;
     let global_axis_order = stable_axis_order(&planned);
 
-    while planned.len() > 1 {
-        let selected = select_nary_pair_with_order(&planned, &output_axes, &global_axis_order)?;
-        let right = planned.remove(selected.right);
-        let left = planned.remove(selected.left);
-        let tensor = execute_expanded_binary(
-            &left.tensor,
-            &right.tensor,
-            &left.axes,
-            &right.axes,
-            &selected.output_axes,
-        )?;
-        planned.insert(
-            selected.left,
-            PlannedOperand {
-                tensor,
-                axes: selected.output_axes,
-                stable_ordinal: left.stable_ordinal.min(right.stable_ordinal),
-            },
-        );
+    let decision = if strategy == NaryExecutionStrategy::Selected {
+        let metadata = planned
+            .iter()
+            .map(|operand| NaryPlannerMetadata {
+                stable_ordinal: operand.stable_ordinal,
+                axes: operand
+                    .axes
+                    .iter()
+                    .copied()
+                    .zip(operand.tensor.dims().iter().copied())
+                    .collect(),
+                layout: if operand.tensor.is_contiguous() {
+                    NaryLayoutEstimate::Contiguous
+                } else {
+                    NaryLayoutEstimate::Unsupported
+                },
+                members: operand.members,
+            })
+            .collect::<Vec<_>>();
+        select_layout_aware_plan(
+            &metadata,
+            &output_axes,
+            first.dtype(),
+            first.device().is_cpu(),
+        )
+    } else {
+        NaryPlannerDecision::Greedy(NaryGreedyReason::Arity)
+    };
+    let mut trace = NaryExecutionTrace::default();
+    match decision {
+        NaryPlannerDecision::Exact(plan) => {
+            trace.used_exact = true;
+            for step in plan.steps {
+                let left_index = planned
+                    .iter()
+                    .position(|operand| operand.members == step.members.0)
+                    .expect("exact plan left member set remains live");
+                let right_index = planned
+                    .iter()
+                    .position(|operand| operand.members == step.members.1)
+                    .expect("exact plan right member set remains live");
+                debug_assert!(left_index < right_index);
+                let right = planned.remove(right_index);
+                let left = planned.remove(left_index);
+                let (tensor, axes) = execute_expanded_binary_canonical(
+                    &left.tensor,
+                    &right.tensor,
+                    &left.axes,
+                    &right.axes,
+                    &step.output_axes,
+                )?;
+                debug_assert_eq!(axes, step.output_axes);
+                planned.insert(
+                    left_index,
+                    PlannedOperand {
+                        tensor,
+                        axes,
+                        stable_ordinal: left.stable_ordinal.min(right.stable_ordinal),
+                        members: left.members | right.members,
+                    },
+                );
+                trace.member_sequence.push(step.members);
+                trace
+                    .intermediates
+                    .push(NaryIntermediateTrace { canonical: true });
+            }
+        }
+        NaryPlannerDecision::Greedy(_) => {
+            while planned.len() > 1 {
+                let selected =
+                    select_nary_pair_with_order(&planned, &output_axes, &global_axis_order)?;
+                let right = planned.remove(selected.right);
+                let left = planned.remove(selected.left);
+                let tensor = execute_expanded_binary(
+                    &left.tensor,
+                    &right.tensor,
+                    &left.axes,
+                    &right.axes,
+                    &selected.output_axes,
+                )?;
+                trace.member_sequence.push((left.members, right.members));
+                planned.insert(
+                    selected.left,
+                    PlannedOperand {
+                        tensor,
+                        axes: selected.output_axes,
+                        stable_ordinal: left.stable_ordinal.min(right.stable_ordinal),
+                        members: left.members | right.members,
+                    },
+                );
+            }
+        }
     }
 
     let final_operand = planned
@@ -619,10 +721,21 @@ pub fn execute_nary_einsum(operands: &[&Tensor], spec: EllipsisEinsumSpec<'_>) -
                 .expect("validated final n-ary output axis")
         })
         .collect::<Vec<_>>();
-    execute_unary_einsum(
+    let tensor = execute_unary_einsum(
         &final_operand.tensor,
         UnaryEinsumSpec::new(final_operand.axes.len(), output_axes.len(), &permutation),
-    )
+    )?;
+    trace.final_permutations = 1;
+    Ok((tensor, trace))
+}
+
+#[cfg(test)]
+fn execute_nary_einsum_for_test<'a>(
+    operands: &[&Tensor],
+    spec: EllipsisEinsumSpec<'a>,
+    strategy: NaryExecutionStrategy,
+) -> Result<(Tensor, NaryExecutionTrace)> {
+    execute_nary_einsum_internal(operands, spec, strategy)
 }
 
 fn execute_expanded_binary(
@@ -669,10 +782,30 @@ fn execute_expanded_binary(
     )
 }
 
+fn execute_expanded_binary_canonical<'a>(
+    left: &Tensor,
+    right: &Tensor,
+    left_axes: &[ExpandedAxis<'a>],
+    right_axes: &[ExpandedAxis<'a>],
+    retained_axes: &[ExpandedAxis<'a>],
+) -> Result<(Tensor, Vec<ExpandedAxis<'a>>)> {
+    let plan = classify_expanded_binary(left_axes, right_axes, retained_axes);
+    let canonical = plan
+        .batch
+        .iter()
+        .chain(&plan.left_free)
+        .chain(&plan.right_free)
+        .copied()
+        .collect::<Vec<_>>();
+    let tensor = execute_expanded_binary(left, right, left_axes, right_axes, &canonical)?;
+    Ok((tensor, canonical))
+}
+
 struct PlannedOperand<'a> {
     tensor: Tensor,
     axes: Vec<ExpandedAxis<'a>>,
     stable_ordinal: usize,
+    members: u64,
 }
 
 impl<'a> PlannedOperand<'a> {
@@ -686,8 +819,512 @@ impl<'a> PlannedOperand<'a> {
             tensor: Tensor::zeros(shape, candle_core::DType::F32, &candle_core::Device::Cpu)?,
             axes: labels.iter().copied().map(ExpandedAxis::Named).collect(),
             stable_ordinal,
+            members: 1_u64 << stable_ordinal,
         })
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NaryLayoutEstimate {
+    Contiguous,
+    Unsupported,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct NaryPlannerMetadata<'a> {
+    stable_ordinal: usize,
+    axes: Vec<(ExpandedAxis<'a>, usize)>,
+    layout: NaryLayoutEstimate,
+    members: u64,
+}
+
+impl<'a> NaryPlannerMetadata<'a> {
+    #[cfg(test)]
+    fn new_for_test(
+        stable_ordinal: usize,
+        axes: &[(&'a str, usize)],
+        layout: NaryLayoutEstimate,
+    ) -> Self {
+        Self {
+            stable_ordinal,
+            axes: axes
+                .iter()
+                .map(|&(axis, extent)| (ExpandedAxis::Named(axis), extent))
+                .collect(),
+            layout,
+            members: 1_u64.checked_shl(stable_ordinal as u32).unwrap_or(0),
+        }
+    }
+
+    fn elements(&self) -> Result<u128> {
+        checked_nary_product(
+            &self
+                .axes
+                .iter()
+                .map(|(_, extent)| *extent)
+                .collect::<Vec<_>>(),
+        )
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct NaryPairCost {
+    flops: u128,
+    output_elements: u128,
+    copy_bytes: u128,
+    submissions: u128,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct NaryPlanStep<'a> {
+    members: (u64, u64),
+    output_axes: Vec<ExpandedAxis<'a>>,
+    estimate: NaryPairCost,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct NaryPlanMetrics {
+    flops: u128,
+    intermediate_elements: u128,
+    output_elements: u128,
+    copy_bytes: u128,
+    peak_live_elements: u128,
+    submissions: u128,
+    score: u128,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct NaryContractionPlan<'a> {
+    steps: Vec<NaryPlanStep<'a>>,
+    metrics: NaryPlanMetrics,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NaryGreedyReason {
+    Arity,
+    DType,
+    Backend,
+    UnsupportedLayout,
+    BelowFlopThreshold,
+    ModelFailure,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum NaryPlannerDecision<'a> {
+    Greedy(NaryGreedyReason),
+    Exact(NaryContractionPlan<'a>),
+}
+
+fn model_axis_extent(operand: &NaryPlannerMetadata<'_>, axis: ExpandedAxis<'_>) -> Option<usize> {
+    operand
+        .axes
+        .iter()
+        .find(|(candidate, _)| *candidate == axis)
+        .map(|(_, extent)| *extent)
+}
+
+fn model_pair_details<'a>(
+    state: &[NaryPlannerMetadata<'a>],
+    left: usize,
+    right: usize,
+    final_output: &[ExpandedAxis<'a>],
+    global_axis_order: &[ExpandedAxis<'a>],
+) -> Result<(NaryPairCost, NaryPlannerMetadata<'a>)> {
+    let left_operand = &state[left];
+    let right_operand = &state[right];
+    let union = global_axis_order
+        .iter()
+        .copied()
+        .filter(|&axis| {
+            model_axis_extent(left_operand, axis).is_some()
+                || model_axis_extent(right_operand, axis).is_some()
+        })
+        .collect::<Vec<_>>();
+    let retained = union
+        .iter()
+        .copied()
+        .filter(|&axis| {
+            final_output.contains(&axis)
+                || state.iter().enumerate().any(|(index, operand)| {
+                    index != left && index != right && model_axis_extent(operand, axis).is_some()
+                })
+        })
+        .collect::<Vec<_>>();
+    let resolve = |axis| match (
+        model_axis_extent(left_operand, axis),
+        model_axis_extent(right_operand, axis),
+    ) {
+        (Some(left), Some(right)) => resolve_extent(&axis.display_name(), left, right),
+        (Some(extent), None) | (None, Some(extent)) => Ok(extent),
+        (None, None) => candle_core::bail!("n-ary model axis is absent from both operands"),
+    };
+    let union_extents = union
+        .iter()
+        .copied()
+        .map(resolve)
+        .collect::<Result<Vec<_>>>()?;
+    let flops = checked_nary_product(&union_extents)?;
+    let output_elements = checked_nary_product(
+        &retained
+            .iter()
+            .copied()
+            .map(resolve)
+            .collect::<Result<Vec<_>>>()?,
+    )?;
+    let materialized_bytes =
+        |operand: &NaryPlannerMetadata<'a>, other: &NaryPlannerMetadata<'a>| -> Result<u128> {
+            let mut extents = Vec::with_capacity(operand.axes.len());
+            let mut broadcasted = false;
+            for &(axis, extent) in &operand.axes {
+                let target = match model_axis_extent(other, axis) {
+                    Some(other) => resolve_extent(&axis.display_name(), extent, other)?,
+                    None => extent,
+                };
+                broadcasted |= target != extent;
+                extents.push(target);
+            }
+            if broadcasted {
+                checked_nary_product(&extents)?
+                    .checked_mul(4)
+                    .ok_or_else(|| {
+                        candle_core::Error::msg("n-ary materialized byte estimate overflows u128")
+                    })
+            } else {
+                Ok(0)
+            }
+        };
+    let copy_bytes = materialized_bytes(left_operand, right_operand)?
+        .checked_add(materialized_bytes(right_operand, left_operand)?)
+        .ok_or_else(|| candle_core::Error::msg("n-ary copy estimate overflows u128"))?;
+    let classification = classify_expanded_binary(
+        &left_operand
+            .axes
+            .iter()
+            .map(|(axis, _)| *axis)
+            .collect::<Vec<_>>(),
+        &right_operand
+            .axes
+            .iter()
+            .map(|(axis, _)| *axis)
+            .collect::<Vec<_>>(),
+        &retained,
+    );
+    let canonical_axes = classification
+        .batch
+        .iter()
+        .chain(&classification.left_free)
+        .chain(&classification.right_free)
+        .copied()
+        .collect::<Vec<_>>();
+    let axes = canonical_axes
+        .iter()
+        .copied()
+        .map(|axis| resolve(axis).map(|extent| (axis, extent)))
+        .collect::<Result<Vec<_>>>()?;
+    Ok((
+        NaryPairCost {
+            flops,
+            output_elements,
+            copy_bytes,
+            submissions: 1,
+        },
+        NaryPlannerMetadata {
+            stable_ordinal: left_operand
+                .stable_ordinal
+                .min(right_operand.stable_ordinal),
+            axes,
+            layout: NaryLayoutEstimate::Contiguous,
+            members: left_operand.members | right_operand.members,
+        },
+    ))
+}
+
+fn model_initial_metrics(state: &[NaryPlannerMetadata<'_>]) -> Result<NaryPlanMetrics> {
+    let peak_live_elements = state.iter().try_fold(0_u128, |sum, operand| {
+        sum.checked_add(operand.elements()?)
+            .ok_or_else(|| candle_core::Error::msg("n-ary live estimate overflows u128"))
+    })?;
+    Ok(NaryPlanMetrics {
+        flops: 0,
+        intermediate_elements: 0,
+        output_elements: 0,
+        copy_bytes: 0,
+        peak_live_elements,
+        submissions: 0,
+        score: 0,
+    })
+}
+
+fn model_accumulate(
+    metrics: &mut NaryPlanMetrics,
+    state: &[NaryPlannerMetadata<'_>],
+    estimate: &NaryPairCost,
+) -> Result<()> {
+    let live = state.iter().try_fold(0_u128, |sum, operand| {
+        sum.checked_add(operand.elements()?)
+            .ok_or_else(|| candle_core::Error::msg("n-ary live estimate overflows u128"))
+    })?;
+    metrics.peak_live_elements = metrics.peak_live_elements.max(
+        live.checked_add(estimate.output_elements)
+            .ok_or_else(|| candle_core::Error::msg("n-ary peak estimate overflows u128"))?,
+    );
+    metrics.flops = metrics
+        .flops
+        .checked_add(estimate.flops)
+        .ok_or_else(|| candle_core::Error::msg("n-ary FLOP estimate overflows u128"))?;
+    metrics.intermediate_elements = metrics
+        .intermediate_elements
+        .checked_add(estimate.output_elements)
+        .ok_or_else(|| candle_core::Error::msg("n-ary intermediate estimate overflows u128"))?;
+    metrics.copy_bytes = metrics
+        .copy_bytes
+        .checked_add(estimate.copy_bytes)
+        .ok_or_else(|| candle_core::Error::msg("n-ary copy estimate overflows u128"))?;
+    metrics.submissions = metrics
+        .submissions
+        .checked_add(estimate.submissions)
+        .ok_or_else(|| candle_core::Error::msg("n-ary submission estimate overflows u128"))?;
+    metrics.output_elements = estimate.output_elements;
+    Ok(())
+}
+
+fn model_score(metrics: &NaryPlanMetrics) -> Result<u128> {
+    [
+        (metrics.flops, 1),
+        (metrics.copy_bytes, 1),
+        (metrics.intermediate_elements, 2),
+        (metrics.peak_live_elements, 2),
+        (metrics.submissions, 1_024),
+    ]
+    .into_iter()
+    .try_fold(0_u128, |sum, (value, weight)| {
+        sum.checked_add(
+            value
+                .checked_mul(weight)
+                .ok_or_else(|| candle_core::Error::msg("n-ary weighted estimate overflows u128"))?,
+        )
+        .ok_or_else(|| candle_core::Error::msg("n-ary score estimate overflows u128"))
+    })
+}
+
+fn model_apply_pair<'a>(
+    state: &mut Vec<NaryPlannerMetadata<'a>>,
+    left: usize,
+    right: usize,
+    output: NaryPlannerMetadata<'a>,
+) {
+    state.remove(right);
+    state.remove(left);
+    state.insert(left, output);
+}
+
+fn model_greedy_plan<'a>(
+    operands: &[NaryPlannerMetadata<'a>],
+    final_output: &[ExpandedAxis<'a>],
+    global: &[ExpandedAxis<'a>],
+) -> Result<NaryContractionPlan<'a>> {
+    let mut state = operands.to_vec();
+    let mut metrics = model_initial_metrics(&state)?;
+    let mut steps = Vec::new();
+    while state.len() > 1 {
+        let mut best = None;
+        for left in 0..state.len() - 1 {
+            for right in left + 1..state.len() {
+                let (estimate, output) =
+                    model_pair_details(&state, left, right, final_output, global)?;
+                let key = (
+                    estimate.output_elements,
+                    estimate.flops,
+                    state[left].stable_ordinal,
+                    state[right].stable_ordinal,
+                    left,
+                    right,
+                );
+                if best.as_ref().is_none_or(
+                    |(bl, br, be, _): &(usize, usize, NaryPairCost, NaryPlannerMetadata<'a>)| {
+                        key < (
+                            be.output_elements,
+                            be.flops,
+                            state[*bl].stable_ordinal,
+                            state[*br].stable_ordinal,
+                            *bl,
+                            *br,
+                        )
+                    },
+                ) {
+                    best = Some((left, right, estimate, output));
+                }
+            }
+        }
+        let (left, right, estimate, output) =
+            best.ok_or_else(|| candle_core::Error::msg("n-ary greedy model found no pair"))?;
+        model_accumulate(&mut metrics, &state, &estimate)?;
+        steps.push(NaryPlanStep {
+            members: (state[left].members, state[right].members),
+            output_axes: output.axes.iter().map(|(axis, _)| *axis).collect(),
+            estimate,
+        });
+        model_apply_pair(&mut state, left, right, output);
+    }
+    metrics.score = model_score(&metrics)?;
+    Ok(NaryContractionPlan { steps, metrics })
+}
+
+fn model_exact_search<'a>(
+    operands: &[NaryPlannerMetadata<'a>],
+    final_output: &[ExpandedAxis<'a>],
+    global: &[ExpandedAxis<'a>],
+) -> Result<NaryContractionPlan<'a>> {
+    fn visit<'a>(
+        state: Vec<NaryPlannerMetadata<'a>>,
+        steps: Vec<NaryPlanStep<'a>>,
+        metrics: NaryPlanMetrics,
+        output: &[ExpandedAxis<'a>],
+        global: &[ExpandedAxis<'a>],
+        best: &mut Option<NaryContractionPlan<'a>>,
+    ) -> Result<()> {
+        if state.len() == 1 {
+            let mut metrics = metrics;
+            metrics.score = model_score(&metrics)?;
+            let candidate = NaryContractionPlan { steps, metrics };
+            let masks = |plan: &NaryContractionPlan<'a>| {
+                plan.steps
+                    .iter()
+                    .map(|step| step.members)
+                    .collect::<Vec<_>>()
+            };
+            if best.as_ref().is_none_or(|current| {
+                (candidate.metrics.score, masks(&candidate))
+                    < (current.metrics.score, masks(current))
+            }) {
+                *best = Some(candidate);
+            }
+            return Ok(());
+        }
+        for left in 0..state.len() - 1 {
+            for right in left + 1..state.len() {
+                let (estimate, pair_output) =
+                    model_pair_details(&state, left, right, output, global)?;
+                let mut next_state = state.clone();
+                let mut next_metrics = metrics.clone();
+                model_accumulate(&mut next_metrics, &state, &estimate)?;
+                let mut next_steps = steps.clone();
+                next_steps.push(NaryPlanStep {
+                    members: (state[left].members, state[right].members),
+                    output_axes: pair_output.axes.iter().map(|(axis, _)| *axis).collect(),
+                    estimate,
+                });
+                model_apply_pair(&mut next_state, left, right, pair_output);
+                visit(next_state, next_steps, next_metrics, output, global, best)?;
+            }
+        }
+        Ok(())
+    }
+    if !(3..=4).contains(&operands.len()) {
+        candle_core::bail!("exact n-ary planner supports arity 3 through 4")
+    }
+    let metrics = model_initial_metrics(operands)?;
+    let mut best = None;
+    visit(
+        operands.to_vec(),
+        Vec::new(),
+        metrics,
+        final_output,
+        global,
+        &mut best,
+    )?;
+    best.ok_or_else(|| candle_core::Error::msg("exact n-ary planner found no plan"))
+}
+
+fn select_layout_aware_plan<'a>(
+    operands: &[NaryPlannerMetadata<'a>],
+    final_output: &[ExpandedAxis<'a>],
+    dtype: DType,
+    cpu: bool,
+) -> NaryPlannerDecision<'a> {
+    if !(3..=4).contains(&operands.len()) {
+        return NaryPlannerDecision::Greedy(NaryGreedyReason::Arity);
+    }
+    if dtype != DType::F32 {
+        return NaryPlannerDecision::Greedy(NaryGreedyReason::DType);
+    }
+    if !cpu {
+        return NaryPlannerDecision::Greedy(NaryGreedyReason::Backend);
+    }
+    if operands
+        .iter()
+        .any(|operand| operand.layout == NaryLayoutEstimate::Unsupported)
+    {
+        return NaryPlannerDecision::Greedy(NaryGreedyReason::UnsupportedLayout);
+    }
+    if operands
+        .iter()
+        .any(|operand| operand.axes.iter().any(|(_, extent)| *extent == 0))
+    {
+        return NaryPlannerDecision::Greedy(NaryGreedyReason::BelowFlopThreshold);
+    }
+    let mut global = Vec::new();
+    for operand in operands {
+        for &(axis, _) in &operand.axes {
+            if !global.contains(&axis) {
+                global.push(axis);
+            }
+        }
+    }
+    let greedy = match model_greedy_plan(operands, final_output, &global) {
+        Ok(plan) => plan,
+        Err(_) => return NaryPlannerDecision::Greedy(NaryGreedyReason::ModelFailure),
+    };
+    if greedy.metrics.flops < 100_000 {
+        return NaryPlannerDecision::Greedy(NaryGreedyReason::BelowFlopThreshold);
+    }
+    match model_exact_search(operands, final_output, &global) {
+        Ok(plan) => NaryPlannerDecision::Exact(plan),
+        Err(_) => NaryPlannerDecision::Greedy(NaryGreedyReason::ModelFailure),
+    }
+}
+
+#[cfg(test)]
+fn select_layout_aware_plan_for_test<'a>(
+    operands: &[NaryPlannerMetadata<'a>],
+    final_output: &[&'a str],
+    dtype: DType,
+    cpu: bool,
+) -> NaryPlannerDecision<'a> {
+    select_layout_aware_plan(
+        operands,
+        &final_output
+            .iter()
+            .copied()
+            .map(ExpandedAxis::Named)
+            .collect::<Vec<_>>(),
+        dtype,
+        cpu,
+    )
+}
+
+#[cfg(test)]
+fn plan_layout_exact_for_test<'a>(
+    operands: &[NaryPlannerMetadata<'a>],
+    final_output: &[&'a str],
+) -> Result<NaryContractionPlan<'a>> {
+    let mut global = Vec::new();
+    for operand in operands {
+        for &(axis, _) in &operand.axes {
+            if !global.contains(&axis) {
+                global.push(axis);
+            }
+        }
+    }
+    model_exact_search(
+        operands,
+        &final_output
+            .iter()
+            .copied()
+            .map(ExpandedAxis::Named)
+            .collect::<Vec<_>>(),
+        &global,
+    )
 }
 
 #[derive(Debug)]

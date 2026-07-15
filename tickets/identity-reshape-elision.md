@@ -1,16 +1,13 @@
 ---
 id: identity-reshape-elision
 title: Elide identity reshape nodes and hidden copies
-status: review
+status: done
 priority: p1
 dependencies: [performance-harness-foundation]
 related: [permute-compose-layout-spike]
 scopes: [runtime]
 shared_scopes: [tests, benchmarks, ticketing]
 tags: [performance-0.2]
-claimed_from: todo
-assignee: behavior-tests
-lease_expires_at: 1784148736
 ---
 # Elide identity reshape nodes and hidden copies
 

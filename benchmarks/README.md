@@ -8,8 +8,10 @@ paired sum/mean scenarios across contiguous trailing and strided non-adjacent
 multi-axis layouts. Repeat broadcast lowering owns one large single-axis family
 and one two-axis family, each split into view-construction and
 materializing-consumption modes.
-The zero-length contraction family measures graph-preserving zero construction
-at three output sizes and structurally records zero GEMM submissions.
+The zero-length contraction family compares the historical two-anchor graph
+with a concatenate-and-sum candidate at three output sizes, records public
+operation and temporary-element counts, and verifies both autograd edges. Its
+GO decision and CPU evidence are recorded in `zero-k-submission-spike.md`.
 Identity reshape elision owns one contiguous control and one non-contiguous
 input at the same size, each measured as view construction and explicit
 contiguous consumption.

@@ -1,13 +1,13 @@
 ---
 id: einsum-nary-greedy-planner
 title: Add arbitrary-arity greedy einsum planning
-status: todo
+status: done
 priority: p1
 dependencies: [einsum-ellipsis-slice, einsum-diagonal-slice]
 related: []
-scopes: [runtime, macros, tests]
+scopes: [runtime, macros, tests, docs]
 shared_scopes: [ticketing]
-paths: []
+paths: [docs/einsum-contract.md]
 tags: [einsum-implementation]
 ---
 # Add arbitrary-arity greedy einsum planning

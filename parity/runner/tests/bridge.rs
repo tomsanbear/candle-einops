@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::process::Command;
 
 use candle_einops_parity_runner::{
-    NormalizedResponse, Operation, OracleClient, OracleRequest, OracleValue, PROTOCOL_VERSION,
-    ParityConfig, PatternId, persist_replay,
+    EinsumOperand, EinsumRequest, NormalizedResponse, Operation, OracleClient, OracleRequest,
+    OracleValue, PROTOCOL_VERSION, ParityConfig, PatternId, persist_replay,
 };
 
 fn transpose_request(case_id: &str) -> OracleRequest {
@@ -20,6 +20,27 @@ fn transpose_request(case_id: &str) -> OracleRequest {
             .map(OracleValue::from)
             .collect(),
         axes_lengths: BTreeMap::new(),
+    }
+}
+
+fn dot_request(case_id: &str) -> EinsumRequest {
+    EinsumRequest {
+        case_id: case_id.to_string(),
+        pattern_id: PatternId::new("einsum/dot-v1").expect("stable pattern id"),
+        operation: Operation::Einsum,
+        pattern: "feature, feature ->".to_string(),
+        operands: vec![
+            EinsumOperand {
+                dtype: "float32".to_string(),
+                shape: vec![2],
+                values: vec![1.0.into(), 2.0.into()],
+            },
+            EinsumOperand {
+                dtype: "float32".to_string(),
+                shape: vec![2],
+                values: vec![3.0.into(), 4.0.into()],
+            },
+        ],
     }
 }
 
@@ -70,6 +91,17 @@ fn live_client_validates_hello_reuses_one_child_and_preserves_order() {
     let from_file = client.replay_file(&path).expect("file replay succeeds");
     assert_eq!(from_json, from_file);
     assert_eq!(from_json.case_id(), Some("replay-7"));
+
+    let einsum_json =
+        serde_json::to_string(&dot_request("einsum-replay")).expect("einsum request serializes");
+    let einsum = client
+        .replay_json(&einsum_json)
+        .expect("einsum JSON replay succeeds");
+    let NormalizedResponse::Success(einsum) = einsum else {
+        panic!("expected einsum replay success")
+    };
+    assert!(einsum.shape.is_empty());
+    assert_eq!(einsum.values, [OracleValue::Number(11.0)]);
 
     assert_eq!(client.child_id(), child_id, "all calls reuse one child");
     let status = client.shutdown().expect("child exits after stdin closes");

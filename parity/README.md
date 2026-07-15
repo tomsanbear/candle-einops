@@ -25,7 +25,10 @@ The corpus compares shapes, acceptance, and flattened values for:
 - repeats at leading, trailing, grouped, and ellipsis positions, including zero
   lengths; and
 - `sum`, `mean`, `min`, `max`, and `prod` reductions over individual,
-  consecutive, grouped, all, and ellipsis axes.
+  consecutive, grouped, all, and ellipsis axes; and
+- einsum permutation and reduction, elementwise broadcasting, outer and matrix
+  products, batched and ellipsis contraction, repeated-label diagonals, scalar
+  operands, and three/four-operand contraction.
 
 The two syntaxes express equivalent operations differently. Rust `..` maps to
 Python `...`; Rust braced sizes such as `{copies}` map to Python keyword axis
@@ -36,8 +39,9 @@ map to Python keyword lengths. Each stable pattern id records this translation.
 Rearrange and repeat results, plus min/max reductions, compare exactly. Other
 floating reductions use a documented f32 epsilon scaled by reduction length.
 Empty mean is excluded because NumPy returns NaNs with a warning while Candle's
-backend policy differs. Einsum, device placement, gradients, and compile-time
-diagnostic text are covered by Rust-native suites rather than this parity lane.
+backend policy differs. Einsum accumulation uses an explicit f32 epsilon scaled
+by contraction size. Device placement, gradients, and compile-time diagnostic
+text are covered by Rust-native suites rather than this parity lane.
 
 ## Bounded runs and replay
 
@@ -48,8 +52,8 @@ tensor elements. Override them without bypassing the locked environment:
 python3 .github/scripts/test_python_parity.py --seed 42 --cases 17 --max-elements 128
 ```
 
-Property failures print their deterministic seed. Rearrange failures also save
-the minimized JSON request under `parity/regressions/`. Replay it with:
+Property failures print their deterministic seed. Rearrange and einsum failures
+also save the minimized JSON request under `parity/regressions/`. Replay it with:
 
 ```console
 python3 .github/scripts/test_python_parity.py --replay-file parity/regressions/rearrange-last-failure.jsonl

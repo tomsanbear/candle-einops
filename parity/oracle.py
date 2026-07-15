@@ -39,34 +39,75 @@ def _error(case_id: Any, error: Exception) -> dict[str, Any]:
     }
 
 
+def _einsum_pattern(pattern: str, ranks: list[int]) -> str:
+    """Expand ellipses into right-aligned labels accepted even when reduced."""
+
+    if "..." not in pattern:
+        return pattern
+    left, separator, right = pattern.partition("->")
+    if not separator:
+        raise ValueError("einsum pattern must contain '->'")
+    inputs = left.split(",")
+    if len(inputs) != len(ranks):
+        raise ValueError("einsum operand count does not match the pattern")
+
+    captures: list[int] = []
+    for axes, rank in zip(inputs, ranks, strict=True):
+        tokens = axes.split()
+        explicit = sum(token != "..." for token in tokens)
+        if "..." in tokens:
+            capture = rank - explicit
+        else:
+            capture = 0
+        if capture < 0 or ("..." not in tokens and rank != explicit):
+            raise ValueError("einsum ellipsis does not match operand rank")
+        captures.append(capture)
+
+    labels = [f"ellipsisaxis{index}" for index in range(max(captures, default=0))]
+    expanded_inputs = []
+    for axes, capture in zip(inputs, captures, strict=True):
+        replacement = " ".join(labels[len(labels) - capture :])
+        expanded_inputs.append(axes.replace("...", replacement))
+    return f"{','.join(expanded_inputs)} -> {right.replace('...', ' '.join(labels))}"
+
+
 def evaluate_request(request: Mapping[str, Any]) -> dict[str, Any]:
     """Evaluate one request with einops, returning strict-JSON data."""
 
     case_id = request.get("case_id")
     try:
-        shape = tuple(int(extent) for extent in request["shape"])
-        dtype = np.dtype(request.get("dtype", "float64"))
-        tensor = np.asarray(request["values"], dtype=dtype).reshape(shape)
         pattern = str(request["pattern"])
-        axes_lengths = {
-            str(name): int(length)
-            for name, length in request.get("axes_lengths", {}).items()
-        }
         operation = request["operation"]
 
-        if operation == "rearrange":
-            result = einops.rearrange(tensor, pattern, **axes_lengths)
-        elif operation == "repeat":
-            result = einops.repeat(tensor, pattern, **axes_lengths)
-        elif operation == "reduce":
-            result = einops.reduce(
-                tensor,
-                pattern,
-                request["reduction"],
-                **axes_lengths,
-            )
+        if operation == "einsum":
+            operands = []
+            for item in request["operands"]:
+                shape = tuple(int(extent) for extent in item["shape"])
+                dtype = np.dtype(item.get("dtype", "float64"))
+                operands.append(np.asarray(item["values"], dtype=dtype).reshape(shape))
+            expanded = _einsum_pattern(pattern, [operand.ndim for operand in operands])
+            result = einops.einsum(*operands, expanded)
         else:
-            raise ValueError(f"unsupported operation: {operation!r}")
+            shape = tuple(int(extent) for extent in request["shape"])
+            dtype = np.dtype(request.get("dtype", "float64"))
+            tensor = np.asarray(request["values"], dtype=dtype).reshape(shape)
+            axes_lengths = {
+                str(name): int(length)
+                for name, length in request.get("axes_lengths", {}).items()
+            }
+            if operation == "rearrange":
+                result = einops.rearrange(tensor, pattern, **axes_lengths)
+            elif operation == "repeat":
+                result = einops.repeat(tensor, pattern, **axes_lengths)
+            elif operation == "reduce":
+                result = einops.reduce(
+                    tensor,
+                    pattern,
+                    request["reduction"],
+                    **axes_lengths,
+                )
+            else:
+                raise ValueError(f"unsupported operation: {operation!r}")
 
         array = np.asarray(result)
         return {

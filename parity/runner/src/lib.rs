@@ -85,6 +85,7 @@ pub enum Operation {
     Rearrange,
     Repeat,
     Reduce,
+    Einsum,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -128,6 +129,41 @@ impl OracleRequest {
         }
         Ok(())
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EinsumOperand {
+    pub dtype: String,
+    pub shape: Vec<usize>,
+    pub values: Vec<OracleValue>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EinsumRequest {
+    pub case_id: String,
+    pub pattern_id: PatternId,
+    pub operation: Operation,
+    pub pattern: String,
+    pub operands: Vec<EinsumOperand>,
+}
+
+impl EinsumRequest {
+    fn validate_identity(&self) -> BridgeResult<()> {
+        validate_identity(&self.case_id, &self.pattern_id)
+    }
+}
+
+fn validate_identity(case_id: &str, pattern_id: &PatternId) -> BridgeResult<()> {
+    if case_id.is_empty() {
+        return Err(BridgeError::new("oracle case id must not be empty"));
+    }
+    if !pattern_id.is_valid() {
+        return Err(BridgeError::new(format!(
+            "invalid stable pattern id `{}`",
+            pattern_id.as_str()
+        )));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -354,11 +390,77 @@ impl OracleClient {
         Ok(responses)
     }
 
+    pub fn evaluate_einsum(
+        &mut self,
+        requests: &[EinsumRequest],
+    ) -> BridgeResult<Vec<NormalizedResponse>> {
+        let mut identities = HashSet::with_capacity(requests.len());
+        for request in requests {
+            request.validate_identity()?;
+            if request.operation != Operation::Einsum {
+                return Err(BridgeError::new(format!(
+                    "einsum request `{}` has non-einsum operation",
+                    request.case_id
+                )));
+            }
+            if !identities.insert(request.case_id.as_str()) {
+                return Err(BridgeError::new(format!(
+                    "duplicate oracle case id `{}` in one batch",
+                    request.case_id
+                )));
+            }
+        }
+
+        let stdin = self
+            .stdin
+            .as_mut()
+            .ok_or_else(|| BridgeError::new("Python oracle stdin is closed"))?;
+        for request in requests {
+            serde_json::to_writer(&mut *stdin, request)
+                .map_err(|error| BridgeError::context("serialize einsum oracle request", error))?;
+            stdin
+                .write_all(b"\n")
+                .map_err(|error| BridgeError::context("write oracle request delimiter", error))?;
+        }
+        stdin
+            .flush()
+            .map_err(|error| BridgeError::context("flush oracle request batch", error))?;
+
+        let mut responses = Vec::with_capacity(requests.len());
+        for request in requests {
+            let wire: WireResponse = self.read_message("oracle response")?;
+            let response = wire.normalize()?;
+            let received = response.case_id().unwrap_or("<none>");
+            if received != request.case_id {
+                return Err(BridgeError::new(format!(
+                    "oracle response order mismatch: expected `{}`, received `{received}`",
+                    request.case_id
+                )));
+            }
+            responses.push(response);
+        }
+        Ok(responses)
+    }
+
     pub fn replay_json(&mut self, json: &str) -> BridgeResult<NormalizedResponse> {
-        let request = serde_json::from_str::<OracleRequest>(json)
+        let envelope = serde_json::from_str::<serde_json::Value>(json)
             .map_err(|error| BridgeError::context("parse replay JSON", error))?;
-        self.evaluate(&[request])?
-            .pop()
+        let operation = envelope
+            .get("operation")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| BridgeError::new("replay JSON has no string operation"))?;
+        let response = if operation == "einsum" {
+            let request = serde_json::from_value::<EinsumRequest>(envelope)
+                .map_err(|error| BridgeError::context("parse einsum replay JSON", error))?;
+            self.evaluate_einsum(&[request])?
+        } else {
+            let request = serde_json::from_value::<OracleRequest>(envelope)
+                .map_err(|error| BridgeError::context("parse replay JSON", error))?;
+            self.evaluate(&[request])?
+        };
+        response
+            .into_iter()
+            .next()
             .ok_or_else(|| BridgeError::new("replay produced no response"))
     }
 
@@ -477,8 +579,16 @@ where
     }
 }
 
-pub fn persist_replay(path: impl AsRef<Path>, request: &OracleRequest) -> BridgeResult<()> {
-    let path = path.as_ref();
+pub fn persist_replay<T>(path: impl AsRef<Path>, request: &T) -> BridgeResult<()>
+where
+    T: Serialize,
+{
+    let displayed_path = path.as_ref();
+    let path = if displayed_path.is_absolute() {
+        displayed_path.to_path_buf()
+    } else {
+        repository_root().join(displayed_path)
+    };
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
     {
@@ -491,13 +601,13 @@ pub fn persist_replay(path: impl AsRef<Path>, request: &OracleRequest) -> Bridge
     }
     let json = serde_json::to_string(request)
         .map_err(|error| BridgeError::context("serialize replay request", error))?;
-    fs::write(path, &json).map_err(|error| {
+    fs::write(&path, &json).map_err(|error| {
         BridgeError::context(&format!("write replay file `{}`", path.display()), error)
     })?;
     eprintln!(
         "parity replay saved to {}; run python3 .github/scripts/test_python_parity.py --replay-file {}",
-        path.display(),
-        path.display()
+        displayed_path.display(),
+        displayed_path.display()
     );
     Ok(())
 }

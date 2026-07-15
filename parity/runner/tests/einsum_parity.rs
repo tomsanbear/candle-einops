@@ -150,7 +150,7 @@ fn build_case(pattern: Pattern, dimensions: [u8; 6], salt: i8, extent: usize) ->
         Pattern::ThreeOperand => vec![vec![a, k], vec![k, b], vec![b, c]],
         Pattern::FourOperand => vec![vec![a, k], vec![k, b], vec![b, c], vec![c, d]],
         Pattern::Scalar => vec![vec![], vec![a]],
-        Pattern::InvalidShape => vec![vec![a, k], vec![k + 1, b]],
+        Pattern::InvalidShape => vec![vec![a, 2], vec![3, b]],
         Pattern::InvalidRank => vec![vec![a], vec![k]],
     };
     let operation_scale = match pattern {

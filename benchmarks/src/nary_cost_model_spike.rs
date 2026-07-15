@@ -4,7 +4,10 @@ use std::hint::black_box;
 use std::time::Instant;
 
 use candle_core::{Device, Result, Tensor};
-use candle_einops::__private::{EinsumAxisPattern, EllipsisEinsumSpec, execute_nary_einsum};
+use candle_einops::__private::{
+    EinsumAxisPattern, EllipsisEinsumSpec, benchmark_nary_planner_selects_exact,
+    execute_nary_einsum,
+};
 use criterion::Criterion;
 use serde::Serialize;
 
@@ -185,6 +188,8 @@ pub struct PlannerProbeRecord {
     pub greedy_planner: Estimate,
     pub exact_planner: Estimate,
     pub selected_planner_p95_ns: u64,
+    pub budget_us: u64,
+    pub budget_met: bool,
     pub fingerprint: Fingerprint,
 }
 
@@ -198,6 +203,36 @@ pub fn measure_fixture_planners(
     }
     let greedy = plan_output_greedy(&fixture.model, CostWeights::CPU)?;
     let exact = plan_bounded_exact(&fixture.model, CostWeights::CPU)?;
+    let runtime_inputs = fixture_inputs(fixture, &Device::Cpu)?;
+    let runtime_refs = runtime_inputs.iter().collect::<Vec<_>>();
+    let input_axes = fixture
+        .model
+        .operands
+        .iter()
+        .map(|operand| {
+            operand
+                .axes
+                .iter()
+                .map(|axis| axis.label)
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let patterns = input_axes
+        .iter()
+        .map(|axes| EinsumAxisPattern::new(axes, None))
+        .collect::<Vec<_>>();
+    let runtime_spec = EllipsisEinsumSpec::new(
+        &patterns,
+        EinsumAxisPattern::new(&fixture.model.final_output, None),
+    );
+    let production_selected_exact =
+        benchmark_nary_planner_selects_exact(&runtime_refs, runtime_spec)?;
+    if production_selected_exact != selected_uses_exact(&fixture.model)? {
+        candle_core::bail!(
+            "production and frozen selectors disagree for {}",
+            fixture.id
+        )
+    }
     let mut greedy_samples = Vec::with_capacity(samples);
     let mut exact_samples = Vec::with_capacity(samples);
     let mut selected_samples = Vec::with_capacity(samples);
@@ -209,14 +244,14 @@ pub fn measure_fixture_planners(
         black_box(plan_bounded_exact(&fixture.model, CostWeights::CPU)?);
         exact_samples.push(u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX));
         let started = Instant::now();
-        let greedy = plan_output_greedy(&fixture.model, CostWeights::CPU)?;
-        if (3..=4).contains(&fixture.model.operands.len()) && greedy.metrics.flops >= 100_000 {
-            black_box(plan_bounded_exact(&fixture.model, CostWeights::CPU)?);
-        }
+        let selected = benchmark_nary_planner_selects_exact(&runtime_refs, runtime_spec)?;
+        black_box(selected);
         selected_samples.push(u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX));
     }
     selected_samples.sort_unstable();
     let p95_index = (samples - 1) * 95 / 100;
+    let selected_planner_p95_ns = selected_samples[p95_index];
+    let budget_us = 175;
     Ok(PlannerProbeRecord {
         schema_version: RESULT_SCHEMA_VERSION,
         scenario_id: fixture.id,
@@ -227,7 +262,9 @@ pub fn measure_fixture_planners(
         exact_members: exact.steps.iter().map(|step| step.members).collect(),
         greedy_planner: summarize(&greedy_samples),
         exact_planner: summarize(&exact_samples),
-        selected_planner_p95_ns: selected_samples[p95_index],
+        selected_planner_p95_ns,
+        budget_us,
+        budget_met: selected_planner_p95_ns <= budget_us * 1_000,
         fingerprint,
     })
 }
@@ -660,6 +697,33 @@ pub fn network_scenarios() -> Vec<NetworkScenario> {
         .collect()
 }
 
+fn fixture_inputs(fixture: &NetworkFixture, device: &Device) -> Result<Vec<Tensor>> {
+    fixture
+        .model
+        .operands
+        .iter()
+        .map(|operand| {
+            let shape = operand
+                .axes
+                .iter()
+                .map(|axis| axis.extent)
+                .collect::<Vec<_>>();
+            let elements = usize::try_from(operand.elements()?)?;
+            let values = (0..elements)
+                .map(|index| 0.5 + (index % 13) as f32 * 0.001)
+                .collect::<Vec<_>>();
+            if operand.layout == LayoutClass::Transposed {
+                let mut storage_shape = shape.clone();
+                let last = storage_shape.len() - 1;
+                storage_shape.swap(last - 1, last);
+                Tensor::from_vec(values, storage_shape, device)?.transpose(last - 1, last)
+            } else {
+                Tensor::from_vec(values, shape, device)
+            }
+        })
+        .collect()
+}
+
 fn execute_spec(
     tensors: &[&Tensor],
     inputs: &[Vec<&'static str>],
@@ -760,30 +824,7 @@ impl Scenario for NetworkScenario {
     }
 
     fn setup(&self, device: &Device) -> Result<Vec<Tensor>> {
-        self.fixture
-            .model
-            .operands
-            .iter()
-            .map(|operand| {
-                let shape = operand
-                    .axes
-                    .iter()
-                    .map(|axis| axis.extent)
-                    .collect::<Vec<_>>();
-                let elements = usize::try_from(operand.elements()?)?;
-                let values = (0..elements)
-                    .map(|index| 0.5 + (index % 13) as f32 * 0.001)
-                    .collect::<Vec<_>>();
-                if operand.layout == LayoutClass::Transposed {
-                    let mut storage_shape = shape.clone();
-                    let last = storage_shape.len() - 1;
-                    storage_shape.swap(last - 1, last);
-                    Tensor::from_vec(values, storage_shape, device)?.transpose(last - 1, last)
-                } else {
-                    Tensor::from_vec(values, shape, device)
-                }
-            })
-            .collect()
+        fixture_inputs(&self.fixture, device)
     }
 
     fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {

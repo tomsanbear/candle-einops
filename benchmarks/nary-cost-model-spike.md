@@ -85,10 +85,18 @@ use 501 synchronized samples.
 | layout-hostile | 223.250 us (222.958–224.083) | 223.083 us (222.625–223.792) | 1.0007x |
 
 The selected-path benchmark executes the production selector and executor,
-while the current side executes the frozen greedy plan. Planner probes also
-report the combined selector p95: the greedy threshold pass plus exact search
-when selected. Copy-byte and submission values remain conservative model
-estimates; they are not claims about backend-observed copies or submissions.
+while the current side executes the frozen greedy plan. Planner probes call a
+benchmark-feature-gated production seam and report its full preparation and
+selector p95, including the metadata snapshot, greedy threshold pass, and exact
+search when selected. Each record reports `budget_us: 175` and `budget_met`, and
+the probe exits unsuccessfully if any fixture exceeds that budget. Copy-byte and
+submission values remain conservative model estimates; they are not claims
+about backend-observed copies or submissions.
+
+The production-seam release probe on Darwin arm64 with Rust 1.97.0 measured
+1,001-sample p95 values of 13.458 us (linear), 78.917 us (balanced), 95.791 us
+(broadcast-heavy), and 0.708 us (layout-hostile). Every record reported
+`budget_met: true` against `budget_us: 175`.
 
 ## Backend and numerical policy
 

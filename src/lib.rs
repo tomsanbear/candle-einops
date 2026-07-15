@@ -129,6 +129,8 @@ pub use backend::Backend;
 /// This module is not a stable public API.
 #[doc(hidden)]
 pub mod __private {
+    #[cfg(feature = "benchmark-internals")]
+    pub use crate::einsum::benchmark_nary_planner_selects_exact;
     pub use crate::einsum::{
         BinaryEinsumSpec, EinsumAxisPattern, EllipsisEinsumSpec, UnaryEinsumSpec,
         einsum_operand_ref, execute_binary_einsum, execute_binary_ellipsis_einsum,

@@ -545,11 +545,10 @@ struct NaryIntermediateTrace {
     canonical: bool,
 }
 
-fn execute_nary_einsum_internal<'a>(
+fn prepare_nary_einsum<'a>(
     operands: &[&Tensor],
     spec: EllipsisEinsumSpec<'a>,
-    strategy: NaryExecutionStrategy,
-) -> Result<(Tensor, NaryExecutionTrace)> {
+) -> Result<(Vec<PlannedOperand<'a>>, Vec<ExpandedAxis<'a>>)> {
     if operands.is_empty() {
         candle_core::bail!("invalid n-ary einsum plan: at least one operand is required")
     }
@@ -577,7 +576,6 @@ fn execute_nary_einsum_internal<'a>(
             )
         }
     }
-
     let captures = operands
         .iter()
         .zip(spec.operands)
@@ -607,33 +605,64 @@ fn execute_nary_einsum_internal<'a>(
         .collect::<Vec<_>>();
     validate_expanded_output(&input_axes, &output_axes)?;
     validate_nary_broadcasts(&planned)?;
+    Ok((planned, output_axes))
+}
+
+fn select_prepared_nary_plan<'a>(
+    planned: &[PlannedOperand<'a>],
+    output_axes: &[ExpandedAxis<'a>],
+) -> NaryPlannerDecision<'a> {
+    let first = &planned[0].tensor;
+    let metadata = planned
+        .iter()
+        .map(|operand| NaryPlannerMetadata {
+            stable_ordinal: operand.stable_ordinal,
+            axes: operand
+                .axes
+                .iter()
+                .copied()
+                .zip(operand.tensor.dims().iter().copied())
+                .collect(),
+            layout: if operand.tensor.is_contiguous() {
+                NaryLayoutEstimate::Contiguous
+            } else {
+                NaryLayoutEstimate::Unsupported
+            },
+            members: operand.members,
+        })
+        .collect::<Vec<_>>();
+    select_layout_aware_plan(
+        &metadata,
+        output_axes,
+        first.dtype(),
+        first.device().is_cpu(),
+    )
+}
+
+/// Runs production n-ary preparation and selection without executing a plan.
+#[cfg(feature = "benchmark-internals")]
+#[doc(hidden)]
+pub fn benchmark_nary_planner_selects_exact(
+    operands: &[&Tensor],
+    spec: EllipsisEinsumSpec<'_>,
+) -> Result<bool> {
+    let (planned, output_axes) = prepare_nary_einsum(operands, spec)?;
+    Ok(matches!(
+        select_prepared_nary_plan(&planned, &output_axes),
+        NaryPlannerDecision::Exact(_)
+    ))
+}
+
+fn execute_nary_einsum_internal<'a>(
+    operands: &[&Tensor],
+    spec: EllipsisEinsumSpec<'a>,
+    strategy: NaryExecutionStrategy,
+) -> Result<(Tensor, NaryExecutionTrace)> {
+    let (mut planned, output_axes) = prepare_nary_einsum(operands, spec)?;
     let global_axis_order = stable_axis_order(&planned);
 
     let decision = if strategy == NaryExecutionStrategy::Selected {
-        let metadata = planned
-            .iter()
-            .map(|operand| NaryPlannerMetadata {
-                stable_ordinal: operand.stable_ordinal,
-                axes: operand
-                    .axes
-                    .iter()
-                    .copied()
-                    .zip(operand.tensor.dims().iter().copied())
-                    .collect(),
-                layout: if operand.tensor.is_contiguous() {
-                    NaryLayoutEstimate::Contiguous
-                } else {
-                    NaryLayoutEstimate::Unsupported
-                },
-                members: operand.members,
-            })
-            .collect::<Vec<_>>();
-        select_layout_aware_plan(
-            &metadata,
-            &output_axes,
-            first.dtype(),
-            first.device().is_cpu(),
-        )
+        select_prepared_nary_plan(&planned, &output_axes)
     } else {
         NaryPlannerDecision::Greedy(NaryGreedyReason::Arity)
     };

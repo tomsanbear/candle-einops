@@ -22,6 +22,10 @@ repository = "https://github.com/tomsanbear/candle-einops"
 candle-core = { version = "0.11" }
 candle-einops-macros = { path = "candle-einops-macros", version = "=0.2.0" }
 
+[features]
+default = []
+benchmark-internals = []
+
 [workspace]
 members = ["candle-einops-macros"]
 exclude = ["benchmarks"]

@@ -15,7 +15,7 @@ metal = ["candle-core/metal"]
 
 [dependencies]
 candle-core = { version = "=0.11.0" }
-candle-einops = { path = ".." }
+candle-einops = { path = "..", features = ["benchmark-internals"] }
 criterion = { version = "=0.7.0" }
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = { version = "=1.0.149" }

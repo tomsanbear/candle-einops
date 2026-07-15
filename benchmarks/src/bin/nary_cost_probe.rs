@@ -39,5 +39,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         fs::write(path, format!("{document}\n"))?;
     }
+    if let Some(record) = records.iter().find(|record| !record.budget_met) {
+        return Err(format!(
+            "production planner exceeded {} us p95 budget for {}: {} ns",
+            record.budget_us, record.scenario_id, record.selected_planner_p95_ns
+        )
+        .into());
+    }
     Ok(())
 }

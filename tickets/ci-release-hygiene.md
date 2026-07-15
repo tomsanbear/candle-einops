@@ -1,7 +1,7 @@
 ---
 id: ci-release-hygiene
 title: Modernize CI and release hygiene
-status: todo
+status: in-progress
 priority: p1
 dependencies: [candle-011-baseline]
 related: []
@@ -9,6 +9,9 @@ scopes: [tooling, docs]
 shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
+claimed_from: todo
+assignee: codex-ci
+lease_expires_at: 1784123226
 ---
 # Modernize CI and release hygiene
 

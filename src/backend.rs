@@ -1,14 +1,18 @@
-use candle_core::{Shape, Tensor};
+use candle_core::{Result, Shape, Tensor};
 
 use crate::Operation;
 
+/// Tensor operations used by [`crate::einops!`].
+///
+/// Transformations return Candle [`Result`] values so backend failures retain
+/// their original error and context.
 pub trait Backend {
     type Output;
     fn shape(self) -> Vec<usize>;
-    fn reshape(self, shape: &[usize]) -> Self::Output;
-    fn transpose(self, axes: &[usize]) -> Self::Output;
-    fn reduce_axes(self, axes_operations: &mut [(usize, Operation)]) -> Self::Output;
-    fn add_axes(self, naxes: usize, pos2len: &[(usize, usize)]) -> Self::Output;
+    fn reshape(self, shape: &[usize]) -> Result<Self::Output>;
+    fn transpose(self, axes: &[usize]) -> Result<Self::Output>;
+    fn reduce_axes(self, axes_operations: &mut [(usize, Operation)]) -> Result<Self::Output>;
+    fn add_axes(self, naxes: usize, pos2len: &[(usize, usize)]) -> Result<Self::Output>;
 }
 
 impl<T: AsRef<Tensor>> Backend for T {
@@ -18,43 +22,37 @@ impl<T: AsRef<Tensor>> Backend for T {
         self.as_ref().dims().to_vec()
     }
 
-    fn reshape(self, shape: &[usize]) -> Self::Output {
+    fn reshape(self, shape: &[usize]) -> Result<Self::Output> {
         let shape = Shape::from_dims(shape);
-        self.as_ref().reshape(shape).unwrap()
+        self.as_ref().reshape(shape)
     }
 
-    fn transpose(self, axes: &[usize]) -> Self::Output {
-        self.as_ref().permute(axes).unwrap()
+    fn transpose(self, axes: &[usize]) -> Result<Self::Output> {
+        self.as_ref().permute(axes)
     }
 
-    fn reduce_axes(self, axes_operations: &mut [(usize, Operation)]) -> Self::Output {
+    fn reduce_axes(self, axes_operations: &mut [(usize, Operation)]) -> Result<Self::Output> {
         let mut output = self.as_ref().clone();
 
         axes_operations.sort_by_key(|(axis, _)| *axis);
 
         for (axis, operation) in axes_operations.iter().rev() {
             output = match operation {
-                Operation::Min => output.min(*axis).unwrap(),
-                Operation::Max => output.max(*axis).unwrap(),
-                Operation::Sum => output.sum(&[*axis][..]).unwrap(),
-                Operation::Mean => output.mean(&[*axis][..]).unwrap(),
+                Operation::Min => output.min(*axis)?,
+                Operation::Max => output.max(*axis)?,
+                Operation::Sum => output.sum(&[*axis][..])?,
+                Operation::Mean => output.mean(&[*axis][..])?,
                 Operation::Prod => {
-                    let axis_len = output.dim(*axis).unwrap();
+                    let axis_len = output.dim(*axis)?;
                     if axis_len == 0 {
                         let mut shape = output.dims().to_vec();
                         shape.remove(*axis);
-                        Tensor::ones(Shape::from_dims(&shape), output.dtype(), output.device())
-                            .unwrap()
+                        Tensor::ones(Shape::from_dims(&shape), output.dtype(), output.device())?
                     } else {
-                        let mut product =
-                            output.narrow(*axis, 0, 1).unwrap().squeeze(*axis).unwrap();
+                        let mut product = output.narrow(*axis, 0, 1)?.squeeze(*axis)?;
                         for index in 1..axis_len {
-                            let factor = output
-                                .narrow(*axis, index, 1)
-                                .unwrap()
-                                .squeeze(*axis)
-                                .unwrap();
-                            product = product.mul(&factor).unwrap();
+                            let factor = output.narrow(*axis, index, 1)?.squeeze(*axis)?;
+                            product = product.mul(&factor)?;
                         }
                         product
                     }
@@ -62,21 +60,36 @@ impl<T: AsRef<Tensor>> Backend for T {
             };
         }
 
-        output
+        Ok(output)
     }
 
-    fn add_axes(self, naxes: usize, pos2len: &[(usize, usize)]) -> Self::Output {
+    fn add_axes(self, naxes: usize, pos2len: &[(usize, usize)]) -> Result<Self::Output> {
         let mut output = self.as_ref().clone();
 
+        let expected_naxes = output.rank() + pos2len.len();
+        if naxes != expected_naxes {
+            candle_core::bail!("add_axes: expected final rank {expected_naxes}, got {naxes}")
+        }
+
         let mut repeats = vec![1; naxes];
+        let mut occupied = vec![false; naxes];
 
         for &(axis_pos, axis_len) in pos2len {
-            output = output.unsqueeze(axis_pos).unwrap();
+            if axis_pos >= naxes {
+                candle_core::bail!(
+                    "add_axes: axis position {axis_pos} out of range for final rank {naxes}"
+                )
+            }
+            if occupied[axis_pos] {
+                candle_core::bail!("add_axes: duplicate axis position {axis_pos}")
+            }
+            occupied[axis_pos] = true;
+            output = output.unsqueeze(axis_pos)?;
             repeats[axis_pos] = axis_len;
         }
 
         let shape = Shape::from_dims(&repeats[..]);
-        output.repeat(shape).unwrap()
+        output.repeat(shape)
     }
 }
 
@@ -118,7 +131,7 @@ mod tests {
                     ],
                     &Device::Cpu,
                 )?
-                .reshape(&[4, 2, 3]),
+                .reshape(&[4, 2, 3])?,
                 [(0, Operation::Min)],
                 Tensor::new(
                     &[
@@ -158,7 +171,7 @@ mod tests {
                     ],
                     &Device::Cpu,
                 )?
-                .reshape(&[4, 2, 3]),
+                .reshape(&[4, 2, 3])?,
                 [(0, Operation::Max)],
                 Tensor::new(
                     &[
@@ -172,7 +185,7 @@ mod tests {
 
         for (tensor, mut axes_operations, expected) in tests {
             assert_eq!(
-                tensor.reduce_axes(&mut axes_operations).to_vec2::<f32>()?,
+                tensor.reduce_axes(&mut axes_operations)?.to_vec2::<f32>()?,
                 expected.to_vec2::<f32>()?
             );
         }
@@ -183,7 +196,7 @@ mod tests {
     #[test]
     fn candle_transpose() -> Result<()> {
         let tests = vec![(
-            Tensor::arange(0f32, (2 * 3 * 4) as f32, &Device::Cpu)?.reshape(&[2, 3, 4]),
+            Tensor::arange(0f32, (2 * 3 * 4) as f32, &Device::Cpu)?.reshape(&[2, 3, 4])?,
             &[2, 0, 1],
             Tensor::new(
                 &[
@@ -198,7 +211,7 @@ mod tests {
 
         for (tensor, axes, expected) in tests {
             assert_eq!(
-                Backend::transpose(&tensor, axes).to_vec3::<f32>()?,
+                Backend::transpose(&tensor, axes)?.to_vec3::<f32>()?,
                 expected.to_vec3::<f32>()?
             );
         }
@@ -209,7 +222,7 @@ mod tests {
     #[test]
     fn tch_add_axes() -> Result<()> {
         let tests = vec![(
-            Tensor::arange(0u8, 1 * 2 * 3, &Device::Cpu)?.reshape(&[1, 2, 3]),
+            Tensor::arange(0u8, 1 * 2 * 3, &Device::Cpu)?.reshape(&[1, 2, 3])?,
             5,
             &[(0, 5), (3, 3)],
             Tensor::new(
@@ -221,13 +234,13 @@ mod tests {
                 ],
                 &Device::Cpu,
             )?
-            .reshape(&[5, 1, 2, 3, 3]),
+            .reshape(&[5, 1, 2, 3, 3])?,
         )];
 
         for (tensor, naxes, pos2len, expected) in tests {
             assert_eq!(
                 tensor
-                    .add_axes(naxes, pos2len)
+                    .add_axes(naxes, pos2len)?
                     .flatten_all()?
                     .to_vec1::<u8>()?,
                 expected.flatten_all()?.to_vec1::<u8>()?

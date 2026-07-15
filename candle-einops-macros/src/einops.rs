@@ -302,7 +302,7 @@ impl quote::ToTokens for ParsedExpression {
             quote!(let #shape_ident = #runtime_crate::Backend::shape(&#tensor_ident);)
         };
 
-        let code = quote! {{
+        let code = quote! {(|| -> #runtime_crate::Result<_> {
             #error_tokens
 
             #tensor_tokens
@@ -323,8 +323,8 @@ impl quote::ToTokens for ParsedExpression {
             #composition_shape_tokens
             #composition_tokens
 
-            #tensor_ident
-        }};
+            ::core::result::Result::Ok(#tensor_ident)
+        })()};
 
         code.to_tokens(tokens);
     }

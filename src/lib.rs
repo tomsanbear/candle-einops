@@ -1,5 +1,7 @@
 mod backend;
 
+/// The result type returned by [`einops!`] and [`Backend`] transformations.
+pub use candle_core::Result;
 pub use candle_einops_macros::einops;
 
 pub use backend::Backend;

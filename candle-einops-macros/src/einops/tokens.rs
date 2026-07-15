@@ -142,7 +142,7 @@ pub fn to_tokens_composition(
     };
 
     quote!(
-        let #tensor_ident = #runtime_crate::Backend::reshape(#tensor_ident, &#composition_shape);
+        let #tensor_ident = #runtime_crate::Backend::reshape(#tensor_ident, &#composition_shape)?;
     )
 }
 
@@ -167,7 +167,7 @@ pub fn to_tokens_repeat(
     quote!(
         let #tensor_ident = #runtime_crate::Backend::add_axes(
             #tensor_ident, #shape_ident.len() + #n_repeats, &[#(#repeat_pos_len),*]
-        );
+        )?;
     )
 }
 
@@ -247,7 +247,7 @@ pub fn to_tokens_permute(
     };
 
     quote!(
-        let #tensor_ident = #runtime_crate::Backend::transpose(#tensor_ident, &#permute_indices);
+        let #tensor_ident = #runtime_crate::Backend::transpose(#tensor_ident, &#permute_indices)?;
     )
 }
 
@@ -311,7 +311,7 @@ pub fn to_tokens_reduce(
                     &mut #ignored_indices
                         .zip(#ignored_operations)
                         .collect::<Vec<(_, _)>>()
-                );
+                )?;
             )
         }
         (Some(ignored_indices), Some(ignored_operations), false) => {
@@ -327,14 +327,14 @@ pub fn to_tokens_reduce(
                                 .chain(#ignored_operations)
                         )
                         .collect::<Vec<(_, _)>>()
-                );
+                )?;
             )
         }
         (None, None, false) => {
             quote!(
                 let #tensor_ident = #runtime_crate::Backend::reduce_axes(
                     #tensor_ident, &mut [#((#reduce_indices, #reduce_operations)),*]
-                );
+                )?;
             )
         }
         _ => unreachable!(),
@@ -441,6 +441,6 @@ pub fn to_tokens_decomposition(
     };
 
     quote!(
-        let #tensor_ident = #runtime_crate::Backend::reshape(#tensor_ident, &#decomposition_shape);
+        let #tensor_ident = #runtime_crate::Backend::reshape(#tensor_ident, &#decomposition_shape)?;
     )
 }

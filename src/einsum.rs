@@ -786,7 +786,15 @@ fn execute_expanded_binary(
     right_axes: &[ExpandedAxis<'_>],
     output_axes: &[ExpandedAxis<'_>],
 ) -> Result<Tensor> {
-    let plan = classify_expanded_binary(left_axes, right_axes, output_axes);
+    let graph = classify_expanded_binary_graph(
+        left_axes,
+        left.dims(),
+        right_axes,
+        right.dims(),
+        output_axes,
+        left.dtype().size_in_bytes(),
+    )?;
+    let plan = graph.plan;
     let batch_label_storage = plan
         .batch
         .iter()
@@ -999,57 +1007,35 @@ fn model_pair_details<'a>(
         (Some(extent), None) | (None, Some(extent)) => Ok(extent),
         (None, None) => candle_core::bail!("n-ary model axis is absent from both operands"),
     };
-    let union_extents = union
+    let left_axes = left_operand
+        .axes
         .iter()
-        .copied()
-        .map(resolve)
-        .collect::<Result<Vec<_>>>()?;
-    let flops = checked_nary_product(&union_extents)?;
-    let output_elements = checked_nary_product(
-        &retained
-            .iter()
-            .copied()
-            .map(resolve)
-            .collect::<Result<Vec<_>>>()?,
-    )?;
-    let materialized_bytes =
-        |operand: &NaryPlannerMetadata<'a>, other: &NaryPlannerMetadata<'a>| -> Result<u128> {
-            let mut extents = Vec::with_capacity(operand.axes.len());
-            let mut broadcasted = false;
-            for &(axis, extent) in &operand.axes {
-                let target = match model_axis_extent(other, axis) {
-                    Some(other) => resolve_extent(&axis.display_name(), extent, other)?,
-                    None => extent,
-                };
-                broadcasted |= target != extent;
-                extents.push(target);
-            }
-            if broadcasted {
-                checked_nary_product(&extents)?
-                    .checked_mul(4)
-                    .ok_or_else(|| {
-                        candle_core::Error::msg("n-ary materialized byte estimate overflows u128")
-                    })
-            } else {
-                Ok(0)
-            }
-        };
-    let copy_bytes = materialized_bytes(left_operand, right_operand)?
-        .checked_add(materialized_bytes(right_operand, left_operand)?)
-        .ok_or_else(|| candle_core::Error::msg("n-ary copy estimate overflows u128"))?;
-    let classification = classify_expanded_binary(
-        &left_operand
-            .axes
-            .iter()
-            .map(|(axis, _)| *axis)
-            .collect::<Vec<_>>(),
-        &right_operand
-            .axes
-            .iter()
-            .map(|(axis, _)| *axis)
-            .collect::<Vec<_>>(),
+        .map(|(axis, _)| *axis)
+        .collect::<Vec<_>>();
+    let left_dims = left_operand
+        .axes
+        .iter()
+        .map(|(_, extent)| *extent)
+        .collect::<Vec<_>>();
+    let right_axes = right_operand
+        .axes
+        .iter()
+        .map(|(axis, _)| *axis)
+        .collect::<Vec<_>>();
+    let right_dims = right_operand
+        .axes
+        .iter()
+        .map(|(_, extent)| *extent)
+        .collect::<Vec<_>>();
+    let graph = classify_expanded_binary_graph(
+        &left_axes,
+        &left_dims,
+        &right_axes,
+        &right_dims,
         &retained,
-    );
+        4,
+    )?;
+    let classification = graph.plan;
     let canonical_axes = classification
         .batch
         .iter()
@@ -1064,17 +1050,17 @@ fn model_pair_details<'a>(
         .collect::<Result<Vec<_>>>()?;
     Ok((
         NaryPairCost {
-            flops,
-            output_elements,
-            copy_bytes,
-            submissions: 1,
+            flops: graph.work,
+            output_elements: graph.output_elements,
+            copy_bytes: graph.copy_bytes,
+            submissions: graph.submissions,
         },
         NaryPlannerMetadata {
             stable_ordinal: left_operand
                 .stable_ordinal
                 .min(right_operand.stable_ordinal),
             axes,
-            layout: NaryLayoutEstimate::Contiguous,
+            layout: graph.output_layout,
             members: left_operand.members | right_operand.members,
         },
     ))
@@ -2139,6 +2125,133 @@ struct ExpandedBinaryPlan<'a> {
     left_permutation: Vec<usize>,
     right_permutation: Vec<usize>,
     output_permutation: Vec<usize>,
+}
+
+struct ExpandedBinaryGraph<'a> {
+    plan: ExpandedBinaryPlan<'a>,
+    work: u128,
+    output_elements: u128,
+    copy_bytes: u128,
+    submissions: u128,
+    output_layout: NaryLayoutEstimate,
+}
+
+fn classify_expanded_binary_graph<'a>(
+    left_axes: &[ExpandedAxis<'a>],
+    left_dims: &[usize],
+    right_axes: &[ExpandedAxis<'a>],
+    right_dims: &[usize],
+    output_axes: &[ExpandedAxis<'a>],
+    element_bytes: usize,
+) -> Result<ExpandedBinaryGraph<'a>> {
+    if left_axes.len() != left_dims.len() || right_axes.len() != right_dims.len() {
+        candle_core::bail!("binary graph axes and dimensions have different ranks")
+    }
+    let plan = classify_expanded_binary(left_axes, right_axes, output_axes);
+    let extent = |axis: ExpandedAxis<'a>| -> Result<usize> {
+        let left = left_axes
+            .iter()
+            .position(|candidate| *candidate == axis)
+            .map(|index| left_dims[index]);
+        let right = right_axes
+            .iter()
+            .position(|candidate| *candidate == axis)
+            .map(|index| right_dims[index]);
+        match (left, right) {
+            (Some(left), Some(right)) => resolve_extent(&axis.display_name(), left, right),
+            (Some(extent), None) | (None, Some(extent)) => Ok(extent),
+            (None, None) => candle_core::bail!("binary graph output axis is absent from inputs"),
+        }
+    };
+    let product = |axes: &[ExpandedAxis<'a>]| -> Result<u128> {
+        checked_nary_product(
+            &axes
+                .iter()
+                .copied()
+                .map(extent)
+                .collect::<Result<Vec<_>>>()?,
+        )
+    };
+    let output_elements = product(output_axes)?;
+    let left_reduction_work = if plan.left_reductions.is_empty() {
+        0
+    } else {
+        checked_nary_product(left_dims)?
+    };
+    let right_reduction_work = if plan.right_reductions.is_empty() {
+        0
+    } else {
+        checked_nary_product(right_dims)?
+    };
+    let reduction_submissions = u128::from(!plan.left_reductions.is_empty())
+        + u128::from(!plan.right_reductions.is_empty());
+    let canonical_axes = plan
+        .batch
+        .iter()
+        .chain(&plan.left_free)
+        .chain(&plan.contracted)
+        .chain(&plan.right_free)
+        .copied()
+        .collect::<Vec<_>>();
+    let core_work = if plan.contracted.is_empty() {
+        output_elements
+    } else {
+        product(&canonical_axes)?
+    };
+    let zero_core = !plan.contracted.is_empty()
+        && canonical_axes
+            .iter()
+            .copied()
+            .map(extent)
+            .collect::<Result<Vec<_>>>()?
+            .contains(&0);
+
+    let materialized_bytes =
+        |axes: &[ExpandedAxis<'a>], dims: &[usize], reductions: &[usize]| -> Result<u128> {
+            let mut broadcasted = false;
+            let mut target = Vec::with_capacity(axes.len() - reductions.len());
+            for (index, (&axis, &dimension)) in axes.iter().zip(dims).enumerate() {
+                if reductions.contains(&index) {
+                    continue;
+                }
+                let resolved = extent(axis)?;
+                broadcasted |= resolved != dimension;
+                target.push(resolved);
+            }
+            if !broadcasted {
+                return Ok(0);
+            }
+            checked_nary_product(&target)?
+                .checked_mul(element_bytes as u128)
+                .ok_or_else(|| candle_core::Error::msg("binary graph copy estimate overflows u128"))
+        };
+    let copy_bytes = if plan.contracted.is_empty() || zero_core {
+        0
+    } else {
+        materialized_bytes(left_axes, left_dims, &plan.left_reductions)?
+            .checked_add(materialized_bytes(
+                right_axes,
+                right_dims,
+                &plan.right_reductions,
+            )?)
+            .ok_or_else(|| candle_core::Error::msg("binary graph copy estimate overflows u128"))?
+    };
+    let work = left_reduction_work
+        .checked_add(right_reduction_work)
+        .and_then(|work| work.checked_add(if zero_core { 0 } else { core_work }))
+        .ok_or_else(|| candle_core::Error::msg("binary graph work estimate overflows u128"))?;
+    Ok(ExpandedBinaryGraph {
+        plan,
+        work,
+        output_elements,
+        copy_bytes,
+        submissions: reduction_submissions + if zero_core { 3 } else { 1 },
+        output_layout: if zero_core {
+            NaryLayoutEstimate::Unsupported
+        } else {
+            NaryLayoutEstimate::Contiguous
+        },
+    })
 }
 
 fn classify_expanded_binary<'a>(

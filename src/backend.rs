@@ -294,31 +294,28 @@ pub(crate) fn execute_tensor_permute_and_compose(
         start = end;
     }
 
-    if groups.len() <= 8 {
-        for order in group_permutations(groups.len()) {
-            let pre_permutation = order
-                .iter()
-                .flat_map(|&group| groups[group].iter().copied())
-                .collect::<Vec<_>>();
-            if !permutation_is_c_contiguous(input, &pre_permutation)? {
-                continue;
-            }
-            let reshape_dims = order
-                .iter()
-                .map(|&group| output_shape[group])
-                .collect::<Vec<_>>();
-            let post_permutation = (0..groups.len())
-                .map(|desired| {
-                    order
-                        .iter()
-                        .position(|&group| group == desired)
-                        .expect("group order is a permutation")
-                })
-                .collect::<Vec<_>>();
-            let permuted = input.permute(pre_permutation)?;
-            let reshaped = permuted.reshape(&reshape_dims)?;
-            return reshaped.permute(post_permutation);
-        }
+    if let Some(order) =
+        plan_permute_compose_group_order(input.dims(), input.stride(), permutation, group_lengths)?
+    {
+        let pre_permutation = order
+            .iter()
+            .flat_map(|&group| groups[group].iter().copied())
+            .collect::<Vec<_>>();
+        let reshape_dims = order
+            .iter()
+            .map(|&group| output_shape[group])
+            .collect::<Vec<_>>();
+        let post_permutation = (0..groups.len())
+            .map(|desired| {
+                order
+                    .iter()
+                    .position(|&group| group == desired)
+                    .expect("group order is a permutation")
+            })
+            .collect::<Vec<_>>();
+        let permuted = input.permute(pre_permutation)?;
+        let reshaped = permuted.reshape(&reshape_dims)?;
+        return reshaped.permute(post_permutation);
     }
 
     input.permute(permutation)?.reshape(output_shape)
@@ -370,11 +367,52 @@ fn checked_axis_product(dims: &[usize], axes: &[usize]) -> Result<usize> {
     })
 }
 
-fn permutation_is_c_contiguous(input: &Tensor, permutation: &[usize]) -> Result<bool> {
+pub(crate) fn plan_permute_compose_group_order(
+    dims: &[usize],
+    strides: &[usize],
+    permutation: &[usize],
+    group_lengths: &[usize],
+) -> Result<Option<Vec<usize>>> {
+    if dims.len() != strides.len()
+        || permutation.len() != dims.len()
+        || group_lengths.contains(&0)
+        || group_lengths
+            .iter()
+            .try_fold(0usize, |sum, &length| sum.checked_add(length))
+            != Some(dims.len())
+    {
+        candle_core::bail!("permute_and_compose: invalid layout metadata")
+    }
+    if group_lengths.len() > 8 {
+        return Ok(None);
+    }
+    let mut groups = Vec::with_capacity(group_lengths.len());
+    let mut start = 0;
+    for &length in group_lengths {
+        groups.push(permutation[start..start + length].to_vec());
+        start += length;
+    }
+    for order in group_permutations(groups.len()) {
+        let pre_permutation = order
+            .iter()
+            .flat_map(|&group| groups[group].iter().copied())
+            .collect::<Vec<_>>();
+        if permutation_is_c_contiguous(dims, strides, &pre_permutation)? {
+            return Ok(Some(order));
+        }
+    }
+    Ok(None)
+}
+
+fn permutation_is_c_contiguous(
+    dims: &[usize],
+    strides: &[usize],
+    permutation: &[usize],
+) -> Result<bool> {
     let mut expected = 1usize;
     for &axis in permutation.iter().rev() {
-        let extent = input.dims()[axis];
-        if extent > 1 && input.stride()[axis] != expected {
+        let extent = dims[axis];
+        if extent > 1 && strides[axis] != expected {
             return Ok(false);
         }
         expected = expected.checked_mul(extent).ok_or_else(|| {

@@ -787,10 +787,16 @@ fn execute_expanded_binary(
     output_axes: &[ExpandedAxis<'_>],
 ) -> Result<Tensor> {
     let graph = classify_expanded_binary_graph(
-        left_axes,
-        left.dims(),
-        right_axes,
-        right.dims(),
+        BinaryGraphOperand {
+            axes: left_axes,
+            dims: left.dims(),
+            layout: BinaryOperandLayout::Strided(left.stride()),
+        },
+        BinaryGraphOperand {
+            axes: right_axes,
+            dims: right.dims(),
+            layout: BinaryOperandLayout::Strided(right.stride()),
+        },
         output_axes,
         left.dtype().size_in_bytes(),
     )?;
@@ -878,6 +884,16 @@ enum NaryLayoutEstimate {
     Contiguous,
     Strided(Vec<usize>),
     Unsupported,
+}
+
+impl NaryLayoutEstimate {
+    fn as_binary(&self) -> BinaryOperandLayout<'_> {
+        match self {
+            Self::Contiguous => BinaryOperandLayout::Contiguous,
+            Self::Strided(strides) => BinaryOperandLayout::Strided(strides),
+            Self::Unsupported => BinaryOperandLayout::Unsupported,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1029,10 +1045,16 @@ fn model_pair_details<'a>(
         .map(|(_, extent)| *extent)
         .collect::<Vec<_>>();
     let graph = classify_expanded_binary_graph(
-        &left_axes,
-        &left_dims,
-        &right_axes,
-        &right_dims,
+        BinaryGraphOperand {
+            axes: &left_axes,
+            dims: &left_dims,
+            layout: left_operand.layout.as_binary(),
+        },
+        BinaryGraphOperand {
+            axes: &right_axes,
+            dims: &right_dims,
+            layout: right_operand.layout.as_binary(),
+        },
         &retained,
         4,
     )?;
@@ -2137,14 +2159,36 @@ struct ExpandedBinaryGraph<'a> {
     output_layout: NaryLayoutEstimate,
 }
 
+#[derive(Clone, Copy)]
+enum BinaryOperandLayout<'a> {
+    Contiguous,
+    Strided(&'a [usize]),
+    Unsupported,
+}
+
+#[derive(Clone, Copy)]
+struct BinaryGraphOperand<'axes, 'labels> {
+    axes: &'axes [ExpandedAxis<'labels>],
+    dims: &'axes [usize],
+    layout: BinaryOperandLayout<'axes>,
+}
+
 fn classify_expanded_binary_graph<'a>(
-    left_axes: &[ExpandedAxis<'a>],
-    left_dims: &[usize],
-    right_axes: &[ExpandedAxis<'a>],
-    right_dims: &[usize],
+    left: BinaryGraphOperand<'_, 'a>,
+    right: BinaryGraphOperand<'_, 'a>,
     output_axes: &[ExpandedAxis<'a>],
     element_bytes: usize,
 ) -> Result<ExpandedBinaryGraph<'a>> {
+    let BinaryGraphOperand {
+        axes: left_axes,
+        dims: left_dims,
+        layout: left_layout,
+    } = left;
+    let BinaryGraphOperand {
+        axes: right_axes,
+        dims: right_dims,
+        layout: right_layout,
+    } = right;
     if left_axes.len() != left_dims.len() || right_axes.len() != right_dims.len() {
         candle_core::bail!("binary graph axes and dimensions have different ranks")
     }
@@ -2207,35 +2251,116 @@ fn classify_expanded_binary_graph<'a>(
             .collect::<Result<Vec<_>>>()?
             .contains(&0);
 
-    let materialized_bytes =
-        |axes: &[ExpandedAxis<'a>], dims: &[usize], reductions: &[usize]| -> Result<u128> {
-            let mut broadcasted = false;
-            let mut target = Vec::with_capacity(axes.len() - reductions.len());
-            for (index, (&axis, &dimension)) in axes.iter().zip(dims).enumerate() {
-                if reductions.contains(&index) {
-                    continue;
-                }
-                let resolved = extent(axis)?;
-                broadcasted |= resolved != dimension;
-                target.push(resolved);
+    let contiguous_strides = |dims: &[usize]| -> Result<Vec<usize>> {
+        let mut strides = vec![0; dims.len()];
+        let mut stride = 1usize;
+        for (axis, &dimension) in dims.iter().enumerate().rev() {
+            strides[axis] = stride;
+            stride = stride.checked_mul(dimension).ok_or_else(|| {
+                candle_core::Error::msg("binary graph stride estimate overflows usize")
+            })?;
+        }
+        Ok(strides)
+    };
+    let materialized_bytes = |axes: &[ExpandedAxis<'a>],
+                              dims: &[usize],
+                              layout: BinaryOperandLayout<'_>,
+                              reductions: &[usize],
+                              permutation: &[usize],
+                              group_lengths: &[usize]|
+     -> Result<u128> {
+        let mut broadcasted = false;
+        let mut remaining_dims = Vec::with_capacity(axes.len() - reductions.len());
+        let mut target_dims = Vec::with_capacity(axes.len() - reductions.len());
+        for (index, (&axis, &dimension)) in axes.iter().zip(dims).enumerate() {
+            if reductions.contains(&index) {
+                continue;
             }
-            if !broadcasted {
-                return Ok(0);
-            }
-            checked_nary_product(&target)?
+            let resolved = extent(axis)?;
+            broadcasted |= resolved != dimension;
+            remaining_dims.push(dimension);
+            target_dims.push(resolved);
+        }
+        let target_dims = permutation
+            .iter()
+            .map(|&axis| target_dims[axis])
+            .collect::<Vec<_>>();
+        let target_bytes = || {
+            checked_nary_product(&target_dims)?
                 .checked_mul(element_bytes as u128)
                 .ok_or_else(|| candle_core::Error::msg("binary graph copy estimate overflows u128"))
         };
+        if broadcasted {
+            return target_bytes();
+        }
+        let strides = if reductions.is_empty() {
+            match layout {
+                BinaryOperandLayout::Contiguous => contiguous_strides(dims)?,
+                BinaryOperandLayout::Strided(strides) if strides.len() == dims.len() => {
+                    strides.to_vec()
+                }
+                BinaryOperandLayout::Strided(_) => {
+                    candle_core::bail!("binary graph dimensions and strides have different ranks")
+                }
+                BinaryOperandLayout::Unsupported => return target_bytes(),
+            }
+        } else {
+            contiguous_strides(&remaining_dims)?
+        };
+        let canonical_dims = permutation
+            .iter()
+            .map(|&axis| remaining_dims[axis])
+            .collect::<Vec<_>>();
+        let canonical_strides = permutation
+            .iter()
+            .map(|&axis| strides[axis])
+            .collect::<Vec<_>>();
+        let nonempty_groups = group_lengths
+            .iter()
+            .copied()
+            .filter(|&length| length != 0)
+            .collect::<Vec<_>>();
+        if nonempty_groups.is_empty()
+            || crate::backend::plan_permute_compose_group_order(
+                &canonical_dims,
+                &canonical_strides,
+                &(0..canonical_dims.len()).collect::<Vec<_>>(),
+                &nonempty_groups,
+            )?
+            .is_some()
+        {
+            return Ok(0);
+        }
+        target_bytes()
+    };
     let copy_bytes = if plan.contracted.is_empty() || zero_core {
         0
     } else {
-        materialized_bytes(left_axes, left_dims, &plan.left_reductions)?
-            .checked_add(materialized_bytes(
-                right_axes,
-                right_dims,
-                &plan.right_reductions,
-            )?)
-            .ok_or_else(|| candle_core::Error::msg("binary graph copy estimate overflows u128"))?
+        materialized_bytes(
+            left_axes,
+            left_dims,
+            left_layout,
+            &plan.left_reductions,
+            &plan.left_permutation,
+            &[
+                plan.batch.len(),
+                plan.left_free.len(),
+                plan.contracted.len(),
+            ],
+        )?
+        .checked_add(materialized_bytes(
+            right_axes,
+            right_dims,
+            right_layout,
+            &plan.right_reductions,
+            &plan.right_permutation,
+            &[
+                plan.batch.len(),
+                plan.contracted.len(),
+                plan.right_free.len(),
+            ],
+        )?)
+        .ok_or_else(|| candle_core::Error::msg("binary graph copy estimate overflows u128"))?
     };
     let work = left_reduction_work
         .checked_add(right_reduction_work)

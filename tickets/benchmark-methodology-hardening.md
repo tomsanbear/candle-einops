@@ -1,7 +1,7 @@
 ---
 id: benchmark-methodology-hardening
 title: Harden benchmark inputs and timing methodology
-status: todo
+status: in-progress
 priority: p0
 dependencies: [performance-harness-foundation]
 related: [einsum-binary-fastpaths, einsum-broadcast-gemm-spike, homogeneous-reduction-fusion, product-reduction-strategy-spike, einsum-diagonal-lowering-spike]
@@ -9,6 +9,9 @@ scopes: [benchmarks]
 shared_scopes: [tests, ticketing]
 paths: []
 tags: [performance-0.2]
+claimed_from: todo
+assignee: python-oracle-design
+lease_expires_at: 1784146416
 ---
 ## Required outcome
 

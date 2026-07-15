@@ -35,7 +35,7 @@ def cargo(*arguments: str, backend: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("compile", "smoke", "run"))
+    parser.add_argument("command", choices=("compile", "smoke", "run", "probe"))
     parser.add_argument("--backend", choices=("cpu", "metal", "cuda"), default="cpu")
     parser.add_argument("--filter")
     parser.add_argument("--samples", type=int, default=25)
@@ -71,12 +71,16 @@ def main() -> int:
         )
         return 0
 
+    if args.command == "probe" and args.backend != "cpu":
+        raise SystemExit("diagonal index preparation probes are CPU-only")
+
     harness_arguments = ["--samples", str(args.samples)]
     if args.filter:
         harness_arguments.extend(["--filter", args.filter])
     if args.output:
         harness_arguments.extend(["--output", str(args.output)])
-    cargo("run", "--bin", "harness", backend=args.backend, *("--", *harness_arguments))
+    binary = "diagonal_probe" if args.command == "probe" else "harness"
+    cargo("run", "--bin", binary, backend=args.backend, *("--", *harness_arguments))
     return 0
 
 

@@ -5,8 +5,12 @@ use std::hint::black_box;
 use candle_core::{CpuStorage, Device, Result, Storage, Tensor};
 use candle_einops::einsum;
 use criterion::Criterion;
+use serde::Serialize;
 
-use crate::{Scenario, ScenarioId, WorkUnits};
+use crate::{
+    Clock, Estimate, Fingerprint, RESULT_SCHEMA_VERSION, Scenario, ScenarioId, Synchronizer,
+    WorkUnits, summarize,
+};
 
 #[derive(Debug)]
 pub struct CurrentLoweringProbe {
@@ -186,6 +190,11 @@ impl DiagonalScenario {
     }
 
     #[must_use]
+    pub fn index_elements(self) -> usize {
+        self.output_elements()
+    }
+
+    #[must_use]
     pub fn current_copy_elements(self) -> usize {
         match self.pattern {
             Pattern::Simple => 0,
@@ -220,6 +229,53 @@ impl DiagonalScenario {
             Pattern::Interleaved => vec![self.first_extent, self.second_extent],
         }
     }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct IndexPreparationRecord {
+    pub schema_version: u32,
+    pub scenario_id: ScenarioId,
+    pub sample_count: usize,
+    pub input_elements: usize,
+    pub current_copy_elements: usize,
+    pub output_elements: usize,
+    pub index_elements: usize,
+    pub index_preparation: Estimate,
+    pub fingerprint: Fingerprint,
+}
+
+pub fn measure_index_preparation(
+    scenario: DiagonalScenario,
+    device: &Device,
+    synchronizer: &dyn Synchronizer,
+    clock: &dyn Clock,
+    sample_count: usize,
+    fingerprint: Fingerprint,
+) -> Result<IndexPreparationRecord> {
+    if sample_count == 0 {
+        candle_core::bail!("index preparation sample count must be non-zero")
+    }
+    let mut samples = Vec::with_capacity(sample_count);
+    for _ in 0..sample_count {
+        synchronizer.synchronize()?;
+        let started = clock.now_ns();
+        let indices = scenario.build_indices(device)?;
+        black_box(&indices);
+        synchronizer.synchronize()?;
+        samples.push(clock.now_ns().saturating_sub(started));
+        black_box(indices);
+    }
+    Ok(IndexPreparationRecord {
+        schema_version: RESULT_SCHEMA_VERSION,
+        scenario_id: scenario.id(),
+        sample_count,
+        input_elements: scenario.input_elements(),
+        current_copy_elements: scenario.current_copy_elements(),
+        output_elements: scenario.output_elements(),
+        index_elements: scenario.index_elements(),
+        index_preparation: summarize(&samples),
+        fingerprint,
+    })
 }
 
 impl Scenario for DiagonalScenario {

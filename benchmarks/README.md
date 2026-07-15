@@ -10,12 +10,17 @@ Use the repository wrapper for every supported operation:
 python3 .github/scripts/run_benchmarks.py compile
 python3 .github/scripts/run_benchmarks.py smoke
 python3 .github/scripts/run_benchmarks.py run --filter rearrange/view-permute --output target/benchmarks/result.json
+python3 .github/scripts/run_benchmarks.py probe --filter spike/diagonal --output target/benchmarks/index-preparation.json
 ```
 
 The wrapper pins Rust 1.94, uses this crate's committed lockfile, and shares the
 root ignored `target/benchmarks` directory. `run` selects tracked scenarios by
-substring. The foundation has none, so `smoke` opts into the untracked plumbing
-fixture; downstream scenario tickets populate normal runs.
+substring. `smoke` additionally opts into the untracked plumbing fixture.
+
+`probe` is a CPU-only companion for the repeated-label diagonal spike. It
+isolates host index construction plus device upload and records the input,
+materialized-copy, output, and index element counts beside its timing. This
+separates reusable setup cost from the paired current/cached operation timing.
 
 Each scenario has an immutable id, deterministic setup, a library operation, a
 direct Candle reference, an untimed correctness check, and elements/bytes with

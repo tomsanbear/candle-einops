@@ -59,14 +59,7 @@ fn parse_equation(equation: &str) -> OracleResult<Equation<'_>> {
 
     let mut known = Vec::new();
     for axes in &inputs {
-        let mut local = Vec::new();
         for &label in axes {
-            if local.contains(&label) {
-                return Err(format!(
-                    "repeated input label `{label}` is reserved for diagonal support"
-                ));
-            }
-            local.push(label);
             if !known.contains(&label) {
                 known.push(label);
             }
@@ -134,7 +127,15 @@ fn evaluate(equation: &str, operands: &[HostTensor]) -> OracleResult<HostTensor>
                 labels.len()
             ));
         }
+        let mut local_dimensions = HashMap::new();
         for (&label, &extent) in labels.iter().zip(&operand.shape) {
+            if let Some(previous) = local_dimensions.insert(label, extent) {
+                if previous != extent {
+                    return Err(format!(
+                        "operand {operand_index} repeated label `{label}` has unequal extents {previous} and {extent}"
+                    ));
+                }
+            }
             if !input_order.contains(&label) {
                 input_order.push(label);
             }
@@ -556,4 +557,52 @@ fn ellipsis_oracle_covers_reduction_scalars_zero_dims_and_errors() {
     let left = tensor(&[2, 3, 1], &[1.; 6]);
     let right = tensor(&[4, 1], &[1.; 4]);
     assert!(evaluate_ellipsis(".. feature, .. feature -> .. feature", &[left, right]).is_err());
+}
+
+#[test]
+fn repeated_label_oracle_covers_diagonal_trace_multiplicity_and_binary_use() {
+    let matrix = tensor(&[3, 3], &(0..9).map(f64::from).collect::<Vec<_>>());
+    assert_eq!(
+        evaluate("i i -> i", std::slice::from_ref(&matrix)),
+        Ok(tensor(&[3], &[0., 4., 8.]))
+    );
+    assert_eq!(
+        evaluate("i i ->", std::slice::from_ref(&matrix)),
+        Ok(tensor(&[], &[12.]))
+    );
+
+    let cube = tensor(&[3, 3, 3], &(0..27).map(f64::from).collect::<Vec<_>>());
+    assert_eq!(
+        evaluate("i i i -> i", std::slice::from_ref(&cube)),
+        Ok(tensor(&[3], &[0., 13., 26.]))
+    );
+    let vector = tensor(&[3], &[1., 2., 3.]);
+    assert_eq!(
+        evaluate("i i, i -> i", &[matrix.clone(), vector.clone()]),
+        Ok(tensor(&[3], &[0., 8., 24.]))
+    );
+    assert_eq!(
+        evaluate("i i, i ->", &[matrix, vector]),
+        Ok(tensor(&[], &[32.]))
+    );
+}
+
+#[test]
+fn repeated_label_oracle_covers_ellipsis_zero_axes_and_unequal_errors() {
+    let batched = tensor(&[2, 3, 3], &(0..18).map(f64::from).collect::<Vec<_>>());
+    assert_eq!(
+        evaluate_ellipsis(".. i i -> .. i", std::slice::from_ref(&batched)),
+        Ok(tensor(&[2, 3], &[0., 4., 8., 9., 13., 17.]))
+    );
+    assert_eq!(
+        evaluate_ellipsis(".. i i -> ..", std::slice::from_ref(&batched)),
+        Ok(tensor(&[2], &[12., 39.]))
+    );
+    let empty = tensor(&[0, 0], &[]);
+    assert_eq!(
+        evaluate("i i -> i", std::slice::from_ref(&empty)),
+        Ok(tensor(&[0], &[]))
+    );
+    let unequal = tensor(&[2, 3], &[0., 1., 2., 3., 4., 5.]);
+    assert!(evaluate("i i -> i", std::slice::from_ref(&unequal)).is_err());
 }

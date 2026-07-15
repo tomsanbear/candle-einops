@@ -1,13 +1,16 @@
 ---
 id: advisory-performance-comparison-ci
 title: Add reproducible advisory performance comparisons
-status: todo
+status: in-progress
 priority: p2
 dependencies: [performance-harness-foundation, repeat-broadcast-view-lowering, homogeneous-reduction-fusion, einsum-binary-fastpaths]
 related: [gpu-performance-observability]
 scopes: [tooling]
 shared_scopes: [benchmarks, docs, ticketing]
 tags: [performance-0.2]
+claimed_from: todo
+assignee: ci-release
+lease_expires_at: 1784147144
 ---
 # Add reproducible advisory performance comparisons
 

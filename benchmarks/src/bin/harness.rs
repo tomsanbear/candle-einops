@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use candle_core::Device;
 use candle_einops_benchmarks::{
     BenchmarkRecord, DeviceSynchronizer, Fingerprint, MonotonicClock, PlumbingScenario, Scenario,
-    measure_pair, prepare,
+    measure_pair, prepare, product_scenarios,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -34,11 +34,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let plumbing = PlumbingScenario;
-    let scenarios: Vec<&dyn Scenario> = if include_plumbing {
-        vec![&plumbing]
-    } else {
-        Vec::new()
-    };
+    let products = product_scenarios();
+    let mut scenarios = products
+        .iter()
+        .map(|scenario| scenario as &dyn Scenario)
+        .collect::<Vec<_>>();
+    if include_plumbing {
+        scenarios.push(&plumbing);
+    }
     let selected = scenarios
         .into_iter()
         .filter(|scenario| {

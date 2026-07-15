@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 use candle_core::{Device, Result, Tensor};
+use candle_einops::einops;
 use criterion::Criterion;
 use serde::{Deserialize, Serialize};
 
@@ -461,6 +462,142 @@ impl Scenario for PlumbingScenario {
     }
 }
 
+/// Portable spike candidate which reduces one axis with a balanced tree of
+/// Candle multiplication operations. This is benchmark-only and deliberately
+/// does not claim to be a native reduction.
+pub fn balanced_product_axis(input: &Tensor, axis: usize) -> Result<Tensor> {
+    let axis_len = input.dim(axis)?;
+    if axis_len == 0 {
+        let mut shape = input.dims().to_vec();
+        shape.remove(axis);
+        return Tensor::ones(shape, input.dtype(), input.device());
+    }
+    let mut factors = (0..axis_len)
+        .map(|index| input.narrow(axis, index, 1)?.squeeze(axis))
+        .collect::<Result<Vec<_>>>()?;
+    while factors.len() > 1 {
+        let mut products = Vec::with_capacity(factors.len().div_ceil(2));
+        let mut factor_iter = factors.into_iter();
+        while let Some(left) = factor_iter.next() {
+            products.push(match factor_iter.next() {
+                Some(right) => left.mul(&right)?,
+                None => left,
+            });
+        }
+        factors = products;
+    }
+    Ok(factors.pop().expect("non-empty product factors"))
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ProductScenario {
+    id: ScenarioId,
+    factors: usize,
+    two_axes: bool,
+}
+
+impl ProductScenario {
+    const fn one_axis(id: &'static str, factors: usize) -> Self {
+        Self {
+            id: ScenarioId::new(id),
+            factors,
+            two_axes: false,
+        }
+    }
+
+    const fn two_axes(id: &'static str, factors: usize) -> Self {
+        Self {
+            id: ScenarioId::new(id),
+            factors,
+            two_axes: true,
+        }
+    }
+}
+
+pub fn product_scenarios() -> [ProductScenario; 4] {
+    [
+        ProductScenario::one_axis("product/sequential-vs-balanced/k-8", 8),
+        ProductScenario::one_axis("product/sequential-vs-balanced/k-64", 64),
+        ProductScenario::one_axis("product/sequential-vs-balanced/k-512", 512),
+        ProductScenario::two_axes("product/sequential-vs-balanced/two-axis-8x8", 64),
+    ]
+}
+
+impl ProductScenario {
+    fn candidate(&self, input: &Tensor) -> Result<Tensor> {
+        if self.two_axes {
+            balanced_product_axis(&input.reshape((256, self.factors))?, 1)
+        } else {
+            balanced_product_axis(input, 1)
+        }
+    }
+}
+
+impl Scenario for ProductScenario {
+    fn id(&self) -> ScenarioId {
+        self.id
+    }
+
+    fn tracked(&self) -> bool {
+        true
+    }
+
+    fn work(&self) -> WorkUnits {
+        let elements = 256 * self.factors;
+        WorkUnits::new(
+            elements as u64,
+            (elements * std::mem::size_of::<f32>()) as u64,
+            Some((256 * self.factors.saturating_sub(1)) as u64),
+        )
+    }
+
+    fn setup(&self, device: &Device) -> Result<Vec<Tensor>> {
+        let values = (0..256 * self.factors)
+            .map(|index| 1. + ((index % 7) as f32 - 3.) * 0.0001)
+            .collect::<Vec<_>>();
+        let input = if self.two_axes {
+            Tensor::from_vec(values, (256, 8, 8), device)?
+        } else {
+            Tensor::from_vec(values, (256, self.factors), device)?
+        };
+        Ok(vec![input])
+    }
+
+    fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {
+        if self.two_axes {
+            einops!("rows prod(left right) -> rows", &inputs[0])
+        } else {
+            einops!("rows prod(columns) -> rows", &inputs[0])
+        }
+    }
+
+    fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
+        self.candidate(&inputs[0])
+    }
+
+    fn check(&self, library: &Tensor, reference: &Tensor) -> Result<()> {
+        if library.dims() != reference.dims() {
+            candle_core::bail!(
+                "product outputs have different shapes: {:?} and {:?}",
+                library.dims(),
+                reference.dims()
+            )
+        }
+        let library = library.flatten_all()?.to_vec1::<f32>()?;
+        let reference = reference.flatten_all()?.to_vec1::<f32>()?;
+        let tolerance = f32::EPSILON * self.factors as f32 * 8.;
+        for (index, (&library, &reference)) in library.iter().zip(&reference).enumerate() {
+            let allowed = tolerance * reference.abs().max(1.);
+            if (library - reference).abs() > allowed {
+                candle_core::bail!(
+                    "product output {index} differs: {library} vs {reference}, tolerance {allowed}"
+                )
+            }
+        }
+        Ok(())
+    }
+}
+
 pub fn criterion_plumbing_benchmark(criterion: &mut Criterion) {
     let device = Device::Cpu;
     let scenario = PlumbingScenario;
@@ -473,4 +610,20 @@ pub fn criterion_plumbing_benchmark(criterion: &mut Criterion) {
                 .expect("plumbing sample must succeed")
         });
     });
+}
+
+pub fn criterion_product_benchmarks(criterion: &mut Criterion) {
+    let device = Device::Cpu;
+    for scenario in product_scenarios() {
+        let prepared = prepare(&scenario, &device).expect("product setup must succeed");
+        criterion.bench_function(scenario.id().as_str(), |bencher| {
+            bencher.iter(|| {
+                black_box(
+                    scenario
+                        .run_library(&prepared.inputs)
+                        .expect("product sample must succeed"),
+                )
+            });
+        });
+    }
 }

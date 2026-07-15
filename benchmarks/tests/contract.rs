@@ -6,6 +6,7 @@ use candle_einops_benchmarks::{
     Backend, BenchmarkRecord, Clock, Fingerprint, Operation, SamplingOrderPolicy, Scenario,
     ScenarioId, Synchronizer, WorkUnits, binary_fast_path_scenarios, measure_pair, prepare,
     reduction_fusion_scenarios, repeat_broadcast_scenarios, run_synchronized_operation,
+    zero_k_scenarios,
 };
 
 #[derive(Clone)]
@@ -155,6 +156,37 @@ fn binary_fast_path_scenarios_are_tracked_unique_and_correct() -> Result<()> {
     assert_eq!(ids.len(), 8);
     for scenario in &scenarios {
         assert!(scenario.tracked());
+        prepare(scenario, &Device::Cpu)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn zero_k_scenarios_are_exactly_three_output_sizes_without_gemm() -> Result<()> {
+    let scenarios = zero_k_scenarios();
+    assert_eq!(
+        scenarios
+            .iter()
+            .map(|scenario| scenario.id().as_str())
+            .collect::<Vec<_>>(),
+        [
+            "einsum/zero-k/output-1x1",
+            "einsum/zero-k/output-64x64",
+            "einsum/zero-k/output-512x512",
+        ]
+    );
+    assert_eq!(
+        scenarios
+            .iter()
+            .map(|scenario| scenario.structural_metrics().output_elements)
+            .collect::<Vec<_>>(),
+        [1, 4_096, 262_144]
+    );
+    for scenario in &scenarios {
+        assert!(scenario.tracked());
+        let metrics = scenario.structural_metrics();
+        assert_eq!(metrics.hypothetical_contraction_flops, 0);
+        assert_eq!(metrics.gemm_submissions, 0);
         prepare(scenario, &Device::Cpu)?;
     }
     Ok(())

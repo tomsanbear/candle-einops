@@ -7,7 +7,7 @@ use std::process::Command;
 use std::sync::OnceLock;
 use std::time::Instant;
 
-use candle_core::{Device, Result, Tensor};
+use candle_core::{DType, Device, Result, Tensor};
 use candle_einops::{einops, einsum};
 use criterion::Criterion;
 use serde::{Deserialize, Serialize};
@@ -788,6 +788,113 @@ impl Scenario for BinaryFastPathScenario {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ZeroKStructuralMetrics {
+    pub output_elements: u64,
+    pub hypothetical_contraction_flops: u64,
+    pub gemm_submissions: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ZeroKScenario {
+    id: &'static str,
+    rows: usize,
+    columns: usize,
+}
+
+#[must_use]
+pub fn zero_k_scenarios() -> [ZeroKScenario; 3] {
+    [
+        ZeroKScenario {
+            id: "einsum/zero-k/output-1x1",
+            rows: 1,
+            columns: 1,
+        },
+        ZeroKScenario {
+            id: "einsum/zero-k/output-64x64",
+            rows: 64,
+            columns: 64,
+        },
+        ZeroKScenario {
+            id: "einsum/zero-k/output-512x512",
+            rows: 512,
+            columns: 512,
+        },
+    ]
+}
+
+impl ZeroKScenario {
+    #[must_use]
+    pub fn structural_metrics(&self) -> ZeroKStructuralMetrics {
+        ZeroKStructuralMetrics {
+            output_elements: u64::try_from(self.rows * self.columns)
+                .expect("bounded zero-K output elements"),
+            hypothetical_contraction_flops: 0,
+            gemm_submissions: 0,
+        }
+    }
+
+    fn graph_preserving_reference(&self, left: &Tensor, right: &Tensor) -> Result<Tensor> {
+        let anchor = |operand: &Tensor| operand.unsqueeze(0)?.narrow(0, 0, 0)?.sum_all();
+        anchor(left)?
+            .add(&anchor(right)?)?
+            .broadcast_as((self.rows, self.columns))
+    }
+}
+
+impl Scenario for ZeroKScenario {
+    fn id(&self) -> ScenarioId {
+        ScenarioId::new(self.id)
+    }
+
+    fn tracked(&self) -> bool {
+        true
+    }
+
+    fn work(&self) -> WorkUnits {
+        let output_elements = self.structural_metrics().output_elements;
+        WorkUnits::new(
+            output_elements,
+            output_elements * size_of::<f32>() as u64,
+            Some(0),
+        )
+    }
+
+    fn setup(&self, device: &Device) -> Result<Vec<Tensor>> {
+        Ok(vec![
+            Tensor::zeros((self.rows, 0), DType::F32, device)?,
+            Tensor::zeros((0, self.columns), DType::F32, device)?,
+        ])
+    }
+
+    fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {
+        einsum!(
+            "row inner, inner column -> row column",
+            &inputs[0],
+            &inputs[1]
+        )
+    }
+
+    fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
+        self.graph_preserving_reference(&inputs[0], &inputs[1])
+    }
+
+    fn check(&self, library: &Tensor, reference: &Tensor) -> Result<()> {
+        if library.dims() != [self.rows, self.columns] || library.dims() != reference.dims() {
+            candle_core::bail!("zero-K outputs have different shapes")
+        }
+        if library
+            .flatten_all()?
+            .to_vec1::<f32>()?
+            .iter()
+            .any(|&value| value != 0.)
+        {
+            candle_core::bail!("zero-K library output is not exactly zero")
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy)]
 enum ReductionLayout {
     ContiguousTrailing,
@@ -1141,6 +1248,32 @@ pub fn criterion_binary_fast_paths(criterion: &mut Criterion) {
                 operation,
                 &synchronizer,
                 "binary fast-path sample must succeed",
+            );
+        }
+    }
+}
+
+pub fn criterion_zero_k(criterion: &mut Criterion) {
+    let device = Device::Cpu;
+    let synchronizer = DeviceSynchronizer(&device);
+    for scenario in zero_k_scenarios() {
+        let prepared = prepare(&scenario, &device).expect("zero-K setup must succeed");
+        for operation in [Operation::Library, Operation::Reference] {
+            let name = format!(
+                "{}/{}",
+                scenario.id().as_str(),
+                match operation {
+                    Operation::Library => "library",
+                    Operation::Reference => "reference",
+                }
+            );
+            criterion_operation(
+                criterion,
+                &name,
+                &prepared,
+                operation,
+                &synchronizer,
+                "zero-K sample must succeed",
             );
         }
     }

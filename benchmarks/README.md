@@ -8,6 +8,8 @@ paired sum/mean scenarios across contiguous trailing and strided non-adjacent
 multi-axis layouts. Repeat broadcast lowering owns one large single-axis family
 and one two-axis family, each split into view-construction and
 materializing-consumption modes.
+The zero-length contraction family measures graph-preserving zero construction
+at three output sizes and structurally records zero GEMM submissions.
 
 Use the repository wrapper for every supported operation:
 

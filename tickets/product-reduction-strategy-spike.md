@@ -1,13 +1,16 @@
 ---
 id: product-reduction-strategy-spike
 title: Select a portable product reduction strategy
-status: todo
+status: in-progress
 priority: p1
 dependencies: [performance-harness-foundation]
 related: [homogeneous-reduction-fusion, native-product-reduction]
 scopes: []
 shared_scopes: [tests, benchmarks, docs, ticketing]
 tags: [performance-0.2]
+claimed_from: todo
+assignee: python-oracle-design
+lease_expires_at: 1784143073
 ---
 # Select a portable product reduction strategy
 

@@ -33,11 +33,24 @@ optional FLOPs. A sample synchronizes immediately before the clock starts and
 after its black-boxed output is produced. The output remains alive through the
 second synchronization.
 
+Paired JSON samples alternate deterministically between library-first and
+reference-first execution. The additive `sampling_order_policy` field records
+that policy without changing the v1 schema or the environment fingerprint;
+legacy v1 records without the field deserialize as fixed library-first order.
+Criterion invokes the operations directly under its own timer and synchronizes
+after every output, rather than nesting the JSON harness clock.
+
 The versioned JSON record is the automation contract. It contains paired
 library/reference medians, a deterministic 95% bootstrap interval, their ratio,
 work units, and a git/Rust/Candle/platform/device fingerprint. Criterion output
 is useful for local inspection but is secondary and must not be parsed by
 automation or committed.
+
+The binary outer-product and GEMM scenarios changed from square, constant
+operands to deterministic nonuniform operands with non-square M/K/N dimensions.
+Their stable ids preserve registration continuity, but results produced before
+this methodology change are different workloads and must not be compared with
+new medians unless the recorded work units also match.
 
 CPU is the default backend. `--backend metal` and `--backend cuda` establish
 mutually exclusive feature builds for later device-specific instrumentation;

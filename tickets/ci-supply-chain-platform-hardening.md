@@ -7,7 +7,7 @@ dependencies: []
 related: []
 scopes: [tooling]
 shared_scopes: [ticketing]
-paths: []
+paths: [deny.toml]
 tags: [hardening-0.2]
 claimed_from: todo
 assignee: codex-ci-hardening

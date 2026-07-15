@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use candle_core::Device;
 use candle_einops_benchmarks::{
     BenchmarkRecord, DeviceSynchronizer, Fingerprint, MonotonicClock, PlumbingScenario, Scenario,
-    binary_fast_path_scenarios, broadcast_gemm_spike, diagonal_spike, measure_pair, prepare,
-    product_scenarios, reduction_fusion_scenarios, repeat_broadcast_scenarios,
-    nary_cost_model_spike,
+    binary_fast_path_scenarios, broadcast_gemm_spike, diagonal_spike, measure_pair,
+    nary_cost_model_spike, prepare, product_scenarios, reduction_fusion_scenarios,
+    repeat_broadcast_scenarios,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {

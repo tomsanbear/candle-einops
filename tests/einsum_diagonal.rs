@@ -2,7 +2,7 @@ use candle_core::{DType, Device, Result, Tensor, Var};
 use candle_einops::einsum;
 
 fn flat_f32(tensor: &Tensor) -> Result<Vec<f32>> {
-    tensor.flatten_all()?.to_vec1::<f32>()
+    tensor.to_dtype(DType::F32)?.flatten_all()?.to_vec1::<f32>()
 }
 
 fn assert_close(actual: &Tensor, expected: &Tensor, context: &str) -> Result<()> {
@@ -174,14 +174,15 @@ fn selected_diagonal_preserves_f32_f64_u32_and_noncontiguous_values() -> Result<
         .reshape((3, 2, 3, 2))?
         .permute((1, 0, 3, 2))?;
     assert!(!noncontiguous.is_contiguous());
-    let values = noncontiguous.to_vec4::<f32>()?;
-    let expected = (0..2)
-        .map(|i| (0..3).map(|j| values[i][j][i][j]).collect::<Vec<_>>())
-        .collect::<Vec<_>>();
-    assert_eq!(
-        einsum!("i j i j -> i j", &noncontiguous)?.to_vec2::<f32>()?,
-        expected
-    );
+    let expected = noncontiguous
+        .flatten_all()?
+        .index_select(&Tensor::new(&[0u32, 7, 14, 21, 28, 35], &Device::Cpu)?, 0)?
+        .reshape((2, 3))?;
+    assert_close(
+        &einsum!("i j i j -> i j", &noncontiguous)?,
+        &expected,
+        "noncontiguous fallback",
+    )?;
     Ok(())
 }
 
@@ -199,8 +200,12 @@ fn interleaved_f32_gradient_matches_one_flat_selection() -> Result<()> {
     let macro_gradients = macro_output.sum_all()?.backward()?;
     let direct_gradients = direct_output.sum_all()?.backward()?;
     assert_close(
-        macro_gradients.get(macro_input.as_tensor()).expect("macro gradient"),
-        direct_gradients.get(direct_input.as_tensor()).expect("direct gradient"),
+        macro_gradients
+            .get(macro_input.as_tensor())
+            .expect("macro gradient"),
+        direct_gradients
+            .get(direct_input.as_tensor())
+            .expect("direct gradient"),
         "interleaved f32 gradient",
     )
 }

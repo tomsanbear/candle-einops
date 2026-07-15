@@ -960,11 +960,293 @@ fn normalize_ellipsis_operand(
     Ok(normalized)
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum RepeatedAxisLoweringPlan {
+    Sequential,
+    OriginalFlatGather {
+        output_shape: Vec<usize>,
+        offsets: Vec<u32>,
+    },
+}
+
+fn validate_repeated_extents(
+    dims: &[usize],
+    axes: &[ExpandedAxis<'_>],
+    operand_index: usize,
+) -> Result<()> {
+    for (position, axis) in axes.iter().copied().enumerate() {
+        let Some(previous) = axes[..position]
+            .iter()
+            .position(|candidate| *candidate == axis)
+        else {
+            continue;
+        };
+        let extent = dims[previous];
+        let other = dims[position];
+        if other != extent {
+            candle_core::bail!(
+                "einsum operand {operand_index} repeated label `{}` has unequal extents {extent} and {other}",
+                axis.display_name()
+            )
+        }
+    }
+    Ok(())
+}
+
+fn checked_contiguous_strides(dims: &[usize]) -> Option<Vec<usize>> {
+    let mut product = 1_usize;
+    let mut strides = vec![0; dims.len()];
+    for (position, &extent) in dims.iter().enumerate().rev() {
+        strides[position] = product;
+        product = product.checked_mul(extent)?;
+    }
+    Some(strides)
+}
+
+fn simulated_contiguous(dims: &[usize], strides: &[usize]) -> Option<bool> {
+    let mut expected = 1_usize;
+    for (&extent, &stride) in dims.iter().zip(strides).rev() {
+        if extent > 1 && stride != expected {
+            return Some(false);
+        }
+        expected = expected.checked_mul(extent)?;
+    }
+    Some(true)
+}
+
+fn sequential_diagonal_would_materialize(
+    original_dims: &[usize],
+    original_axes: &[ExpandedAxis<'_>],
+) -> Option<bool> {
+    let mut dims = original_dims.to_vec();
+    let mut axes = original_axes.to_vec();
+    let mut strides = checked_contiguous_strides(&dims)?;
+    loop {
+        let Some(repeated_axis) = axes
+            .iter()
+            .copied()
+            .find(|axis| axes.iter().filter(|candidate| **candidate == *axis).count() > 1)
+        else {
+            return Some(false);
+        };
+        let positions = axes
+            .iter()
+            .enumerate()
+            .filter_map(|(position, axis)| (*axis == repeated_axis).then_some(position))
+            .collect::<Vec<_>>();
+        let other_positions = (0..axes.len())
+            .filter(|position| !positions.contains(position))
+            .collect::<Vec<_>>();
+        let permutation = positions
+            .iter()
+            .chain(&other_positions)
+            .copied()
+            .collect::<Vec<_>>();
+        let adjacent_dims = permutation
+            .iter()
+            .map(|&position| dims[position])
+            .collect::<Vec<_>>();
+        let adjacent_strides = permutation
+            .iter()
+            .map(|&position| strides[position])
+            .collect::<Vec<_>>();
+        if !simulated_contiguous(&adjacent_dims, &adjacent_strides)? {
+            return Some(true);
+        }
+
+        let selected_dims = std::iter::once(dims[positions[0]])
+            .chain(other_positions.iter().map(|&position| dims[position]))
+            .collect::<Vec<_>>();
+        let selected_strides = checked_contiguous_strides(&selected_dims)?;
+        let result_order = std::iter::once(positions[0])
+            .chain(other_positions.iter().copied())
+            .collect::<Vec<_>>();
+        let desired_order = (0..axes.len())
+            .filter(|position| !positions[1..].contains(position))
+            .collect::<Vec<_>>();
+        let restoration = desired_order
+            .iter()
+            .map(|position| {
+                result_order
+                    .iter()
+                    .position(|candidate| candidate == position)
+            })
+            .collect::<Option<Vec<_>>>()?;
+        dims = restoration
+            .iter()
+            .map(|&position| selected_dims[position])
+            .collect();
+        strides = restoration
+            .iter()
+            .map(|&position| selected_strides[position])
+            .collect();
+        axes = desired_order
+            .iter()
+            .map(|&position| axes[position])
+            .collect();
+    }
+}
+
+fn original_flat_gather_offsets(
+    dims: &[usize],
+    axes: &[ExpandedAxis<'_>],
+    operand_index: usize,
+) -> Result<Option<(Vec<usize>, Vec<u32>)>> {
+    let mut unique_axes = Vec::new();
+    let mut unique_positions = Vec::with_capacity(axes.len());
+    for axis in axes.iter().copied() {
+        let position =
+            if let Some(position) = unique_axes.iter().position(|candidate| *candidate == axis) {
+                position
+            } else {
+                unique_axes.push(axis);
+                unique_axes.len() - 1
+            };
+        unique_positions.push(position);
+    }
+    let output_shape = unique_axes
+        .iter()
+        .map(|axis| {
+            let position = axes
+                .iter()
+                .position(|candidate| candidate == axis)
+                .expect("a unique diagonal axis came from the original axes");
+            dims[position]
+        })
+        .collect::<Vec<_>>();
+
+    if output_shape.contains(&0) {
+        return Ok(Some((output_shape, Vec::new())));
+    }
+    let Some(original_strides) = checked_contiguous_strides(dims) else {
+        return Ok(None);
+    };
+    let Some(output_elements) = output_shape
+        .iter()
+        .try_fold(1_usize, |product, &extent| product.checked_mul(extent))
+    else {
+        return Ok(None);
+    };
+    let mut maximum_offset = 0_usize;
+    for (position, &stride) in original_strides.iter().enumerate() {
+        let coordinate = output_shape[unique_positions[position]] - 1;
+        let Some(contribution) = coordinate.checked_mul(stride) else {
+            return Ok(None);
+        };
+        let Some(next) = maximum_offset.checked_add(contribution) else {
+            return Ok(None);
+        };
+        maximum_offset = next;
+    }
+    if u32::try_from(maximum_offset).is_err() {
+        return Ok(None);
+    }
+
+    let Some(output_strides) = checked_contiguous_strides(&output_shape) else {
+        return Ok(None);
+    };
+    let mut offsets = Vec::new();
+    offsets
+        .try_reserve_exact(output_elements)
+        .map_err(|error| {
+            candle_core::Error::msg(format!(
+                "einsum operand {operand_index} diagonal offset allocation failed: {error}"
+            ))
+        })?;
+    for output_index in 0..output_elements {
+        let mut offset = 0_usize;
+        for (position, &stride) in original_strides.iter().enumerate() {
+            let unique_position = unique_positions[position];
+            let coordinate =
+                (output_index / output_strides[unique_position]) % output_shape[unique_position];
+            offset += coordinate * stride;
+        }
+        offsets.push(u32::try_from(offset).expect("maximum checked original-layout offset"));
+    }
+    Ok(Some((output_shape, offsets)))
+}
+
+fn plan_repeated_axis_lowering(
+    dims: &[usize],
+    axes: &[ExpandedAxis<'_>],
+    original_contiguous: bool,
+    operand_index: usize,
+) -> Result<RepeatedAxisLoweringPlan> {
+    validate_repeated_extents(dims, axes, operand_index)?;
+    if !original_contiguous || sequential_diagonal_would_materialize(dims, axes) != Some(true) {
+        return Ok(RepeatedAxisLoweringPlan::Sequential);
+    }
+    let Some((output_shape, offsets)) = original_flat_gather_offsets(dims, axes, operand_index)?
+    else {
+        return Ok(RepeatedAxisLoweringPlan::Sequential);
+    };
+    Ok(RepeatedAxisLoweringPlan::OriginalFlatGather {
+        output_shape,
+        offsets,
+    })
+}
+
+fn original_flat_diagonal_gather(
+    operand: &Tensor,
+    output_shape: &[usize],
+    offsets: Vec<u32>,
+    operand_index: usize,
+) -> Result<Tensor> {
+    let index_count = offsets.len();
+    let indices = Tensor::from_vec(offsets, index_count, operand.device()).map_err(|error| {
+        error.context(format!(
+            "einsum operand {operand_index} device-local combined diagonal indices"
+        ))
+    })?;
+    operand
+        .flatten_all()
+        .map_err(|error| {
+            error.context(format!(
+                "einsum operand {operand_index} original-layout diagonal flatten"
+            ))
+        })?
+        .index_select(&indices, 0)
+        .map_err(|error| {
+            error.context(format!(
+                "einsum operand {operand_index} differentiable combined diagonal selection"
+            ))
+        })?
+        .reshape(output_shape)
+        .map_err(|error| {
+            error.context(format!(
+                "einsum operand {operand_index} combined diagonal reshape"
+            ))
+        })
+}
+
 fn normalize_repeated_axes<'a>(
     mut operand: Tensor,
     mut axes: Vec<ExpandedAxis<'a>>,
     operand_index: usize,
 ) -> Result<(Tensor, Vec<ExpandedAxis<'a>>)> {
+    match plan_repeated_axis_lowering(
+        operand.dims(),
+        &axes,
+        operand.is_contiguous(),
+        operand_index,
+    )? {
+        RepeatedAxisLoweringPlan::Sequential => {}
+        RepeatedAxisLoweringPlan::OriginalFlatGather {
+            output_shape,
+            offsets,
+        } => {
+            let mut unique_axes = Vec::new();
+            for axis in axes {
+                if !unique_axes.contains(&axis) {
+                    unique_axes.push(axis);
+                }
+            }
+            return Ok((
+                original_flat_diagonal_gather(&operand, &output_shape, offsets, operand_index)?,
+                unique_axes,
+            ));
+        }
+    }
     loop {
         let Some(repeated_axis) = axes
             .iter()
@@ -1448,12 +1730,7 @@ mod tests {
             RepeatedAxisLoweringPlan::Sequential
         );
         assert_eq!(
-            plan_repeated_axis_lowering(
-                &[2, 3, 3],
-                &named_axes(&["batch", "i", "i"]),
-                true,
-                0,
-            )?,
+            plan_repeated_axis_lowering(&[2, 3, 3], &named_axes(&["batch", "i", "i"]), true, 0,)?,
             RepeatedAxisLoweringPlan::OriginalFlatGather {
                 output_shape: vec![2, 3],
                 offsets: vec![0, 4, 8, 9, 13, 17],
@@ -1495,12 +1772,7 @@ mod tests {
             RepeatedAxisLoweringPlan::Sequential
         );
         assert_eq!(
-            plan_repeated_axis_lowering(
-                &[2, 0, 0],
-                &named_axes(&["batch", "i", "i"]),
-                true,
-                0,
-            )?,
+            plan_repeated_axis_lowering(&[2, 0, 0], &named_axes(&["batch", "i", "i"]), true, 0,)?,
             RepeatedAxisLoweringPlan::OriginalFlatGather {
                 output_shape: vec![2, 0],
                 offsets: vec![],

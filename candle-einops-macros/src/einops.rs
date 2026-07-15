@@ -24,6 +24,7 @@ pub fn einops(input: proc_macro2::TokenStream) -> syn::Result<proc_macro2::Token
 #[derive(Debug)]
 struct ParsedExpression {
     runtime_crate: syn::Path,
+    candle_crate: syn::Path,
     tensor: syn::Ident,
     tensor_expression: proc_macro2::TokenStream,
     expression: Expression,
@@ -59,8 +60,23 @@ impl syn::parse::Parse for ParsedExpression {
             }
         };
 
+        let candle_crate = match crate_name("candle-core") {
+            Ok(FoundCrate::Itself) => syn::parse_quote!(crate),
+            Ok(FoundCrate::Name(name)) => {
+                let ident = Ident::new(&name, Span::call_site());
+                syn::parse_quote!(::#ident)
+            }
+            Err(error) => {
+                return Err(syn::Error::new(
+                    Span::call_site(),
+                    format!("could not resolve the `candle-core` crate: {error}"),
+                ));
+            }
+        };
+
         Ok(Self {
             runtime_crate,
+            candle_crate,
             tensor: tensor_ident,
             tensor_expression: tensor_tokens,
             expression,
@@ -110,6 +126,7 @@ impl quote::ToTokens for ParsedExpression {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let ParsedExpression {
             runtime_crate,
+            candle_crate,
             tensor: tensor_ident,
             tensor_expression: tensor_tokens,
             expression,
@@ -134,6 +151,7 @@ impl quote::ToTokens for ParsedExpression {
         let decomposition_tokens = if *requires_decomposition {
             to_tokens_decomposition(
                 runtime_crate,
+                candle_crate,
                 decomposition,
                 tensor_ident,
                 &ignored_len_ident,

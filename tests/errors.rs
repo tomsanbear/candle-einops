@@ -7,7 +7,7 @@ fn macro_propagates_invalid_runtime_shape() -> Result<()> {
 
     let error = einops!("(rows:2 columns) -> rows columns", &input).unwrap_err();
 
-    assert!(error.to_string().to_lowercase().contains("shape"));
+    assert!(error.to_string().contains("not divisible"));
     Ok(())
 }
 

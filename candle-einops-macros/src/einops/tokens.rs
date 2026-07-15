@@ -343,6 +343,7 @@ pub fn to_tokens_reduce(
 
 pub fn to_tokens_decomposition(
     runtime_crate: &syn::Path,
+    candle_crate: &syn::Path,
     left_expression: &[Decomposition],
     tensor_ident: &syn::Ident,
     ignored_len_ident: &syn::Ident,
@@ -370,7 +371,11 @@ pub fn to_tokens_decomposition(
                     index: Index::Known(i),
                     shape_calc,
                     ..
-                } => known_indices.push(quote!(#shape_ident[#i] / #shape_calc)),
+                } => known_indices.push(checked_derived_dimension(
+                    candle_crate,
+                    quote!(#shape_ident[#i]),
+                    shape_calc,
+                )),
                 Decomposition::Named {
                     index: Index::Range(i),
                     ..
@@ -397,8 +402,11 @@ pub fn to_tokens_decomposition(
                     index: Index::Unknown(i),
                     shape_calc,
                     ..
-                } => unknown_indices
-                    .push(quote!(#shape_ident[#i + #ignored_len_ident - 1] / #shape_calc)),
+                } => unknown_indices.push(checked_derived_dimension(
+                    candle_crate,
+                    quote!(#shape_ident[#i + #ignored_len_ident - 1]),
+                    shape_calc,
+                )),
                 _ => unreachable!(),
             }
             (known_indices, ignored_indices, unknown_indices)
@@ -443,4 +451,28 @@ pub fn to_tokens_decomposition(
     quote!(
         let #tensor_ident = #runtime_crate::Backend::reshape(#tensor_ident, &#decomposition_shape)?;
     )
+}
+
+fn checked_derived_dimension(
+    candle_crate: &syn::Path,
+    dimension: proc_macro2::TokenStream,
+    shape_calc: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    quote!({
+        let dimension = #dimension;
+        let factor = (#shape_calc).ok_or_else(|| {
+            #candle_crate::Error::msg("decomposition factor product overflows usize")
+        })?;
+        if factor == 0 {
+            return ::core::result::Result::Err(#candle_crate::Error::msg(
+                "decomposition factor must be non-zero",
+            ));
+        }
+        if dimension % factor != 0 {
+            return ::core::result::Result::Err(#candle_crate::Error::msg(::std::format!(
+                "dimension size {dimension} is not divisible by decomposition factor {factor}",
+            )));
+        }
+        dimension / factor
+    })
 }

@@ -216,7 +216,7 @@ fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec
         // We continue till we parse everything inside the parenthesis
         .take_while(|_| !content.is_empty())
         .try_fold(
-            (None, None, None, 1, Vec::new()),
+            (None, None, None, 1usize, Vec::new()),
             |(
                 mut derived_name,
                 mut derived_index,
@@ -230,7 +230,15 @@ fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec
                 let mut update_values = |name, shape, operation| {
                     if let Some(size) = shape {
                         match size {
-                            Shape::Lit(lit_size) => running_mul *= lit_size,
+                            Shape::Lit(lit_size) => {
+                                running_mul =
+                                    running_mul.checked_mul(lit_size).ok_or_else(|| {
+                                        syn::Error::new(
+                                            span,
+                                            "Decomposition size product overflows usize",
+                                        )
+                                    })?;
+                            }
                             Shape::Expr(ref expression) => shape_expr.push(expression.clone()),
                         }
                         content_expression.push(Decomposition::Named {
@@ -309,9 +317,15 @@ fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec
                 name: derived_name,
                 index,
                 operation: derived_operation,
-                shape_calc: quote::quote!(
-                    (#running_mul * [#(#shape_expr),*].iter().product::<usize>())
-                ),
+                shape_calc: if shape_expr.is_empty() {
+                    quote::quote!(::core::option::Option::Some(#running_mul))
+                } else {
+                    quote::quote!(
+                        [#(#shape_expr),*]
+                            .into_iter()
+                            .try_fold(#running_mul, |product, factor| product.checked_mul(factor))
+                    )
+                },
             },
         );
     }

@@ -83,7 +83,6 @@ pub enum ClassifierError {
     InvalidGroups,
     ElementCountOverflow,
     StrideOverflow,
-    TooManyGroups,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -138,7 +137,10 @@ pub fn classify_public_fusion(
         });
     }
     if desired_groups.len() > 8 {
-        return Err(ClassifierError::TooManyGroups);
+        return Ok(PublicFusionPlan::Fallback {
+            expanded_permutation,
+            output_dims,
+        });
     }
 
     for group_order in permutations(desired_groups.len()) {

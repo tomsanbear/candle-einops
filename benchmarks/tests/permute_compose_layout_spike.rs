@@ -170,6 +170,14 @@ fn public_plan_reorders_only_whole_groups_and_has_exact_fallbacks() {
         classify_public_fusion(&input, &[vec![0, 2], vec![1]]).unwrap(),
         PublicFusionPlan::Fallback { .. }
     ));
+    assert!(matches!(
+        classify_public_fusion(
+            &layout(&[2; 9], &[256, 128, 64, 32, 16, 8, 4, 2, 1], 0),
+            &(0..9).rev().map(|axis| vec![axis]).collect::<Vec<_>>(),
+        )
+        .unwrap(),
+        PublicFusionPlan::Fallback { .. }
+    ));
 }
 
 #[test]

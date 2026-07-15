@@ -184,6 +184,7 @@ pub struct PlannerProbeRecord {
     pub exact_members: Vec<(u64, u64)>,
     pub greedy_planner: Estimate,
     pub exact_planner: Estimate,
+    pub selected_planner_p95_ns: u64,
     pub fingerprint: Fingerprint,
 }
 
@@ -199,6 +200,7 @@ pub fn measure_fixture_planners(
     let exact = plan_bounded_exact(&fixture.model, CostWeights::CPU)?;
     let mut greedy_samples = Vec::with_capacity(samples);
     let mut exact_samples = Vec::with_capacity(samples);
+    let mut selected_samples = Vec::with_capacity(samples);
     for _ in 0..samples {
         let started = Instant::now();
         black_box(plan_output_greedy(&fixture.model, CostWeights::CPU)?);
@@ -206,7 +208,15 @@ pub fn measure_fixture_planners(
         let started = Instant::now();
         black_box(plan_bounded_exact(&fixture.model, CostWeights::CPU)?);
         exact_samples.push(u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX));
+        let started = Instant::now();
+        let greedy = plan_output_greedy(&fixture.model, CostWeights::CPU)?;
+        if (3..=4).contains(&fixture.model.operands.len()) && greedy.metrics.flops >= 100_000 {
+            black_box(plan_bounded_exact(&fixture.model, CostWeights::CPU)?);
+        }
+        selected_samples.push(u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX));
     }
+    selected_samples.sort_unstable();
+    let p95_index = (samples - 1) * 95 / 100;
     Ok(PlannerProbeRecord {
         schema_version: RESULT_SCHEMA_VERSION,
         scenario_id: fixture.id,
@@ -217,6 +227,7 @@ pub fn measure_fixture_planners(
         exact_members: exact.steps.iter().map(|step| step.members).collect(),
         greedy_planner: summarize(&greedy_samples),
         exact_planner: summarize(&exact_samples),
+        selected_planner_p95_ns: selected_samples[p95_index],
         fingerprint,
     })
 }
@@ -776,11 +787,19 @@ impl Scenario for NetworkScenario {
     }
 
     fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        execute_plan(inputs, &self.fixture, &self.current_plan)
+        let tensors = inputs.iter().collect::<Vec<_>>();
+        let input_axes = self
+            .fixture
+            .model
+            .operands
+            .iter()
+            .map(|operand| operand.axes.iter().map(|axis| axis.label).collect())
+            .collect::<Vec<Vec<_>>>();
+        execute_spec(&tensors, &input_axes, &self.fixture.model.final_output)
     }
 
     fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        execute_plan(inputs, &self.fixture, &self.selected_plan)
+        execute_plan(inputs, &self.fixture, &self.current_plan)
     }
 
     fn check(&self, library: &Tensor, reference: &Tensor) -> Result<()> {
@@ -809,19 +828,19 @@ pub fn criterion_benchmarks(criterion: &mut Criterion) {
         let id = scenario.id().as_str();
         criterion_operation(
             criterion,
-            &format!("{id}/current"),
+            &format!("{id}/selected"),
             &prepared,
             Operation::Library,
             &synchronizer,
-            "current n-ary sample must succeed",
+            "selected n-ary sample must succeed",
         );
         criterion_operation(
             criterion,
-            &format!("{id}/selected"),
+            &format!("{id}/current"),
             &prepared,
             Operation::Reference,
             &synchronizer,
-            "selected n-ary sample must succeed",
+            "current n-ary sample must succeed",
         );
     }
 }

@@ -186,3 +186,33 @@ fn nary_operand_expressions_are_evaluated_once_from_left_to_right() -> Result<()
     assert_eq!(output.to_scalar::<f32>()?, 210.);
     Ok(())
 }
+
+#[test]
+fn planner_boundaries_preserve_six_operand_and_non_f32_execution() -> Result<()> {
+    let scalars = [2f32, 3., 5., 7., 11., 13.]
+        .into_iter()
+        .map(|value| Tensor::new(value, &Device::Cpu))
+        .collect::<Result<Vec<_>>>()?;
+    assert_eq!(
+        einsum!(
+            ", , , , , ->",
+            &scalars[0],
+            &scalars[1],
+            &scalars[2],
+            &scalars[3],
+            &scalars[4],
+            &scalars[5]
+        )?
+        .to_scalar::<f32>()?,
+        30_030.
+    );
+
+    let left = Tensor::new(&[1f64, 2., 3.], &Device::Cpu)?;
+    let middle = Tensor::new(&[4f64, 5., 6.], &Device::Cpu)?;
+    let right = Tensor::new(&[7f64, 8., 9.], &Device::Cpu)?;
+    assert_eq!(
+        einsum!("i, i, i -> i", &left, &middle, &right)?.to_vec1::<f64>()?,
+        [28., 80., 162.]
+    );
+    Ok(())
+}

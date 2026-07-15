@@ -84,12 +84,11 @@ use 501 synchronized samples.
 | broadcast-heavy | 2,946.500 us (2,941.292–2,951.541) | 2,606.750 us (2,601.667–2,612.875) | 1.1303x |
 | layout-hostile | 223.250 us (222.958–224.083) | 223.083 us (222.625–223.792) | 1.0007x |
 
-The selected-path benchmark precomputes both prescribed plans and excludes
-planner-decision timing from both sides; planner cost is reported separately
-above. A production exact selection first obtains the greedy estimate used by
-the threshold and then pays the exact-planner cost. This isolates execution-path
-value and makes that combined runtime overhead an explicit implementation
-concern.
+The selected-path benchmark executes the production selector and executor,
+while the current side executes the frozen greedy plan. Planner probes also
+report the combined selector p95: the greedy threshold pass plus exact search
+when selected. Copy-byte and submission values remain conservative model
+estimates; they are not claims about backend-observed copies or submissions.
 
 ## Backend and numerical policy
 
@@ -97,8 +96,10 @@ The threshold and weights are CPU calibration data, not universal constants.
 CUDA and Metal must retain current greedy until synchronized device
 measurements establish their own crossover: host planning is proportionally
 more expensive for fast device contractions, and copy/submission costs differ
-by backend. The exact-planner time budget for the frozen arity-four CPU cases is
-175 us; exceeding it falls back to current greedy.
+by backend. The combined selector p95 budget for the frozen arity-four CPU
+cases is 175 us. It is a benchmark acceptance boundary, never a wall-clock
+cutoff in production; deterministic structural eligibility alone selects the
+runtime path.
 
 Floating-point reassociation need not be bitwise identical. Forward values and
 input gradients must match the current association within the benchmark's

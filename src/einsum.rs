@@ -528,6 +528,7 @@ pub fn execute_nary_einsum(operands: &[&Tensor], spec: EllipsisEinsumSpec<'_>) -
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NaryExecutionStrategy {
     Selected,
+    #[cfg(test)]
     StreamingGreedy,
 }
 

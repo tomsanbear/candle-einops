@@ -47,7 +47,9 @@ pub use backend::Backend;
 /// This module is not a stable public API.
 #[doc(hidden)]
 pub mod __private {
-    pub use crate::einsum::{UnaryEinsumSpec, execute_unary_einsum};
+    pub use crate::einsum::{
+        BinaryEinsumSpec, UnaryEinsumSpec, execute_binary_einsum, execute_unary_einsum,
+    };
 }
 
 /// Specifies the operation used to reduce an axis

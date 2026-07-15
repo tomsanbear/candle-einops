@@ -1,11 +1,11 @@
 ---
 id: macro-axis-invariant-hardening
 title: Enforce remaining axis and reduction invariants
-status: todo
+status: done
 priority: p1
 dependencies: [grouped-rhs-error-propagation]
 related: []
-scopes: [macros]
+scopes: [macros, tests]
 shared_scopes: [ticketing]
 paths: []
 tags: [hardening-0.2]

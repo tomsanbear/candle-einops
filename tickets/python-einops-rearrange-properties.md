@@ -1,7 +1,7 @@
 ---
 id: python-einops-rearrange-properties
 title: Add randomized Python parity for rearrange
-status: todo
+status: done
 priority: p0
 dependencies: [rust-python-parity-bridge]
 related: []

@@ -1,16 +1,13 @@
 ---
 id: einsum-nary-layout-aware-planner
 title: Implement the selected layout-aware n-ary planner
-status: in-progress
+status: done
 priority: p1
 dependencies: [einsum-nary-cost-model-spike]
 related: [einsum-nary-cost-model-spike]
 scopes: [runtime, tooling]
 shared_scopes: [tests, benchmarks, ticketing]
 tags: [performance-0.2, conditional]
-claimed_from: todo
-assignee: behavior-tests
-lease_expires_at: 1784151236
 ---
 # Implement the selected layout-aware n-ary planner
 

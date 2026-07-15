@@ -534,6 +534,7 @@ pub fn parse_composition_permute_repeat(
                     } else {
                         repeat.push((index_fn(i), shape));
                     }
+                    composition.push(Composition::Individual(index_fn(i)));
                 } else {
                     return Err(
                         input.error("Unrecognized character on the right side of the expression")

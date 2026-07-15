@@ -1,7 +1,7 @@
 ---
 id: rust-python-parity-bridge
 title: Build the reusable Rust to Python parity bridge
-status: todo
+status: done
 priority: p0
 dependencies: [python-einops-oracle-harness]
 related: []

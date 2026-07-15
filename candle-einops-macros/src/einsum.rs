@@ -518,6 +518,38 @@ mod tests {
     }
 
     #[test]
+    fn classifies_binary_fast_paths_and_fallback_boundaries() {
+        let lowering = |equation: &str| {
+            let literal = syn::LitStr::new(equation, Span::call_site());
+            Equation::parse(&literal)
+                .expect("valid binary equation")
+                .binary_lowering()
+        };
+
+        assert_eq!(
+            lowering("feature, feature -> feature"),
+            BinaryLowering::Multiply
+        );
+        assert_eq!(lowering("row, column -> row column"), BinaryLowering::Multiply);
+        assert_eq!(
+            lowering("row inner, inner column -> row column"),
+            BinaryLowering::CanonicalMatmul
+        );
+        assert_eq!(
+            lowering("batch row inner, batch inner column -> batch row column"),
+            BinaryLowering::CanonicalMatmul
+        );
+        assert_eq!(
+            lowering("a b inner, inner c -> a b c"),
+            BinaryLowering::General
+        );
+        assert_eq!(
+            lowering("private row inner, inner column -> row column"),
+            BinaryLowering::General
+        );
+    }
+
+    #[test]
     fn records_ellipsis_positions_without_changing_named_axes() {
         let literal: syn::LitStr =
             syn::parse_quote!("row .. inner, .. inner column -> row .. column");

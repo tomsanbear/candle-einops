@@ -88,6 +88,27 @@ fn integer_permutations_are_supported_and_contractions_are_rejected() -> Result<
 }
 
 #[test]
+fn non_contraction_multiplication_follows_candle_dtype_support() -> Result<()> {
+    for dtype in [DType::U8, DType::U32, DType::I64, DType::BF16] {
+        let left = Tensor::new(&[2_i64, 3], &Device::Cpu)?.to_dtype(dtype)?;
+        let right = Tensor::new(&[5_i64, 7], &Device::Cpu)?.to_dtype(dtype)?;
+        let scalar = Tensor::new(4_i64, &Device::Cpu)?.to_dtype(dtype)?;
+
+        let elementwise = einsum!("feature, feature -> feature", &left, &right)?;
+        let outer = einsum!("row, column -> row column", &left, &right)?;
+        let scaled = einsum!(", feature -> feature", &scalar, &left)?;
+
+        assert_eq!(elementwise.dtype(), dtype);
+        assert_eq!(outer.dtype(), dtype);
+        assert_eq!(scaled.dtype(), dtype);
+        assert_eq!(flat_f64(&elementwise)?, [10., 21.]);
+        assert_eq!(flat_f64(&outer)?, [10., 14., 15., 21.]);
+        assert_eq!(flat_f64(&scaled)?, [8., 12.]);
+    }
+    Ok(())
+}
+
+#[test]
 fn nan_and_infinity_propagate_without_sanitizing_or_casting() -> Result<()> {
     let finite = Tensor::new(&[1_f64, 2.], &Device::Cpu)?;
     let positive = Tensor::new(&[f64::INFINITY, 3.], &Device::Cpu)?;

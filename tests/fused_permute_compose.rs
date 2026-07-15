@@ -372,6 +372,16 @@ fn tensor_selected_views_preserve_values_storage_offsets_and_gradients() -> Resu
     assert_eq!(nhwc.stride(), [105, 1, 35]);
     assert_eq!(storage_address(&nhwc), storage_address(&nchw));
 
+    let ellipsis = Tensor::arange(0f32, 120., &device)?.reshape(&[2, 3, 4, 5])?;
+    let ellipsis_old = ellipsis.permute((1, 2, 3, 0))?.reshape(&[3, 20, 2])?;
+    let ellipsis_selected = einops!("a b .. -> b (..) a", &ellipsis)?;
+    assert_values_equal(&ellipsis_selected, &ellipsis_old)?;
+    assert_eq!(
+        storage_address(&ellipsis_selected),
+        storage_address(&ellipsis)
+    );
+    assert_ne!(storage_address(&ellipsis_old), storage_address(&ellipsis));
+
     let selected_input = Var::from_vec(
         (0..48).map(|value| value as f32 / 7.).collect(),
         (2, 2, 3, 4),

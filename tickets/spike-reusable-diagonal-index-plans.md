@@ -1,7 +1,7 @@
 ---
 id: spike-reusable-diagonal-index-plans
 title: Spike reusable diagonal index plans
-status: todo
+status: in-progress
 priority: p2
 dependencies: [einsum-diagonal-fastpath]
 related: [einsum-diagonal-lowering-spike]
@@ -9,6 +9,9 @@ scopes: [benchmarks]
 shared_scopes: [runtime, tests, ticketing]
 paths: []
 tags: [kernel-enqueue-hardening, spike]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784159260
 ---
 # Spike reusable diagonal index plans
 

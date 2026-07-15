@@ -1,12 +1,24 @@
 use candle_core::{Device, Result, Tensor, Var};
 use candle_einops::einsum;
 use candle_einops_benchmarks::diagonal_spike::{
-    build_interleaved_indices, build_repeated_indices, cached_flat_gather, cpu_storage_id,
-    probe_current_interleaved_lowering,
+    break_even_reuses, build_interleaved_indices, build_repeated_indices, cached_flat_gather,
+    cpu_storage_id, probe_current_interleaved_lowering,
 };
 
 fn flat(tensor: &Tensor) -> Result<Vec<f32>> {
     tensor.flatten_all()?.to_vec1::<f32>()
+}
+
+#[test]
+fn measured_break_even_reuse_counts_are_ceilings_and_reject_no_win() {
+    assert_eq!(break_even_reuses(1_250, 4_875, 2_416), Some(1));
+    assert_eq!(break_even_reuses(3_542, 6_500, 3_542), Some(2));
+    assert_eq!(break_even_reuses(12_708, 16_458, 9_958), Some(2));
+    assert_eq!(break_even_reuses(1_375, 7_292, 2_125), Some(1));
+    assert_eq!(break_even_reuses(2_667, 13_542, 3_667), Some(1));
+    assert_eq!(break_even_reuses(7_875, 38_500, 9_959), Some(1));
+    assert_eq!(break_even_reuses(10, 5, 5), None);
+    assert_eq!(break_even_reuses(10, 4, 5), None);
 }
 
 #[test]

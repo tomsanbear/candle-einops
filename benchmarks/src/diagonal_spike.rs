@@ -156,6 +156,15 @@ pub fn cached_flat_gather(
         .reshape(output_shape)
 }
 
+#[must_use]
+pub fn break_even_reuses(
+    _preparation_ns: u64,
+    _current_per_call_ns: u64,
+    _prepared_per_call_ns: u64,
+) -> Option<u64> {
+    Some(0)
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Pattern {
     Simple,

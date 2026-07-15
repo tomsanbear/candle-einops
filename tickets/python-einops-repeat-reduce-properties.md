@@ -1,16 +1,13 @@
 ---
 id: python-einops-repeat-reduce-properties
 title: Add randomized Python parity for repeat and reduce
-status: in-progress
+status: done
 priority: p0
 dependencies: [rust-python-parity-bridge]
 related: []
 scopes: []
 shared_scopes: [parity, ticketing]
 tags: [python-einops-parity]
-claimed_from: todo
-assignee: python-oracle-design
-lease_expires_at: 1784138163
 ---
 # Add randomized Python parity for repeat and reduce
 

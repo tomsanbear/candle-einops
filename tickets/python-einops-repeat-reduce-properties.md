@@ -3,10 +3,10 @@ id: python-einops-repeat-reduce-properties
 title: Add randomized Python parity for repeat and reduce
 status: todo
 priority: p0
-dependencies: [python-einops-oracle-harness]
+dependencies: [rust-python-parity-bridge]
 related: []
-scopes: [tests]
-shared_scopes: [ticketing]
+scopes: []
+shared_scopes: [parity, ticketing]
 tags: [python-einops-parity]
 ---
 # Add randomized Python parity for repeat and reduce
@@ -28,4 +28,3 @@ counterexample/seed, then correct production or test bridge behavior until green
 - Zero-length behavior is tested only where both public contracts define it;
   differences are documented rather than silently normalized.
 - Repeat covers new axes, grouped axes, ellipsis, and runtime axis lengths.
-

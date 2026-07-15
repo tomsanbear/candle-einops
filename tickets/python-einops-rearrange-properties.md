@@ -3,10 +3,10 @@ id: python-einops-rearrange-properties
 title: Add randomized Python parity for rearrange
 status: todo
 priority: p0
-dependencies: [python-einops-oracle-harness]
+dependencies: [rust-python-parity-bridge]
 related: []
-scopes: [tests]
-shared_scopes: [ticketing]
+scopes: []
+shared_scopes: [parity, ticketing]
 tags: [python-einops-parity]
 ---
 # Add randomized Python parity for rearrange
@@ -27,4 +27,3 @@ unsupported case is red, preserve the reproducing seed, then make the suite gree
 - Every macro pattern is a compile-time literal and is identified in failures.
 - Random cases are bounded, deterministic in CI, and replayable locally.
 - Shape and exact finite-value parity covers zero, singleton, contiguous, and non-contiguous cases.
-

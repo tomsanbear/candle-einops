@@ -74,10 +74,10 @@ use 501 synchronized samples.
 
 | Fixture | Current wall time (95% CI) | Selected wall time (95% CI) | Current / selected |
 | --- | ---: | ---: | ---: |
-| linear chain | 133.334 us (132.958–133.750) | 133.542 us (133.125–133.791) | 0.9984x |
-| balanced tree | 548.500 us (547.708–550.041) | 215.417 us (214.959–216.292) | 2.5462x |
-| broadcast-heavy | 2,946.500 us (2,941.292–2,951.541) | 2,606.750 us (2,601.667–2,612.875) | 1.1303x |
-| layout-hostile | 223.250 us (222.958–224.083) | 223.083 us (222.625–223.792) | 1.0007x |
+| linear chain | 166.666 us (166.416–167.000) | 241.167 us (240.750–241.666) | 0.6911x |
+| balanced tree | 586.625 us (584.750–587.708) | 288.958 us (288.250–289.875) | 2.0301x |
+| broadcast-heavy | 3,012.750 us (3,008.792–3,017.375) | 2,740.750 us (2,737.459–2,746.208) | 1.0992x |
+| layout-hostile | 168.625 us (168.333–168.833) | 245.417 us (245.167–245.791) | 0.6871x |
 
 The selected-path benchmark executes the production selector and executor,
 while the current side executes the frozen greedy plan. Planner probes call a

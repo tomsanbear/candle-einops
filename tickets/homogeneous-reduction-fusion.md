@@ -1,13 +1,16 @@
 ---
 id: homogeneous-reduction-fusion
 title: Fuse homogeneous sum and mean reduction runs
-status: todo
+status: in-progress
 priority: p0
 dependencies: [performance-harness-foundation]
 related: [product-reduction-strategy-spike]
 scopes: [runtime]
 shared_scopes: [tests, benchmarks, ticketing]
 tags: [performance-0.2]
+claimed_from: todo
+assignee: behavior-tests
+lease_expires_at: 1784147867
 ---
 # Fuse homogeneous sum and mean reduction runs
 

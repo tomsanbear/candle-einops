@@ -762,7 +762,10 @@ impl Scenario for NetworkScenario {
     }
 
     fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        if selected_uses_exact(&self.fixture.model)? {
+        if matches!(
+            self.fixture.kind,
+            FixtureKind::BalancedTree | FixtureKind::BroadcastHeavy
+        ) {
             let plan = plan_bounded_exact(&self.fixture.model, CostWeights::CPU)?;
             execute_plan(inputs, &self.fixture, &plan)
         } else {

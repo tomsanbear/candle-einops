@@ -2,16 +2,8 @@ mod einops;
 
 /// Macro to perform tensor transformations using simple expressions
 ///
-/// # Example
-///
-/// ```ignore
-/// use candle_core::{Result, Tensor};
-/// use candle_einops::einops;
-///
-/// fn channels_first(input: &Tensor) -> Result<Tensor> {
-///     einops!("height width channels -> channels height width", input)
-/// }
-/// ```
+/// This macro is re-exported as `candle_einops::einops`; the runtime crate's
+/// documentation contains a complete runnable example.
 #[proc_macro]
 pub fn einops(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     einops::einops(input.into())

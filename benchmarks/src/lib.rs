@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 pub mod broadcast_gemm_spike;
 pub mod diagonal_spike;
 pub mod nary_cost_model_spike;
+pub mod permute_compose_layout_spike;
 
 #[cfg(all(feature = "cuda", feature = "metal"))]
 compile_error!("benchmark backends `cuda` and `metal` are mutually exclusive");

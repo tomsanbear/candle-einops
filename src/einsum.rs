@@ -953,4 +953,43 @@ mod tests {
         assert_eq!(checked_diagonal_layout(3, 3, 0).unwrap(), (27, 13));
         assert_eq!(checked_diagonal_layout(0, 3, 0).unwrap(), (0, 1));
     }
+
+    #[test]
+    fn nary_planner_avoids_a_pathological_left_to_right_intermediate() -> Result<()> {
+        let operands = vec![
+            PlannedOperand::new_for_test((100, 2), &["a", "b"])?,
+            PlannedOperand::new_for_test((2, 100), &["b", "c"])?,
+            PlannedOperand::new_for_test((100, 2), &["c", "d"])?,
+        ];
+        let output = [ExpandedAxis::Named("a"), ExpandedAxis::Named("d")];
+        let left_to_right = estimate_pair(&operands, 0, 1, &output)?;
+        let selected = select_nary_pair(&operands, &output)?;
+        assert_eq!((selected.left, selected.right), (1, 2));
+        assert_eq!(left_to_right.output_elements, 10_000);
+        assert_eq!(selected.output_elements, 4);
+        Ok(())
+    }
+
+    #[test]
+    fn nary_planner_breaks_equal_cost_ties_by_operand_order() -> Result<()> {
+        let operands = vec![
+            PlannedOperand::new_for_test((2, 2), &["a", "b"])?,
+            PlannedOperand::new_for_test((2, 2), &["b", "c"])?,
+            PlannedOperand::new_for_test((2, 2), &["c", "d"])?,
+        ];
+        let output = [ExpandedAxis::Named("a"), ExpandedAxis::Named("d")];
+        let selected = select_nary_pair(&operands, &output)?;
+        assert_eq!((selected.left, selected.right), (0, 1));
+        assert_eq!((selected.output_elements, selected.flops), (4, 8));
+        Ok(())
+    }
+
+    #[test]
+    fn nary_cost_estimate_overflow_is_checked() {
+        assert!(checked_nary_product(&[usize::MAX, usize::MAX, usize::MAX]).is_err());
+        assert_eq!(
+            checked_nary_product(&[usize::MAX, usize::MAX, 0]).unwrap(),
+            0
+        );
+    }
 }

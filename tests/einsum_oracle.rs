@@ -606,3 +606,69 @@ fn repeated_label_oracle_covers_ellipsis_zero_axes_and_unequal_errors() {
     let unequal = tensor(&[2, 3], &[0., 1., 2., 3., 4., 5.]);
     assert!(evaluate("i i -> i", std::slice::from_ref(&unequal)).is_err());
 }
+
+#[test]
+fn nary_oracle_covers_chains_live_labels_and_safe_reductions() {
+    let a = tensor(&[2, 3], &[1., 2., 3., 4., 5., 6.]);
+    let b = tensor(&[3, 2], &[1., 2., 3., 4., 5., 6.]);
+    let c = tensor(&[2, 2], &[1., 2., 3., 4.]);
+    let d = tensor(&[2, 1], &[2., 3.]);
+    assert_eq!(
+        evaluate("a b, b c, c d -> a d", &[a.clone(), b.clone(), c.clone()]),
+        Ok(tensor(&[2, 2], &[106., 156., 241., 354.]))
+    );
+    assert_eq!(
+        evaluate("a b, b c, c d, d e -> a e", &[a, b, c, d]),
+        Ok(tensor(&[2, 1], &[680., 1544.]))
+    );
+
+    let left = tensor(&[2, 3], &[1.; 6]);
+    let middle = tensor(&[3, 4], &[1.; 12]);
+    let right = tensor(&[3, 5], &[1.; 15]);
+    assert_eq!(
+        evaluate(
+            "a shared, shared c, shared d -> a c d",
+            &[left, middle.clone(), right]
+        ),
+        Ok(tensor(&[2, 4, 5], &[3.; 40]))
+    );
+    let private = tensor(&[2, 2, 3], &[1.; 12]);
+    let tail = tensor(&[4, 5], &[1.; 20]);
+    assert_eq!(
+        evaluate("private a b, b c, c d -> a d", &[private, middle, tail]),
+        Ok(tensor(&[2, 5], &[24.; 10]))
+    );
+}
+
+#[test]
+fn nary_oracle_covers_ellipsis_diagonals_scalars_and_zero_dimensions() {
+    let diagonal = tensor(&[2, 3, 3], &(0..18).map(f64::from).collect::<Vec<_>>());
+    let matrix = tensor(&[1, 3, 2], &[1.; 6]);
+    let vector = tensor(&[2], &[1.; 2]);
+    assert_eq!(
+        evaluate_ellipsis(".. i i, .. i j, j -> ..", &[diagonal, matrix, vector]),
+        Ok(tensor(&[2], &[24., 78.]))
+    );
+    assert_eq!(
+        evaluate(
+            ", feature, feature ->",
+            &[
+                tensor(&[], &[3.]),
+                tensor(&[3], &[1., 2., 3.]),
+                tensor(&[3], &[4., 5., 6.]),
+            ]
+        ),
+        Ok(tensor(&[], &[96.]))
+    );
+    assert_eq!(
+        evaluate(
+            "a b, b c, c -> a",
+            &[
+                tensor(&[2, 0], &[]),
+                tensor(&[0, 3], &[]),
+                tensor(&[3], &[1.; 3])
+            ]
+        ),
+        Ok(tensor(&[2], &[0., 0.]))
+    );
+}

@@ -244,6 +244,9 @@ impl OracleClient {
             "--project",
             "parity",
             "--frozen",
+            "--no-sync",
+            "--managed-python",
+            "--no-build",
             "python",
             "parity/oracle.py",
         ]);
@@ -492,7 +495,7 @@ pub fn persist_replay(path: impl AsRef<Path>, request: &OracleRequest) -> Bridge
         BridgeError::context(&format!("write replay file `{}`", path.display()), error)
     })?;
     eprintln!(
-        "parity replay saved to {}; run cargo run --manifest-path parity/runner/Cargo.toml -- --replay-file {}",
+        "parity replay saved to {}; run python3 .github/scripts/test_python_parity.py --replay-file {}",
         path.display(),
         path.display()
     );

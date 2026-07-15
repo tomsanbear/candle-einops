@@ -8,7 +8,13 @@ description = "Compile-time einops and einsum tensor operations for Candle"
 license = "MIT OR Apache-2.0"
 keywords = ["tensor", "candle", "einops", "machine-learning", "ai"]
 categories = ["algorithms", "science", "mathematics"]
-exclude = [".github/", ".ticketsplease/", "tickets/", "ticketsplease.toml"]
+exclude = [
+    ".github/",
+    ".ticketsplease/",
+    "parity/",
+    "tickets/",
+    "ticketsplease.toml",
+]
 repository = "https://github.com/tomsanbear/candle-einops"
 
 [dependencies]

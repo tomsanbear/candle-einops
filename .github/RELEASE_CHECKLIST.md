@@ -11,8 +11,10 @@ Run these commands from a clean checkout before publishing:
 - `python3 .github/scripts/validate_ci_policy.py`
 - `python3 .github/scripts/validate_artifact_policy.py`
 - `python3 .github/scripts/validate_einsum_release.py`
+- `python3 .github/scripts/validate_python_parity_policy.py`
 - `actionlint .github/workflows/ci.yml`
 - `cargo deny --all-features check`
+- `python3 .github/scripts/test_python_parity.py`
 - `python3 .github/scripts/test_published_artifacts.py`
 - `cargo +stable test -p candle-einops --lib --test behavior --test errors --test einsum_semantic_matrix`
 

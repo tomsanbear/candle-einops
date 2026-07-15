@@ -25,6 +25,9 @@ All notable changes to this project are documented here. The format follows
   and error contracts, with rename-safe and keyword-alias expansion coverage.
 - Added bounded deterministic parser/IR never-unwind properties and compile-fail
   diagnostics for malformed einsum equations.
+- Added a reproducible Python einops parity lane for rearrange, repeat, and
+  reduction semantics, with deterministic minimized replay and published-crate
+  isolation.
 - Added product reductions with `prod(...)`.
 - Added compile-time diagnostics for malformed expressions and invalid axis
   relationships.
@@ -75,8 +78,10 @@ RUSTDOCFLAGS="-D warnings" cargo +stable test --doc --workspace --all-features
 python3 .github/scripts/validate_ci_policy.py
 python3 .github/scripts/validate_artifact_policy.py
 python3 .github/scripts/validate_einsum_release.py
+python3 .github/scripts/validate_python_parity_policy.py
 actionlint .github/workflows/ci.yml
 cargo deny --all-features check
+python3 .github/scripts/test_python_parity.py
 python3 .github/scripts/test_published_artifacts.py
 ```
 

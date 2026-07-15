@@ -146,4 +146,18 @@ reduction. Repeated labels within an input extract a diagonal before the
 remaining contraction, including batched diagonals and traces. Multi-operand
 equations use deterministic, shape-aware greedy contraction planning.
 
+## Development parity
+
+Contributors can run the locked Python einops semantic oracle and bounded Rust
+property suite with one command:
+
+```console
+python3 .github/scripts/test_python_parity.py
+```
+
+This check is mandatory in CI but opt-in locally; ordinary Rust tests do not
+install or invoke Python. See [parity/README.md](parity/README.md) for supported
+operations, syntax translations, tolerances, deterministic replay, and the
+deliberate dependency-update process.
+
 Licensed under either Apache-2.0 or MIT, at your option.

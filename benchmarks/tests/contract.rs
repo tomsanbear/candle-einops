@@ -2,8 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use candle_core::{Device, Result, Tensor};
 use candle_einops_benchmarks::{
-    Backend, BenchmarkRecord, Clock, Fingerprint, Operation, Scenario, ScenarioId,
-    Synchronizer, WorkUnits, measure_pair, prepare,
+    Backend, BenchmarkRecord, Clock, Fingerprint, Operation, Scenario, ScenarioId, Synchronizer,
+    WorkUnits, measure_pair, prepare,
 };
 
 #[derive(Clone)]
@@ -108,10 +108,36 @@ fn setup_and_correctness_are_outside_the_timed_sample() -> Result<()> {
     assert_eq!(
         events.take(),
         [
-            "sync", "clock", "library", "sync", "clock", "sync", "clock", "reference",
-            "sync", "clock", "sync", "clock", "library", "sync", "clock", "sync", "clock",
-            "reference", "sync", "clock", "sync", "clock", "library", "sync", "clock", "sync",
-            "clock", "reference", "sync", "clock",
+            "sync",
+            "clock",
+            "library",
+            "sync",
+            "clock",
+            "sync",
+            "clock",
+            "reference",
+            "sync",
+            "clock",
+            "sync",
+            "clock",
+            "library",
+            "sync",
+            "clock",
+            "sync",
+            "clock",
+            "reference",
+            "sync",
+            "clock",
+            "sync",
+            "clock",
+            "library",
+            "sync",
+            "clock",
+            "sync",
+            "clock",
+            "reference",
+            "sync",
+            "clock",
         ]
     );
     assert_eq!(result.order, [Operation::Library, Operation::Reference]);

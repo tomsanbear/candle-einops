@@ -28,6 +28,8 @@ All notable changes to this project are documented here. The format follows
 - Added a reproducible Python einops parity lane for rearrange, repeat, and
   reduction semantics, with deterministic minimized replay and published-crate
   isolation.
+- Added an isolated, locked performance-measurement harness with paired direct
+  Candle references and a versioned machine-readable result contract.
 - Added product reductions with `prod(...)`.
 - Added compile-time diagnostics for malformed expressions and invalid axis
   relationships.

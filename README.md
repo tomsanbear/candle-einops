@@ -160,4 +160,19 @@ install or invoke Python. See [parity/README.md](parity/README.md) for supported
 operations, syntax translations, tolerances, deterministic replay, and the
 deliberate dependency-update process.
 
+## Development performance measurements
+
+The locked, unpublished performance harness is isolated from the normal Cargo
+workspace and published crates. Compile it or run its correctness-only plumbing
+smoke with the supported wrapper:
+
+```console
+python3 .github/scripts/run_benchmarks.py compile
+python3 .github/scripts/run_benchmarks.py smoke
+```
+
+Timing results are advisory rather than a CI gate. See
+[benchmarks/README.md](benchmarks/README.md) for filtering, JSON metadata, and
+measurement boundaries.
+
 Licensed under either Apache-2.0 or MIT, at your option.

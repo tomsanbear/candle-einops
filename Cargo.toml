@@ -11,6 +11,7 @@ categories = ["algorithms", "science", "mathematics"]
 exclude = [
     ".github/",
     ".ticketsplease/",
+    "benchmarks/",
     "parity/",
     "tickets/",
     "ticketsplease.toml",
@@ -23,6 +24,7 @@ candle-einops-macros = { path = "candle-einops-macros", version = "=0.2.0" }
 
 [workspace]
 members = ["candle-einops-macros"]
+exclude = ["benchmarks"]
 resolver = "3"
 
 [package.metadata.docs.rs]

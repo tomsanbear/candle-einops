@@ -13,6 +13,7 @@ RUNTIME_MANIFEST = ROOT / "Cargo.toml"
 MACRO_MANIFEST = ROOT / "candle-einops-macros/Cargo.toml"
 FIXTURE_HARNESS = ROOT / "candle-einops-macros/tests/dependency_names.rs"
 FORBIDDEN_ARTIFACT_PATHS = (
+    "benchmarks/",
     "parity/",
     ".venv/",
 )
@@ -54,6 +55,10 @@ def main() -> int:
 
     if "parity/" not in runtime_manifest["package"].get("exclude", []):
         failures.append("runtime package must explicitly exclude parity/")
+    if "benchmarks/" not in runtime_manifest["package"].get("exclude", []):
+        failures.append("runtime package must explicitly exclude benchmarks/")
+    if "benchmarks" not in runtime_manifest["workspace"].get("exclude", []):
+        failures.append("root workspace must explicitly exclude benchmarks")
 
     packages = {
         package: package_paths(package, failures)
@@ -68,7 +73,9 @@ def main() -> int:
             or Path(path).suffix == ".py"
         )
         if leaked:
-            failures.append(f"{package} artifact contains Python/parity material: {leaked}")
+            failures.append(
+                f"{package} artifact contains benchmark or Python/parity material: {leaked}"
+            )
 
     packaged = packages["candle-einops-macros"]
     if packaged:

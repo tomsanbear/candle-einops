@@ -11,6 +11,8 @@ use candle_einops::einops;
 use criterion::Criterion;
 use serde::{Deserialize, Serialize};
 
+pub mod diagonal_spike;
+
 #[cfg(all(feature = "cuda", feature = "metal"))]
 compile_error!("benchmark backends `cuda` and `metal` are mutually exclusive");
 

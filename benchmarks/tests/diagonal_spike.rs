@@ -52,8 +52,7 @@ fn cached_flat_gather_matches_simple_triple_and_interleaved_diagonals() -> Resul
 
     let interleaved = Tensor::arange(0f32, 144f32, &Device::Cpu)?.reshape((4, 3, 4, 3))?;
     let interleaved_indices = build_interleaved_indices(4, 3, &Device::Cpu)?;
-    let interleaved_candidate =
-        cached_flat_gather(&interleaved, &interleaved_indices, &[4, 3])?;
+    let interleaved_candidate = cached_flat_gather(&interleaved, &interleaved_indices, &[4, 3])?;
     assert_eq!(
         flat(&interleaved_candidate)?,
         flat(&einsum!("i j i j -> i j", &interleaved)?)?
@@ -72,7 +71,11 @@ fn cached_flat_gather_is_gradient_capable_and_has_an_explicit_fallback_boundary(
     let candidate_gradients = candidate.sum_all()?.backward()?;
     let current_gradients = current.sum_all()?.backward()?;
     assert_eq!(
-        flat(candidate_gradients.get(candidate_input.as_tensor()).unwrap())?,
+        flat(
+            candidate_gradients
+                .get(candidate_input.as_tensor())
+                .unwrap()
+        )?,
         flat(current_gradients.get(current_input.as_tensor()).unwrap())?
     );
 

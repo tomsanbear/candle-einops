@@ -1,6 +1,7 @@
 mod parse;
 mod tokens;
 
+use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::{Ident, Span};
 use quote::{format_ident, quote};
 use syn::parse::ParseStream;
@@ -22,6 +23,7 @@ pub fn einops(input: proc_macro2::TokenStream) -> syn::Result<proc_macro2::Token
 
 #[derive(Debug)]
 struct ParsedExpression {
+    runtime_crate: syn::Path,
     tensor: syn::Ident,
     tensor_expression: proc_macro2::TokenStream,
     expression: Expression,
@@ -40,7 +42,22 @@ impl syn::parse::Parse for ParsedExpression {
             (tensor_ident, tensor_tokens)
         };
 
+        let runtime_crate = match crate_name("candle-einops") {
+            Ok(FoundCrate::Itself) => syn::parse_quote!(crate),
+            Ok(FoundCrate::Name(name)) => {
+                let ident = Ident::new(&name, Span::call_site());
+                syn::parse_quote!(::#ident)
+            }
+            Err(error) => {
+                return Err(syn::Error::new(
+                    Span::call_site(),
+                    format!("could not resolve the `candle-einops` runtime crate: {error}"),
+                ));
+            }
+        };
+
         Ok(Self {
+            runtime_crate,
             tensor: tensor_ident,
             tensor_expression: tensor_tokens,
             expression,
@@ -89,6 +106,7 @@ impl syn::parse::Parse for Expression {
 impl quote::ToTokens for ParsedExpression {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let ParsedExpression {
+            runtime_crate,
             tensor: tensor_ident,
             tensor_expression: tensor_tokens,
             expression,
@@ -112,6 +130,7 @@ impl quote::ToTokens for ParsedExpression {
         // If needed we generate tokens for decomposing the tensor
         let decomposition_tokens = if *requires_decomposition {
             to_tokens_decomposition(
+                runtime_crate,
                 decomposition,
                 tensor_ident,
                 &ignored_len_ident,
@@ -146,7 +165,7 @@ impl quote::ToTokens for ParsedExpression {
             let requires_ignored_len = reduce
                 .iter()
                 .any(|(index, _)| matches!(index, Index::Range(_) | Index::Unknown(_)));
-            let tokens = to_tokens_reduce(reduce, tensor_ident, &ignored_len_ident);
+            let tokens = to_tokens_reduce(runtime_crate, reduce, tensor_ident, &ignored_len_ident);
             (tokens, requires_ignored_len)
         } else {
             (proc_macro2::TokenStream::new(), false)
@@ -157,7 +176,8 @@ impl quote::ToTokens for ParsedExpression {
             let requires_ignored_len = permute
                 .iter()
                 .any(|expression| matches!(expression, Index::Range(_) | Index::Unknown(_)));
-            let tokens = to_tokens_permute(permute, tensor_ident, &ignored_len_ident);
+            let tokens =
+                to_tokens_permute(runtime_crate, permute, tensor_ident, &ignored_len_ident);
             (tokens, requires_ignored_len)
         } else {
             (proc_macro2::TokenStream::new(), false)
@@ -166,7 +186,13 @@ impl quote::ToTokens for ParsedExpression {
         // If needed we generate tokens for repeating the tensor
         let (repeat_tokens, repeat_ignored_len) = if !repeat.is_empty() {
             let requires_ignored_len = repeat.iter().any(|(i, _)| matches!(i, Index::Unknown(_)));
-            let tokens = to_tokens_repeat(repeat, tensor_ident, &ignored_len_ident, &shape_ident);
+            let tokens = to_tokens_repeat(
+                runtime_crate,
+                repeat,
+                tensor_ident,
+                &ignored_len_ident,
+                &shape_ident,
+            );
             (tokens, requires_ignored_len)
         } else {
             (proc_macro2::TokenStream::new(), false)
@@ -186,8 +212,13 @@ impl quote::ToTokens for ParsedExpression {
                     } | Composition::Individual(Index::Range(_) | Index::Unknown(_))
                 )
             });
-            let tokens =
-                to_tokens_composition(composition, tensor_ident, &ignored_len_ident, &shape_ident);
+            let tokens = to_tokens_composition(
+                runtime_crate,
+                composition,
+                tensor_ident,
+                &ignored_len_ident,
+                &shape_ident,
+            );
             (tokens, requires_ignored_len)
         } else {
             (proc_macro2::TokenStream::new(), false)
@@ -244,7 +275,7 @@ impl quote::ToTokens for ParsedExpression {
         ) {
             (true, true, _) => proc_macro2::TokenStream::new(),
             (false, _, _) | (_, false, true) => {
-                quote!(let #shape_ident = ::candle_einops::Backend::shape(&#tensor_ident);)
+                quote!(let #shape_ident = #runtime_crate::Backend::shape(&#tensor_ident);)
             }
             (_, false, false) => proc_macro2::TokenStream::new(),
         };
@@ -257,7 +288,7 @@ impl quote::ToTokens for ParsedExpression {
         {
             proc_macro2::TokenStream::new()
         } else {
-            quote!(let #shape_ident = ::candle_einops::Backend::shape(&#tensor_ident);)
+            quote!(let #shape_ident = #runtime_crate::Backend::shape(&#tensor_ident);)
         };
 
         // We have to recalculate the shape of the tensor before composition transformation
@@ -268,7 +299,7 @@ impl quote::ToTokens for ParsedExpression {
         {
             proc_macro2::TokenStream::new()
         } else {
-            quote!(let #shape_ident = ::candle_einops::Backend::shape(&#tensor_ident);)
+            quote!(let #shape_ident = #runtime_crate::Backend::shape(&#tensor_ident);)
         };
 
         let code = quote! {{

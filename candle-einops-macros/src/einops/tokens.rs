@@ -3,6 +3,7 @@ use crate::einops::{Composition, Decomposition, Index, Operation, Shape};
 use quote::quote;
 
 pub fn to_tokens_composition(
+    runtime_crate: &syn::Path,
     right_expression: &[Composition],
     tensor_ident: &syn::Ident,
     ignored_len_ident: &syn::Ident,
@@ -141,11 +142,12 @@ pub fn to_tokens_composition(
     };
 
     quote!(
-        let #tensor_ident = ::candle_einops::Backend::reshape(#tensor_ident, &#composition_shape);
+        let #tensor_ident = #runtime_crate::Backend::reshape(#tensor_ident, &#composition_shape);
     )
 }
 
 pub fn to_tokens_repeat(
+    runtime_crate: &syn::Path,
     repeat: &[(Index, Shape)],
     tensor_ident: &syn::Ident,
     ignored_len_ident: &syn::Ident,
@@ -163,13 +165,14 @@ pub fn to_tokens_repeat(
     });
 
     quote!(
-        let #tensor_ident = ::candle_einops::Backend::add_axes(
+        let #tensor_ident = #runtime_crate::Backend::add_axes(
             #tensor_ident, #shape_ident.len() + #n_repeats, &[#(#repeat_pos_len),*]
         );
     )
 }
 
 pub fn to_tokens_permute(
+    runtime_crate: &syn::Path,
     permute: &[Index],
     tensor_ident: &syn::Ident,
     ignored_len_ident: &syn::Ident,
@@ -244,11 +247,12 @@ pub fn to_tokens_permute(
     };
 
     quote!(
-        let #tensor_ident = ::candle_einops::Backend::transpose(#tensor_ident, &#permute_indices);
+        let #tensor_ident = #runtime_crate::Backend::transpose(#tensor_ident, &#permute_indices);
     )
 }
 
 pub fn to_tokens_reduce(
+    runtime_crate: &syn::Path,
     reduce: &[(Index, Operation)],
     tensor_ident: &syn::Ident,
     ignored_len_ident: &syn::Ident,
@@ -265,11 +269,11 @@ pub fn to_tokens_reduce(
              expression| {
                 let (index, operation) = expression;
                 let operation = match operation {
-                    Operation::Min => quote!(::candle_einops::Operation::Min),
-                    Operation::Max => quote!(::candle_einops::Operation::Max),
-                    Operation::Sum => quote!(::candle_einops::Operation::Sum),
-                    Operation::Mean => quote!(::candle_einops::Operation::Mean),
-                    Operation::Prod => quote!(::candle_einops::Operation::Prod),
+                    Operation::Min => quote!(#runtime_crate::Operation::Min),
+                    Operation::Max => quote!(#runtime_crate::Operation::Max),
+                    Operation::Sum => quote!(#runtime_crate::Operation::Sum),
+                    Operation::Mean => quote!(#runtime_crate::Operation::Mean),
+                    Operation::Prod => quote!(#runtime_crate::Operation::Prod),
                 };
                 match index {
                     Index::Known(i) => {
@@ -302,7 +306,7 @@ pub fn to_tokens_reduce(
     ) {
         (Some(ignored_indices), Some(ignored_operations), true) => {
             quote!(
-                let #tensor_ident = ::candle_einops::Backend::reduce_axes(
+                let #tensor_ident = #runtime_crate::Backend::reduce_axes(
                     #tensor_ident,
                     &mut #ignored_indices
                         .zip(#ignored_operations)
@@ -312,7 +316,7 @@ pub fn to_tokens_reduce(
         }
         (Some(ignored_indices), Some(ignored_operations), false) => {
             quote!(
-                let #tensor_ident = ::candle_einops::Backend::reduce_axes(
+                let #tensor_ident = #runtime_crate::Backend::reduce_axes(
                     #tensor_ident,
                     &mut [#(#reduce_indices),*]
                         .into_iter()
@@ -328,7 +332,7 @@ pub fn to_tokens_reduce(
         }
         (None, None, false) => {
             quote!(
-                let #tensor_ident = ::candle_einops::Backend::reduce_axes(
+                let #tensor_ident = #runtime_crate::Backend::reduce_axes(
                     #tensor_ident, &mut [#((#reduce_indices, #reduce_operations)),*]
                 );
             )
@@ -338,6 +342,7 @@ pub fn to_tokens_reduce(
 }
 
 pub fn to_tokens_decomposition(
+    runtime_crate: &syn::Path,
     left_expression: &[Decomposition],
     tensor_ident: &syn::Ident,
     ignored_len_ident: &syn::Ident,
@@ -436,6 +441,6 @@ pub fn to_tokens_decomposition(
     };
 
     quote!(
-        let #tensor_ident = ::candle_einops::Backend::reshape(#tensor_ident, &#decomposition_shape);
+        let #tensor_ident = #runtime_crate::Backend::reshape(#tensor_ident, &#decomposition_shape);
     )
 }

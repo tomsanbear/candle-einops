@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use candle_core::Device;
 use candle_einops_benchmarks::{
     BenchmarkRecord, DeviceSynchronizer, Fingerprint, MonotonicClock, PlumbingScenario, Scenario,
-    binary_fast_path_scenarios, diagonal_spike, measure_pair, prepare, product_scenarios,
-    reduction_fusion_scenarios,
+    binary_fast_path_scenarios, broadcast_gemm_spike, diagonal_spike, measure_pair, prepare,
+    product_scenarios, reduction_fusion_scenarios,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -54,6 +54,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         );
         scenarios.extend(binary.iter().map(|scenario| scenario as &dyn Scenario));
         scenarios.extend(reductions.iter().map(|scenario| scenario as &dyn Scenario));
+        scenarios.extend(
+            broadcast_gemm_spike::broadcast_scenarios()
+                .iter()
+                .map(|scenario| scenario as &dyn Scenario),
+        );
     }
     let selected = scenarios
         .into_iter()

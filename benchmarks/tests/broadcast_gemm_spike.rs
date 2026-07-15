@@ -34,8 +34,9 @@ fn direct_and_slice_candidates_cover_their_structural_boundaries() -> Result<()>
     assert_eq!(direct_broadcast_gemm(&left, &right)?.dims(), &[4, 8, 8]);
 
     let broadcast_left = Tensor::ones((1, 8, 8), DType::F32, &Device::Cpu)?;
+    assert!(direct_broadcast_gemm(&broadcast_left, &right).is_err());
     assert_eq!(
-        direct_broadcast_gemm(&broadcast_left, &right)?.dims(),
+        sliced_broadcast_gemm(&broadcast_left, &right)?.dims(),
         &[4, 8, 8]
     );
 

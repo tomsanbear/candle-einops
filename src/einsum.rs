@@ -3276,7 +3276,7 @@ mod tests {
             &named_axes(&["m", "n"]),
             &named_axes(&["m", "k", "n"]),
         )?;
-        assert_eq!(zero.submissions, 3, "two zero anchors plus their add");
+        assert_eq!(zero.submissions, 2, "empty cat plus one zero reduction");
         assert_eq!(zero.flops, 0);
         assert_eq!(zero.copy_bytes, 0);
         assert_eq!(zero_output.layout, NaryLayoutEstimate::Unsupported);

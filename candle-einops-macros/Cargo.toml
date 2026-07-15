@@ -8,7 +8,7 @@ description = "Procedural macros for candle-einops"
 license = "MIT OR Apache-2.0"
 keywords = ["tensor", "candle", "einops", "machine-learning", "ai"]
 categories = ["algorithms", "science", "mathematics"]
-exclude = [".github/"]
+exclude = [".github/", "tests/dependency_names.rs", "tests/fixtures/**"]
 repository = "https://github.com/tomsanbear/candle-einops"
 
 [lib]

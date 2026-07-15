@@ -9,11 +9,13 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/ci.yml"
 MACRO_MANIFEST = ROOT / "candle-einops-macros/Cargo.toml"
+FIXTURE_HARNESS = ROOT / "candle-einops-macros/tests/dependency_names.rs"
 
 
 def main() -> int:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     macro_manifest = MACRO_MANIFEST.read_text(encoding="utf-8")
+    fixture_harness = FIXTURE_HARNESS.read_text(encoding="utf-8")
     failures: list[str] = []
 
     if "cargo test --doc --workspace" not in workflow:
@@ -24,7 +26,14 @@ def main() -> int:
         failures.append("CI must unpack and test both published artifacts")
 
     package_list = subprocess.run(
-        ["cargo", "package", "--list", "-p", "candle-einops-macros"],
+        [
+            "cargo",
+            "package",
+            "--list",
+            "--allow-dirty",
+            "-p",
+            "candle-einops-macros",
+        ],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -43,6 +52,12 @@ def main() -> int:
             )
         if not harness and "tests/dependency_names.rs" not in macro_manifest:
             failures.append("macro fixture harness exclusion must be explicit in Cargo.toml")
+
+    if '.args(["run", "--quiet", "--manifest-path"])' not in fixture_harness:
+        failures.append("downstream fixtures must execute rather than only compile")
+    for fixture in ["normal", "renamed", "hygiene"]:
+        if f'"{fixture}"' not in fixture_harness:
+            failures.append(f"downstream fixture harness must execute `{fixture}`")
 
     if failures:
         print("Artifact policy validation failed:", file=sys.stderr)

@@ -45,6 +45,8 @@ jobs:
           components: clippy, rustfmt
       - name: Validate CI policy
         run: python3 .github/scripts/validate_ci_policy.py
+      - name: Validate artifact policy
+        run: python3 .github/scripts/validate_artifact_policy.py
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy
@@ -61,6 +63,10 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --all-features --no-deps
+      - name: Test documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo test --doc --workspace --all-features
 
   package:
     name: Package
@@ -74,8 +80,8 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: stable
-      - name: Package and verify workspace crates
-        run: cargo package --workspace
+      - name: Package, unpack, and test workspace crates
+        run: python3 .github/scripts/test_published_artifacts.py
 
   dependency-policy:
     name: Dependency policy

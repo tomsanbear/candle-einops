@@ -235,7 +235,7 @@ impl<T: AsRef<Tensor>> Backend for T {
     }
 }
 
-fn execute_tensor_permute_and_compose(
+pub(crate) fn execute_tensor_permute_and_compose(
     input: &Tensor,
     permutation: &[usize],
     output_shape: &[usize],

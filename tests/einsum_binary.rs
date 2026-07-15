@@ -153,6 +153,52 @@ fn canonical_gemm_keeps_arbitrary_exact_batches_and_output_views() -> Result<()>
 }
 
 #[test]
+fn general_gemm_recovers_collapsible_operand_groups_and_gradients() -> Result<()> {
+    let device = Device::Cpu;
+    let source_values = (0..24).map(|value| value as f32 / 24.).collect::<Vec<_>>();
+    let right_values = (0..20).map(|value| value as f32 / 20.).collect::<Vec<_>>();
+    let library_source = Var::from_vec(source_values.clone(), (4, 2, 3), &device)?;
+    let reference_source = Var::from_vec(source_values, (4, 2, 3), &device)?;
+    let library_right = Var::from_vec(right_values.clone(), (4, 5), &device)?;
+    let reference_right = Var::from_vec(right_values, (4, 5), &device)?;
+    let library_left = library_source.permute((1, 2, 0))?;
+    let reference_left = reference_source.permute((1, 2, 0))?;
+
+    let library = einsum!(
+        "a b inner, inner column -> a b column",
+        &library_left,
+        library_right.as_tensor()
+    )?;
+    let reference = reference_left
+        .reshape((6, 4))?
+        .matmul(reference_right.as_tensor())?
+        .reshape((2, 3, 5))?;
+    assert_close(&library, &reference, "layout-aware general GEMM")?;
+
+    let weights = Tensor::arange(1f32, 31., &device)?.reshape((2, 3, 5))?;
+    let library_gradients = library.mul(&weights)?.sum_all()?.backward()?;
+    let reference_gradients = reference.mul(&weights)?.sum_all()?.backward()?;
+    assert_close(
+        library_gradients
+            .get(library_source.as_tensor())
+            .expect("library source gradient"),
+        reference_gradients
+            .get(reference_source.as_tensor())
+            .expect("reference source gradient"),
+        "layout-aware source gradient",
+    )?;
+    assert_close(
+        library_gradients
+            .get(library_right.as_tensor())
+            .expect("library right gradient"),
+        reference_gradients
+            .get(reference_right.as_tensor())
+            .expect("reference right gradient"),
+        "layout-aware right gradient",
+    )
+}
+
+#[test]
 fn binary_scalars_broadcast_contract_and_zero_dimensions() -> Result<()> {
     let scalar = Tensor::new(3f32, &Device::Cpu)?;
     let other = Tensor::new(4f32, &Device::Cpu)?;

@@ -1,5 +1,7 @@
 use candle_core::{DType, Result, Tensor};
 
+use crate::backend::execute_tensor_permute_and_compose;
+
 /// Validated compile-time plan for the unary explicit-output einsum slice.
 #[doc(hidden)]
 #[derive(Clone, Copy, Debug)]
@@ -406,14 +408,22 @@ where
 
     let left = left
         .broadcast_as(left_shape)
-        .map_err(|error| error.context("einsum binary left broadcast"))?
-        .reshape((b, m, k))
-        .map_err(|error| error.context("einsum binary left B/M/K reshape"))?;
+        .map_err(|error| error.context("einsum binary left broadcast"))?;
+    let left = pack_canonical_operand(
+        &left,
+        &[b, m, k],
+        &[spec.batch_rank, spec.left_free_rank, spec.contracted_rank],
+        "einsum binary left B/M/K reshape",
+    )?;
     let right = right
         .broadcast_as(right_shape)
-        .map_err(|error| error.context("einsum binary right broadcast"))?
-        .reshape((b, k, n))
-        .map_err(|error| error.context("einsum binary right B/K/N reshape"))?;
+        .map_err(|error| error.context("einsum binary right broadcast"))?;
+    let right = pack_canonical_operand(
+        &right,
+        &[b, k, n],
+        &[spec.batch_rank, spec.contracted_rank, spec.right_free_rank],
+        "einsum binary right B/K/N reshape",
+    )?;
     let output = left
         .matmul(&right)
         .map_err(|error| error.context("einsum binary B/M/K/N matmul"))?;
@@ -2244,6 +2254,65 @@ fn materialize_broadcast_if_needed(
     }
 }
 
+fn pack_canonical_operand(
+    tensor: &Tensor,
+    packed_shape: &[usize],
+    group_lengths: &[usize],
+    context: &'static str,
+) -> Result<Tensor> {
+    if packed_shape.len() != group_lengths.len() {
+        candle_core::bail!(
+            "{context}: packed rank {} does not match group rank {}",
+            packed_shape.len(),
+            group_lengths.len()
+        )
+    }
+
+    let materialized;
+    let tensor = if tensor
+        .dims()
+        .iter()
+        .zip(tensor.stride())
+        .any(|(&extent, &stride)| extent > 1 && stride == 0)
+    {
+        materialized = tensor
+            .contiguous()
+            .map_err(|error| error.context(context))?;
+        &materialized
+    } else {
+        tensor
+    };
+
+    let mut nonempty_shape = Vec::with_capacity(packed_shape.len());
+    let mut nonempty_lengths = Vec::with_capacity(group_lengths.len());
+    for (&extent, &length) in packed_shape.iter().zip(group_lengths) {
+        if length == 0 {
+            if extent != 1 {
+                candle_core::bail!("{context}: an empty axis group must have extent one")
+            }
+        } else {
+            nonempty_shape.push(extent);
+            nonempty_lengths.push(length);
+        }
+    }
+
+    let mut output = if nonempty_lengths.is_empty() {
+        tensor.clone()
+    } else {
+        let identity = (0..tensor.rank()).collect::<Vec<_>>();
+        execute_tensor_permute_and_compose(tensor, &identity, &nonempty_shape, &nonempty_lengths)
+            .map_err(|error| error.context(context))?
+    };
+    for (axis, &length) in group_lengths.iter().enumerate() {
+        if length == 0 {
+            output = output
+                .unsqueeze(axis)
+                .map_err(|error| error.context(context))?;
+        }
+    }
+    Ok(output)
+}
+
 fn apply_output_permutation(output: Tensor, permutation: &[usize]) -> Result<Tensor> {
     if permutation.iter().copied().eq(0..permutation.len()) {
         Ok(output)
@@ -2351,14 +2420,51 @@ mod tests {
         let historical = canonical.reshape((1, 6, 4))?;
         assert_ne!(storage_address(&historical), storage_address(&source));
 
-        let packed = pack_canonical_operand(
-            &canonical,
-            &[1, 6, 4],
-            &[0, 2, 1],
-            "test canonical operand",
-        )?;
+        let packed =
+            pack_canonical_operand(&canonical, &[1, 6, 4], &[0, 2, 1], "test canonical operand")?;
         assert_eq!(packed.dims(), [1, 6, 4]);
         assert_eq!(storage_address(&packed), storage_address(&source));
+        assert_eq!(
+            packed.flatten_all()?.to_vec1::<f32>()?,
+            historical.flatten_all()?.to_vec1::<f32>()?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn canonical_group_packing_preserves_broadcast_and_reduction_order() -> Result<()> {
+        let left = Tensor::arange(1f32, 13., &Device::Cpu)?
+            .reshape((2, 1, 2, 3))?
+            .sum(0)?
+            .broadcast_as((2, 2, 3))?;
+        let right = Tensor::ones((2, 3, 4, 2), DType::F32, &Device::Cpu)?.sum(3)?;
+        for (tensor, shape) in [(&left, [2, 2, 3]), (&right, [2, 3, 4])] {
+            let historical = tensor.reshape(&shape)?;
+            let packed = pack_canonical_operand(tensor, &shape, &[1, 1, 1], "test packing")?;
+            assert_eq!(
+                packed.flatten_all()?.to_vec1::<f32>()?,
+                historical.flatten_all()?.to_vec1::<f32>()?,
+                "dims={:?} strides={:?}",
+                tensor.dims(),
+                tensor.stride()
+            );
+        }
+        let historical = left
+            .reshape((2, 2, 3))?
+            .matmul(&right.reshape((2, 3, 4))?)?;
+        let packed_left = pack_canonical_operand(&left, &[2, 2, 3], &[1, 1, 1], "test left")?;
+        let packed_right = pack_canonical_operand(&right, &[2, 3, 4], &[1, 1, 1], "test right")?;
+        assert!(
+            packed_left.is_contiguous(),
+            "left strides {:?}",
+            packed_left.stride()
+        );
+        assert!(
+            packed_right.is_contiguous(),
+            "right strides {:?}",
+            packed_right.stride()
+        );
+        let packed = packed_left.matmul(&packed_right)?;
         assert_eq!(
             packed.flatten_all()?.to_vec1::<f32>()?,
             historical.flatten_all()?.to_vec1::<f32>()?

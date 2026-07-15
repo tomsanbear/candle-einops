@@ -386,9 +386,9 @@ fn tensor_selected_views_preserve_values_storage_offsets_and_gradients() -> Resu
     let reference = reference_input
         .sum(0)?
         .permute((2, 0, 1))?
-        .reshape((4, 6))?;
+        .reshape(&[4, 6])?;
     assert_values_equal(&selected, &reference)?;
-    let weights = Tensor::arange(1f32, 25., &device)?.reshape((4, 6))?;
+    let weights = Tensor::arange(1f32, 25., &device)?.reshape(&[4, 6])?;
     let selected_gradients = selected.mul(&weights)?.sum_all()?.backward()?;
     let reference_gradients = reference.mul(&weights)?.sum_all()?.backward()?;
     assert_values_equal(

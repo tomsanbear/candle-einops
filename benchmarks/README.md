@@ -48,6 +48,41 @@ work units, and a git/Rust/Candle/platform/device fingerprint. Criterion output
 is useful for local inspection but is secondary and must not be parsed by
 automation or committed.
 
+## Advisory base/head comparisons
+
+The manual `Advisory performance comparison` workflow accepts exact base and
+head commit SHAs plus an optional scenario-id filter. It creates detached
+worktrees on one runner, alternates base/head order across five independent
+harness processes, and uploads the primary versioned JSON records, a versioned
+comparison report, its job summary, and secondary Criterion output. Artifacts
+expire after 14 days and are never written to a benchmark-data branch.
+
+The comparison matches scenario IDs and rejects changed work units, sampling
+order, unsupported or mismatched schemas, and environment fingerprints that
+differ in anything other than the expected Git SHA. Such results are
+`incomparable`, not failures.
+For comparable scenarios, a movement is highlighted only when the paired
+process median exceeds both 10% and 1 microsecond and its deterministic 95%
+interval lies beyond 5%. Every result is advisory: it cannot fail required CI,
+block a release, file an issue, or comment on a pull request. File a regression
+only after the same observation appears in three independent workflow runs.
+
+The required pull-request job only runs `compile` and `smoke`; it never compares
+timings. Promoting timing to a gate requires a separate policy ticket, a pinned
+runner, at least 30 baseline runs, and demonstrated stable variance. There is no
+universal baseline, scheduled hosted-runner trend, or GPU threshold.
+
+For local inspection, collect at least five files for each exact commit and run:
+
+```console
+python3 .github/scripts/compare_benchmarks.py \
+  --base-sha 1111111111111111111111111111111111111111 \
+  --head-sha 2222222222222222222222222222222222222222 \
+  --base target/benchmarks/base/*.json \
+  --head target/benchmarks/head/*.json \
+  --output target/benchmarks/comparison-v1.json
+```
+
 The binary outer-product and GEMM scenarios changed from square, constant
 operands to deterministic nonuniform operands with non-square M/K/N dimensions.
 Their stable ids preserve registration continuity, but results produced before

@@ -30,6 +30,7 @@ def record(
     schema_version: int = 1,
     elements: int = 64,
     rust_version: str = "rustc 1.94.1",
+    sampling_order_policy: str = "alternating_library_then_reference",
 ) -> dict[str, object]:
     estimate = {
         "median_ns": median_ns,
@@ -48,7 +49,7 @@ def record(
         "library": estimate,
         "reference": estimate,
         "library_to_reference_ratio": 1.0,
-        "sampling_order_policy": "alternating_library_then_reference",
+        "sampling_order_policy": sampling_order_policy,
         "fingerprint": {
             "git_sha": sha,
             "rust_version": rust_version,
@@ -129,6 +130,23 @@ class AdvisoryComparisonTests(unittest.TestCase):
             report = compare_benchmarks.compare_files(base, head, BASE_SHA, HEAD_SHA)
         self.assertEqual(report["scenarios"][0]["status"], "incomparable")
         self.assertEqual(report["scenarios"][0]["reason"], "unsupported_schema")
+
+    def test_sampling_methodology_mismatch_is_incomparable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = self.write_runs(root, "base", BASE_SHA, [10_000] * 5)
+            head = self.write_runs(
+                root,
+                "head",
+                HEAD_SHA,
+                [12_000] * 5,
+                sampling_order_policy="fixed_library_then_reference",
+            )
+            report = compare_benchmarks.compare_files(base, head, BASE_SHA, HEAD_SHA)
+        self.assertEqual(report["scenarios"][0]["status"], "incomparable")
+        self.assertEqual(
+            report["scenarios"][0]["reason"], "sampling_policy_mismatch"
+        )
 
     def test_missing_scenario_is_explicitly_incomparable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

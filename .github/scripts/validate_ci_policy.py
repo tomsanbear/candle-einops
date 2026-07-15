@@ -8,6 +8,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/ci.yml"
+WORKFLOWS = ROOT / ".github/workflows"
 DENY_CONFIG = ROOT / "deny.toml"
 MSRV_POLICY = ROOT / ".github/MSRV_POLICY.md"
 DEPENDABOT = ROOT / ".github/dependabot.yml"
@@ -17,22 +18,31 @@ def main() -> int:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     failures: list[str] = []
 
-    if not re.search(r"(?m)^permissions:\n  contents: read$", workflow):
-        failures.append("workflow must set top-level `permissions: contents: read`")
-
-    uses = re.findall(r"(?m)^\s*-?\s*uses:\s*([^\s#]+)", workflow)
-    mutable = [
-        value
-        for value in uses
-        if not value.startswith("./") and not re.search(r"@[0-9a-f]{40}$", value)
-    ]
-    if mutable:
-        failures.append(f"action references must use full commit SHAs: {', '.join(mutable)}")
-
-    checkout_count = sum(value.startswith("actions/checkout@") for value in uses)
-    credential_opt_outs = len(re.findall(r"persist-credentials:\s*false", workflow))
-    if checkout_count == 0 or credential_opt_outs != checkout_count:
-        failures.append("every checkout step must set `persist-credentials: false`")
+    for workflow_path in sorted(WORKFLOWS.glob("*.yml")):
+        workflow_text = workflow_path.read_text(encoding="utf-8")
+        if not re.search(r"(?m)^permissions:\n  contents: read$", workflow_text):
+            failures.append(
+                f"{workflow_path.name} must set top-level `permissions: contents: read`"
+            )
+        uses = re.findall(r"(?m)^\s*-?\s*uses:\s*([^\s#]+)", workflow_text)
+        mutable = [
+            value
+            for value in uses
+            if not value.startswith("./") and not re.search(r"@[0-9a-f]{40}$", value)
+        ]
+        if mutable:
+            failures.append(
+                f"{workflow_path.name} action references must use full commit SHAs: "
+                + ", ".join(mutable)
+            )
+        checkout_count = sum(value.startswith("actions/checkout@") for value in uses)
+        credential_opt_outs = len(
+            re.findall(r"persist-credentials:\s*false", workflow_text)
+        )
+        if checkout_count == 0 or credential_opt_outs != checkout_count:
+            failures.append(
+                f"{workflow_path.name} checkout steps must set persist-credentials false"
+            )
 
     if not DENY_CONFIG.is_file():
         failures.append("dependency policy config `deny.toml` is missing")

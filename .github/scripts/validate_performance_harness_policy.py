@@ -18,6 +18,7 @@ def main() -> int:
     harness = (ROOT / "benchmarks/src/lib.rs").read_text(encoding="utf-8")
     comparison_script = ROOT / ".github/scripts/compare_benchmarks.py"
     comparison_workflow = ROOT / ".github/workflows/advisory-performance.yml"
+    required_workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     failures: list[str] = []
 
     if "benchmarks/" not in root_manifest["package"].get("exclude", []):
@@ -56,6 +57,15 @@ def main() -> int:
     if "compile_error!" not in harness or 'feature = "cuda"' not in harness or 'feature = "metal"' not in harness:
         failures.append("benchmark crate must reject simultaneous Metal and CUDA features")
 
+    for required_command in [
+        "python3 .github/scripts/run_benchmarks.py compile",
+        "python3 .github/scripts/run_benchmarks.py smoke",
+    ]:
+        if required_command not in required_workflow:
+            failures.append(f"required CI must run `{required_command}`")
+    if "compare_benchmarks.py" in required_workflow:
+        failures.append("required CI must not compare benchmark timings")
+
     if not comparison_script.is_file():
         failures.append("advisory benchmark comparison script is missing")
     if not comparison_workflow.is_file():
@@ -68,6 +78,8 @@ def main() -> int:
             "head_sha:",
             "persist-credentials: false",
             "git worktree add --detach",
+            "seq 1 5",
+            "pair % 2",
             "compare_benchmarks.py",
             "advisory-only",
             "retention-days:",

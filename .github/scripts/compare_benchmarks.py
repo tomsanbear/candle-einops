@@ -165,6 +165,11 @@ def _compare_scenario(
     if base_workload is None or head_workload is None or base_workload != head_workload:
         return _incomparable(scenario_id, "workload_mismatch")
 
+    base_order = _constant(base, "sampling_order_policy")
+    head_order = _constant(head, "sampling_order_policy")
+    if base_order is None or head_order is None or base_order != head_order:
+        return _incomparable(scenario_id, "sampling_policy_mismatch")
+
     base_fingerprints = [_fingerprint_key(record) for record in base]
     head_fingerprints = [_fingerprint_key(record) for record in head]
     if (

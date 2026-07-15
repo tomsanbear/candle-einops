@@ -118,6 +118,23 @@ jobs:
       - name: Run locked Python einops parity
         run: python3 .github/scripts/test_python_parity.py
 
+  performance-harness:
+    name: Performance harness structural smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.94
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: "1.94"
+      - name: Compile locked standalone performance harness
+        run: python3 .github/scripts/run_benchmarks.py compile
+      - name: Run correctness and structural smoke contracts
+        run: python3 .github/scripts/run_benchmarks.py smoke
+
   dependency-policy:
     name: Dependency policy
     runs-on: ubuntu-latest

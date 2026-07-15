@@ -1,0 +1,35 @@
+schema_version = 1
+tickets_dir = "tickets"
+default_base = "main"
+
+[language]
+# Auto-detected a cargo workspace; the guard expands a changed crate
+# through the cargo reverse-dependency graph.
+backend = "rust"
+# reverse_dep_expansion = false  # default true; off = path/crate-only,
+# handy when a foundational crate makes transitive collisions noisy.
+
+[scopes]
+runtime = ["src/**"]
+macros = ["candle-einops-macros/**"]
+tests = ["tests/**"]
+docs = ["README.md", "CHANGELOG.md", "LICENSE*"]
+tooling = [
+    "Cargo.toml",
+    ".github/**",
+    ".gitignore",
+    "rust-toolchain*",
+    "rustfmt.toml",
+    "clippy.toml",
+]
+ticketing = ["tickets/**", "ticketsplease.toml", ".ticketsplease/**"]
+
+[scope_crates]
+runtime = "candle-einops"
+macros = "candle-einops-macros"
+
+# Name a forked/external dependency (pinned via `git = … rev = …`) as a scope.
+# The guard flags a branch that bumps the pin (matched by `repo`) or edits an
+# in-tree fork `paths` glob, against tickets declaring the same scope.
+[external_scopes]
+# "sqlparser-fork" = { repo = "tomsanbear/sqlparser", paths = [] }

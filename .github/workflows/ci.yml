@@ -49,6 +49,8 @@ jobs:
         run: python3 .github/scripts/validate_artifact_policy.py
       - name: Validate einsum release completeness
         run: python3 .github/scripts/validate_einsum_release.py
+      - name: Validate Python parity policy
+        run: python3 .github/scripts/validate_python_parity_policy.py
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy

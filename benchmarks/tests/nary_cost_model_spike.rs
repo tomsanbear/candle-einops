@@ -1,4 +1,4 @@
-use candle_core::{Device, Result};
+use candle_core::{Device, Result, Var};
 use candle_einops_benchmarks::Scenario;
 use candle_einops_benchmarks::nary_cost_model_spike::{
     AxisExtent, CostWeights, FixtureKind, LayoutClass, ModelOperand, NetworkModel, estimate_pair,
@@ -157,6 +157,49 @@ fn whole_network_scenarios_are_exactly_bounded_and_correct() -> Result<()> {
         let current = scenario.run_library(&inputs)?;
         let selected = scenario.run_reference(&inputs)?;
         scenario.check(&current, &selected)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn selected_reassociation_preserves_gradients_on_changed_path() -> Result<()> {
+    let scenario = network_scenarios().remove(1);
+    let values = scenario.setup(&Device::Cpu)?;
+    let current_vars = values
+        .iter()
+        .map(Var::from_tensor)
+        .collect::<Result<Vec<_>>>()?;
+    let selected_vars = values
+        .iter()
+        .map(Var::from_tensor)
+        .collect::<Result<Vec<_>>>()?;
+    let current_inputs = current_vars
+        .iter()
+        .map(|variable| variable.as_tensor().clone())
+        .collect::<Vec<_>>();
+    let selected_inputs = selected_vars
+        .iter()
+        .map(|variable| variable.as_tensor().clone())
+        .collect::<Vec<_>>();
+    let current = scenario.run_library(&current_inputs)?;
+    let selected = scenario.run_reference(&selected_inputs)?;
+    let current_gradients = current.sum_all()?.backward()?;
+    let selected_gradients = selected.sum_all()?.backward()?;
+    for (current, selected) in current_vars.iter().zip(&selected_vars) {
+        let current = current_gradients
+            .get(current.as_tensor())
+            .unwrap()
+            .flatten_all()?
+            .to_vec1::<f32>()?;
+        let selected = selected_gradients
+            .get(selected.as_tensor())
+            .unwrap()
+            .flatten_all()?
+            .to_vec1::<f32>()?;
+        for (&current, &selected) in current.iter().zip(&selected) {
+            let tolerance = 0.002 * selected.abs().max(1.);
+            assert!((current - selected).abs() <= tolerance);
+        }
     }
     Ok(())
 }

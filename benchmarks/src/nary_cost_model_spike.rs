@@ -1,12 +1,16 @@
 //! Benchmark-only bounded n-ary contraction cost-model spike.
 
 use std::hint::black_box;
+use std::time::Instant;
 
 use candle_core::{Device, Result, Tensor};
 use candle_einops::__private::{EinsumAxisPattern, EllipsisEinsumSpec, execute_nary_einsum};
 use criterion::Criterion;
+use serde::Serialize;
 
-use crate::{Scenario, ScenarioId, WorkUnits};
+use crate::{
+    Estimate, Fingerprint, RESULT_SCHEMA_VERSION, Scenario, ScenarioId, WorkUnits, summarize,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AxisExtent {
@@ -121,7 +125,7 @@ impl CostWeights {
     };
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct PairEstimate {
     pub flops: u128,
     pub output_elements: u128,
@@ -136,7 +140,7 @@ pub struct PlanStep {
     pub estimate: PairEstimate,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PlanMetrics {
     pub flops: u128,
     pub intermediate_elements: u128,
@@ -166,6 +170,54 @@ pub struct NetworkFixture {
     pub id: &'static str,
     pub kind: FixtureKind,
     pub model: NetworkModel,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PlannerProbeRecord {
+    pub schema_version: u32,
+    pub scenario_id: &'static str,
+    pub arity: usize,
+    pub greedy_metrics: PlanMetrics,
+    pub exact_metrics: PlanMetrics,
+    pub greedy_members: Vec<(u64, u64)>,
+    pub exact_members: Vec<(u64, u64)>,
+    pub greedy_planner: Estimate,
+    pub exact_planner: Estimate,
+    pub fingerprint: Fingerprint,
+}
+
+pub fn measure_fixture_planners(
+    fixture: &NetworkFixture,
+    samples: usize,
+    fingerprint: Fingerprint,
+) -> Result<PlannerProbeRecord> {
+    if samples == 0 {
+        candle_core::bail!("planner probe sample count must be non-zero")
+    }
+    let greedy = plan_output_greedy(&fixture.model, CostWeights::CPU)?;
+    let exact = plan_bounded_exact(&fixture.model, CostWeights::CPU)?;
+    let mut greedy_samples = Vec::with_capacity(samples);
+    let mut exact_samples = Vec::with_capacity(samples);
+    for _ in 0..samples {
+        let started = Instant::now();
+        black_box(plan_output_greedy(&fixture.model, CostWeights::CPU)?);
+        greedy_samples.push(u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX));
+        let started = Instant::now();
+        black_box(plan_bounded_exact(&fixture.model, CostWeights::CPU)?);
+        exact_samples.push(u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX));
+    }
+    Ok(PlannerProbeRecord {
+        schema_version: RESULT_SCHEMA_VERSION,
+        scenario_id: fixture.id,
+        arity: fixture.model.operands.len(),
+        greedy_metrics: greedy.metrics,
+        exact_metrics: exact.metrics,
+        greedy_members: greedy.steps.iter().map(|step| step.members).collect(),
+        exact_members: exact.steps.iter().map(|step| step.members).collect(),
+        greedy_planner: summarize(&greedy_samples),
+        exact_planner: summarize(&exact_samples),
+        fingerprint,
+    })
 }
 
 fn checked_product(values: impl IntoIterator<Item = u128>, context: &'static str) -> Result<u128> {

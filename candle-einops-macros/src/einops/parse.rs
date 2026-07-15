@@ -695,10 +695,13 @@ fn parse_right_parenthesized(
 
     // The ending index of the combined dimension,
     // we iterate through the entire expression to update relevant lists
-    let to = ((start_index + 1)..)
-        .take_while(|_| !content.is_empty())
-        .fold(None, |_, i| Some(parse_content(&content, i)))
-        .transpose()?;
+    let mut to = None;
+    for i in (start_index + 1).. {
+        if content.is_empty() {
+            break;
+        }
+        to = Some(parse_content(&content, i)?);
+    }
 
     // We calculate the length of dimesions inside this parenthesis,
     // this helps the main loop keep track of skipped dimensions

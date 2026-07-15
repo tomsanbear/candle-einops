@@ -300,6 +300,12 @@ fn fused_codegen_is_narrow_and_default_backend_remains_compatible() -> Result<()
     assert_eq!(output.shape, [4, 6]);
     assert_eq!(&*calls.borrow(), &["transpose", "reshape"]);
 
+    let dynamic_default = DefaultBackend(RecordingBackend::new(&[2, 3, 4, 5]));
+    let calls = dynamic_default.0.calls.clone();
+    let output = einops!("a b .. -> b (..) a", dynamic_default)?;
+    assert_eq!(output.0.shape, [3, 20, 2]);
+    assert_eq!(&*calls.borrow(), &["transpose", "reshape"]);
+
     let reduction = RecordingBackend::new(&[2, 3, 4, 5]);
     let calls = reduction.calls.clone();
     let _ = einops!("a b sum(reduced) c -> c (a b)", reduction)?;
@@ -381,6 +387,14 @@ fn tensor_selected_views_preserve_values_storage_offsets_and_gradients() -> Resu
         storage_address(&ellipsis)
     );
     assert_ne!(storage_address(&ellipsis_old), storage_address(&ellipsis));
+
+    let zero_capture = Tensor::arange(0f32, 3., &device)?;
+    let zero_capture_output = einops!("a .. -> (..) a", &zero_capture)?;
+    assert_eq!(zero_capture_output.dims(), [1, 3]);
+    assert_eq!(
+        storage_address(&zero_capture_output),
+        storage_address(&zero_capture)
+    );
 
     let selected_input = Var::from_vec(
         (0..48).map(|value| value as f32 / 7.).collect(),

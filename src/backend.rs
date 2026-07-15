@@ -71,6 +71,16 @@ pub trait Backend {
     /// materialization for non-contiguous inputs.
     fn reshape(self, shape: &[usize]) -> Result<Self::Output>;
     fn transpose(self, axes: &[usize]) -> Result<Self::Output>;
+    /// Composes adjacent logical axis groups after any preceding permutation.
+    ///
+    /// The default retains the historical reshape sequence. Tensor backends
+    /// may recover a storage-sharing layout before falling back to that copy.
+    fn compose_axes(self, output_shape: &[usize], _group_lengths: &[usize]) -> Result<Self::Output>
+    where
+        Self: Sized,
+    {
+        self.reshape(output_shape)
+    }
     /// Applies a permutation followed immediately by axis composition.
     ///
     /// Backends may specialize this boundary. The default preserves the
@@ -117,6 +127,10 @@ impl<T: AsRef<Tensor>> Backend for T {
 
     fn transpose(self, axes: &[usize]) -> Result<Self::Output> {
         self.as_ref().permute(axes)
+    }
+
+    fn compose_axes(self, output_shape: &[usize], group_lengths: &[usize]) -> Result<Self::Output> {
+        execute_tensor_compose_axes(self.as_ref(), output_shape, group_lengths)
     }
 
     fn permute_and_compose(
@@ -308,6 +322,44 @@ pub(crate) fn execute_tensor_permute_and_compose(
     }
 
     input.permute(permutation)?.reshape(output_shape)
+}
+
+fn execute_tensor_compose_axes(
+    input: &Tensor,
+    output_shape: &[usize],
+    group_lengths: &[usize],
+) -> Result<Tensor> {
+    if output_shape.len() != group_lengths.len() {
+        candle_core::bail!("compose_axes: output and group ranks differ")
+    }
+    let mut nonempty_shape = Vec::with_capacity(output_shape.len());
+    let mut nonempty_lengths = Vec::with_capacity(group_lengths.len());
+    for (&extent, &length) in output_shape.iter().zip(group_lengths) {
+        if length == 0 {
+            if extent != 1 {
+                candle_core::bail!("compose_axes: an empty group must have extent one")
+            }
+        } else {
+            nonempty_shape.push(extent);
+            nonempty_lengths.push(length);
+        }
+    }
+    let mut output = if nonempty_lengths.is_empty() {
+        input.clone()
+    } else {
+        execute_tensor_permute_and_compose(
+            input,
+            &(0..input.rank()).collect::<Vec<_>>(),
+            &nonempty_shape,
+            &nonempty_lengths,
+        )?
+    };
+    for (axis, &length) in group_lengths.iter().enumerate() {
+        if length == 0 {
+            output = output.unsqueeze(axis)?;
+        }
+    }
+    Ok(output)
 }
 
 fn checked_axis_product(dims: &[usize], axes: &[usize]) -> Result<usize> {

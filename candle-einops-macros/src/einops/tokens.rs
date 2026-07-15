@@ -11,11 +11,16 @@ fn private_ident(name: &str) -> proc_macro2::Ident {
 
 pub fn to_tokens_composition(
     runtime_crate: &syn::Path,
+    candle_crate: &syn::Path,
     right_expression: &[Composition],
     tensor_ident: &syn::Ident,
     ignored_len_ident: &syn::Ident,
     shape_ident: &syn::Ident,
 ) -> proc_macro2::TokenStream {
+    let group_lengths_ident = private_ident("composition_group_lengths");
+    let group_start_ident = private_ident("composition_group_start");
+    let group_end_ident = private_ident("composition_group_end");
+    let group_length_ident = private_ident("composition_group_length");
     let (before_ignored, ignored, after_ignored, _) = right_expression.iter().fold(
         (
             Vec::new(),
@@ -148,9 +153,60 @@ pub fn to_tokens_composition(
         _ => unreachable!(),
     };
 
-    quote!(
-        let #tensor_ident = #runtime_crate::Backend::reshape(#tensor_ident, &#composition_shape)?;
-    )
+    let resolved_start = |index: &Index| match index {
+        Index::Known(index) | Index::Range(index) => quote!(::core::option::Option::Some(#index)),
+        Index::Unknown(index) => quote!(#index
+            .checked_add(#ignored_len_ident)
+            .and_then(|value| value.checked_sub(1))),
+    };
+    let resolved_end = |index: &Index| match index {
+        Index::Known(index) => quote!(::core::option::Option::Some(#index)),
+        Index::Unknown(index) | Index::Range(index) => quote!(#index
+            .checked_add(#ignored_len_ident)
+            .and_then(|value| value.checked_sub(1))),
+    };
+    let group_length_tokens = right_expression.iter().map(|expression| match expression {
+        Composition::Individual(Index::Range(_)) => quote!(
+            #group_lengths_ident.extend(::std::iter::repeat_n(1usize, #ignored_len_ident));
+        ),
+        Composition::Individual(_) => quote!(#group_lengths_ident.push(1usize);),
+        Composition::Combined {
+            from: Index::Range(_),
+            to: None,
+        } => quote!(#group_lengths_ident.push(#ignored_len_ident);),
+        Composition::Combined { to: None, .. } => {
+            quote!(#group_lengths_ident.push(1usize);)
+        }
+        Composition::Combined { from, to: Some(to) } => {
+            let start = resolved_start(from);
+            let end = resolved_end(to);
+            quote! {
+                let #group_start_ident = (#start).ok_or_else(|| {
+                    #candle_crate::Error::msg("composition group start underflows usize")
+                })?;
+                let #group_end_ident = (#end).ok_or_else(|| {
+                    #candle_crate::Error::msg("composition group end underflows usize")
+                })?;
+                let #group_length_ident = #group_end_ident
+                    .checked_sub(#group_start_ident)
+                    .and_then(|length| length.checked_add(1))
+                    .ok_or_else(|| {
+                        #candle_crate::Error::msg("composition group length overflows usize")
+                    })?;
+                #group_lengths_ident.push(#group_length_ident);
+            }
+        }
+    });
+
+    quote! {
+        let mut #group_lengths_ident = ::std::vec::Vec::new();
+        #(#group_length_tokens)*
+        let #tensor_ident = #runtime_crate::Backend::compose_axes(
+            #tensor_ident,
+            &#composition_shape,
+            &#group_lengths_ident,
+        )?;
+    }
 }
 
 pub fn to_tokens_repeat(

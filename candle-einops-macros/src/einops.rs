@@ -248,6 +248,7 @@ impl quote::ToTokens for ParsedExpression {
             });
             let tokens = to_tokens_composition(
                 runtime_crate,
+                candle_crate,
                 composition,
                 tensor_ident,
                 &ignored_len_ident,

@@ -19,6 +19,9 @@ permute-then-reshape copy with a spike-only public-operation prototype that
 reshapes contiguous groups before permuting them, in construction and explicit
 contiguous-consumption modes. The construction result exposes copy avoidance;
 the consumption result shows when the same copy is merely deferred.
+The extended-composition matrix applies the same two-mode distinction only to
+the newly eligible runtime-ellipsis and post-reduction paths; it intentionally
+does not add redundant shape-size variants.
 
 Use the repository wrapper for every supported operation:
 

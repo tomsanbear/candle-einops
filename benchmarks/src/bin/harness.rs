@@ -6,9 +6,9 @@ use candle_core::Device;
 use candle_einops_benchmarks::{
     BenchmarkRecord, DeviceSynchronizer, Fingerprint, MonotonicClock, PlumbingScenario, Scenario,
     binary_fast_path_scenarios, binary_operand_packing, broadcast_gemm_spike, diagonal_spike,
-    identity_reshape_scenarios, measure_pair, nary_cost_model_spike, permute_compose_layout_spike,
-    prepare, product_scenarios, reduction_fusion_scenarios, repeat_broadcast_scenarios,
-    zero_k_scenarios,
+    extended_compose, identity_reshape_scenarios, measure_pair, nary_cost_model_spike,
+    permute_compose_layout_spike, prepare, product_scenarios, reduction_fusion_scenarios,
+    repeat_broadcast_scenarios, zero_k_scenarios,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -45,6 +45,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let repeats = repeat_broadcast_scenarios();
     let identity_reshapes = identity_reshape_scenarios();
     let permute_compositions = permute_compose_layout_spike::scenarios();
+    let extended_compositions = extended_compose::scenarios();
     let nary_costs = nary_cost_model_spike::network_scenarios();
     let mut scenarios: Vec<&dyn Scenario> = if include_plumbing {
         vec![&plumbing]
@@ -76,6 +77,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         );
         scenarios.extend(
             permute_compositions
+                .iter()
+                .map(|scenario| scenario as &dyn Scenario),
+        );
+        scenarios.extend(
+            extended_compositions
                 .iter()
                 .map(|scenario| scenario as &dyn Scenario),
         );

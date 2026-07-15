@@ -43,7 +43,10 @@ impl syn::parse::Parse for ParsedExpression {
         };
 
         let runtime_crate = match crate_name("candle-einops") {
-            Ok(FoundCrate::Itself) => syn::parse_quote!(crate),
+            // Rustdoc reports the documented package as `Itself`, even though
+            // doctests compile as an external wrapper crate. The runtime crate
+            // provides this canonical self-alias for ordinary in-crate calls.
+            Ok(FoundCrate::Itself) => syn::parse_quote!(::candle_einops),
             Ok(FoundCrate::Name(name)) => {
                 let ident = Ident::new(&name, Span::call_site());
                 syn::parse_quote!(::#ident)

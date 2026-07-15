@@ -4,138 +4,85 @@
 
 # candle-einops
 
-This library is a fork of [einops](https://github.com/VasanthakumarV/einops) intended to bring support for einops to [Candle](https://github.com/huggingface/candle). Thank you @VasanthakumarV for such a fantastic macro based library to build off. The original library was implemented with TCH as the backing library and was based on the [einops](https://github.com/arogozhnikov/einops) python library.
+`candle-einops` provides compile-time tensor rearrange, reduce, and repeat
+expressions for [Candle](https://github.com/huggingface/candle). It is based on
+the original Rust [einops](https://github.com/VasanthakumarV/einops) macro and
+the Python [einops](https://github.com/arogozhnikov/einops) notation.
 
-For the most part everything from the original library has remained and only the device/dtype bindings have been altered.
+Version 0.2 targets Candle 0.11, uses Rust 2024, and requires Rust 1.94 or newer.
 
-## Project scope and old prototypes
-
-This crate currently focuses on rearrange, reduce, and repeat operations. It does not
-provide `einsum`, and `einsum` is not part of the current Candle modernization work.
-The remote `AddEinsumSupport` branch contains only an incomplete parser prototype
-based on Candle 0.4, so it is retained as historical reference rather than a basis
-for implementation. Any future `einsum` effort should begin with a new design after
-the current API is stable.
-
-The remote `latest-candle` branch's unpinned Candle git dependency and the open
-Candle 0.8 dependency update in
-[PR #5](https://github.com/tomsanbear/candle-einops/pull/5) are likewise superseded
-by the stable-version upgrade tracked in this repository. They should not be merged
-into the modernization branch.
-
-Difference from the python version:
-
-- All code generated at compile time, avoiding the need for caching
-- One common api for rearrange, reduce and repeat operations
-- Shape and reduction operations can be directly specified in the expression
-
-## Error handling
-
-`einops!` returns `candle_core::Result<Tensor>`. Use `?` when the surrounding
-function returns a compatible result, or handle the error explicitly. Shape,
-axis, dtype, and device errors from Candle are propagated without panicking.
-
-This fallible API is a breaking change from the 0.1.x releases and is intended
-for the next 0.2.0 release. Existing callers should add `?` (or another explicit
-`Result` handler) to each `einops!` invocation. Custom `Backend` implementations
-must likewise return `candle_core::Result<Self::Output>` from `reshape`,
-`transpose`, `reduce_axes`, and `add_axes`; `shape` remains infallible.
-
-## Getting Started
-
-__Transpose__
-
-Permute/Transpose dimensions, left side of `->` is the original state, right of `->` describes the end state
-
-```rust
-// (28, 28, 3) becomes (3, 28, 28)
-let output = einops!("h w c -> c h w", &input)?;
+```toml
+[dependencies]
+candle-core = "0.11"
+candle-einops = "0.2"
 ```
 
-__Composition__
+## Example
 
-Combine dimensions by putting them inside a parenthesis on the right of `->`
-
-```rust
-// (10, 28, 28, 3) becomes (280, 28, 3)
-let output = einops!("b h w c -> (b h) w c", &input)?;
-```
-
-__Transpose + Composition__
-
-Transpose a tensor, followed by a composing two dimensions into one, in one single expression
+`einops!` returns `candle_core::Result<Tensor>`, so callers can propagate Candle
+shape, axis, dtype, and device errors with `?`.
 
 ```rust
-// (10, 28, 28, 3) becomes (28, 280, 3)
-let output = einops!("b h w c -> h (b w) c", &input)?;
+use candle_core::{Device, Result, Tensor};
+use candle_einops::einops;
+
+fn main() -> Result<()> {
+    let input = Tensor::arange(0f32, 24f32, &Device::Cpu)?.reshape((2, 3, 4))?;
+    let output = einops!("batch height width -> width batch height", &input)?;
+
+    assert_eq!(output.dims(), &[4, 2, 3]);
+    Ok(())
+}
 ```
 
-__Decomposition__
+## Expression guide
 
-Split a dimension into two, by specifying the details inside parenthesis on the left,
-specify the shape of the new dimensions like so `b1:2`, `b1` is a new dimension with shape 2
+The left side of `->` describes the input axes and the right side describes the
+output axes. Transformations can be combined in one expression.
 
-```rust
-// (10, 28, 28, 3) becomes (2, 5, 28, 28, 3)
-let output = einops!("(b1:2 b2) h w c -> b1 b2 h w c", &input)?;
-```
+| Operation | Example | Shape change |
+| --- | --- | --- |
+| Transpose | `h w c -> c h w` | `(28, 28, 3)` to `(3, 28, 28)` |
+| Compose | `b h w c -> (b h) w c` | `(10, 28, 28, 3)` to `(280, 28, 3)` |
+| Decompose | `(b1:2 b2) h w c -> b1 b2 h w c` | `(10, 28, 28, 3)` to `(2, 5, 28, 28, 3)` |
+| Reduce | `mean(b) h w c -> h w c` | `(10, 28, 28, 3)` to `(28, 28, 3)` |
+| Repeat | `h w c -> h copy:5 w c` | `(28, 28, 3)` to `(28, 5, 28, 3)` |
+| Squeeze | `1 h w c -> h w c` | `(1, 28, 28, 3)` to `(28, 28, 3)` |
 
-New axis can also be specified from variables or fields (struct and enum) using curly braces
+Supported reductions are `min`, `max`, `sum`, `mean`, and `prod`. A reduction
+can cover consecutive axes, as in `batch sum(row column) -> batch`. Use `..` to
+preserve or reduce a runtime number of axes.
 
-```rust
-let b1 = 2;
-let output = einops!("({b1} b2) h w c -> {b1} b2 h w c", &input)?;
-```
+Axis sizes may be literals (`copy:5`) or Rust expressions in braces. For
+example, with `let copies = 5`, `h w -> h {copies} w` inserts an axis of that
+length. New named axes and decomposed groups require an explicit size whenever
+it cannot be inferred.
 
-__Decomposition + Transpose + Composition__
+Invalid expressions are reported by the procedural macro at compile time.
+Tensor-dependent failures are returned as Candle errors at runtime.
 
-We can perform all operations discussed so far in a single expression
+## Migrating from 0.1
 
-```rust
-// (10, 28, 28, 3) becomes (56, 140 3)
-let output = einops!("b h (w w2:2) c -> (h w2) (b w) c", &input)?;
-```
+Version 0.2 contains three compatibility changes:
 
-__Reduce__
+- Candle is upgraded from 0.6 to 0.11.
+- `einops!` now returns `candle_core::Result<Tensor>` instead of panicking on a
+  backend error. Add `?` or handle the result explicitly.
+- Custom `Backend` implementations must return `candle_core::Result` from
+  `reshape`, `transpose`, `reduce_axes`, and `add_axes`. `shape` remains
+  infallible.
 
-We can reduce axes using operations like, `sum`, `min`, `max`, and `mean`.
-if the same operations has to be performed on multiple continuous axes we can do `sum(a b c)`
+Dependency renaming is supported. For example,
+`tensor-ops = { package = "candle-einops", version = "0.2" }` can be imported
+with `use tensor_ops::einops;`.
 
-```rust
-// (10, 28, 28, 3) becomes (28, 28, 3)
-let output = einops!("mean(b) h w c -> h w c", &input)?;
-```
+See [CHANGELOG.md](CHANGELOG.md) for the complete release notes and publish
+order.
 
-__Decomposition + Reduce + Transpose + Composition__
+## Scope
 
-Single expression for combining all functionalities discussed
+The crate currently implements rearrange, reduce, and repeat operations. It
+does not implement `einsum`; the historical `AddEinsumSupport` branch is an
+incomplete Candle 0.4-era prototype and is not part of the 0.2 release.
 
-```rust
-// (10, 28, 28, 3) becomes (14, 140, 3)
-let output = einops!("b (h max(h2:2)) (w max(w2:2)) c -> h (b w) c", &input)?;
-```
-
-__Repeat__
-
-We can repeat axes by specify it on the right side of `->`, it can named, or it can simply be a number
-
-```rust
-// (28, 28, 3) becomes (28, 5, 28, 3)
-let output = einops!("h w c -> h repeat:5 w c", &input)?;
-```
-
-Repeating axis's shape can be from a variables or a field (struct, enum)
-
-```rust
-let repeat = 5;
-let output = einops!("h w c -> h {repeat} w c", &input)?;
-```
-
-__Squeeze__
-
-Squeeze axes of shape 1
-
-```rust
-// (1, 28, 28, 3) becomes (28, 28, 3)
-let output = einops!("1 h w c -> h w c", &input)?;
-```
+Licensed under either Apache-2.0 or MIT, at your option.

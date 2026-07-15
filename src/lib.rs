@@ -1,3 +1,22 @@
+//! Compile-time einops-style tensor transformations for Candle.
+//!
+//! The [`einops!`] macro combines rearrange, reduce, repeat, composition, and
+//! decomposition operations. Backend failures are returned as Candle errors.
+//!
+//! ```
+//! use candle_core::{Device, Result, Tensor};
+//! use candle_einops::einops;
+//!
+//! # fn main() -> Result<()> {
+//! let input = Tensor::arange(0f32, 6f32, &Device::Cpu)?.reshape((2, 3))?;
+//! let output = einops!("rows columns -> columns rows", &input)?;
+//! assert_eq!(output.dims(), &[3, 2]);
+//! # Ok(())
+//! # }
+//! ```
+
+extern crate self as candle_einops;
+
 mod backend;
 
 /// The result type returned by [`einops!`] and [`Backend`] transformations.

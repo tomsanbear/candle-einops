@@ -61,23 +61,13 @@ impl Equation {
         let mut operands = Vec::with_capacity(input_lists.len());
         for input in input_lists {
             let axis_list = parse_axis_list(input, literal.span(), "operand axis list")?;
-            let mut local_names = Vec::with_capacity(axis_list.labels.len());
             let mut axes = Vec::with_capacity(axis_list.labels.len());
             for label in axis_list.labels {
-                if local_names.contains(&label) {
-                    return Err(syn::Error::new(
-                        literal.span(),
-                        format!(
-                            "repeated einsum input label `{label}` is reserved for diagonal support"
-                        ),
-                    ));
-                }
                 let axis = *interned.entry(label.clone()).or_insert_with(|| {
                     let axis = AxisId(names.len());
                     names.push(label.clone());
                     axis
                 });
-                local_names.push(label);
                 axes.push(axis);
             }
             operands.push(Operand {
@@ -130,6 +120,20 @@ impl Equation {
                 .operands
                 .iter()
                 .any(|operand| operand.ellipsis_position.is_some())
+    }
+
+    fn has_repeated_input_labels(&self) -> bool {
+        self.operands.iter().any(|operand| {
+            operand
+                .axes
+                .iter()
+                .enumerate()
+                .any(|(index, axis)| operand.axes[..index].contains(axis))
+        })
+    }
+
+    fn requires_runtime_normalization(&self) -> bool {
+        self.has_ellipsis() || self.has_repeated_input_labels()
     }
 
     fn unary_permutation(&self) -> Vec<usize> {
@@ -364,7 +368,7 @@ impl ToTokens for Invocation {
             .iter()
             .zip(operands)
             .map(|(ident, operand)| quote!(let #ident = #operand;));
-        let execution = if equation.has_ellipsis() {
+        let execution = if equation.requires_runtime_normalization() {
             let patterns = equation.operands.iter().map(|pattern| {
                 let labels = pattern
                     .axes
@@ -525,5 +529,15 @@ mod tests {
         assert_eq!(equation.operands[1].ellipsis_position, Some(0));
         assert_eq!(equation.output_ellipsis_position, Some(1));
         assert_eq!(equation.operands[0].axes.len(), 2);
+    }
+
+    #[test]
+    fn retains_repeated_labels_for_runtime_diagonal_normalization() {
+        let literal: syn::LitStr = syn::parse_quote!("batch i i i -> batch i");
+        let equation = Equation::parse(&literal).expect("valid diagonal equation");
+        assert!(equation.has_repeated_input_labels());
+        assert_eq!(equation.operands[0].axes.len(), 4);
+        assert_eq!(equation.operands[0].axes[1], equation.operands[0].axes[2]);
+        assert_eq!(equation.operands[0].axes[2], equation.operands[0].axes[3]);
     }
 }

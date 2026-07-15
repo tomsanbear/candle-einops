@@ -303,7 +303,7 @@ fn fused_codegen_is_narrow_and_default_backend_remains_compatible() -> Result<()
     let reduction = RecordingBackend::new(&[2, 3, 4, 5]);
     let calls = reduction.calls.clone();
     let _ = einops!("a b sum(reduced) c -> c (a b)", reduction)?;
-    assert_eq!(&*calls.borrow(), &["reduce", "transpose", "reshape"]);
+    assert_eq!(&*calls.borrow(), &["reduce", "fused"]);
 
     let repeat = RecordingBackend::new(&[2, 3]);
     let calls = repeat.calls.clone();

@@ -637,7 +637,7 @@ fn select_prepared_nary_plan<'a>(
             layout: if operand.tensor.is_contiguous() {
                 NaryLayoutEstimate::Contiguous
             } else {
-                NaryLayoutEstimate::Unsupported
+                NaryLayoutEstimate::Strided(operand.tensor.stride().to_vec())
             },
             members: operand.members,
         })
@@ -873,9 +873,10 @@ impl<'a> PlannedOperand<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum NaryLayoutEstimate {
     Contiguous,
+    Strided(Vec<usize>),
     Unsupported,
 }
 
@@ -2824,6 +2825,37 @@ mod tests {
         assert_eq!(estimate.output_elements, 14);
         assert_eq!(estimate.copy_bytes, 0);
         assert_eq!(intermediate.layout, NaryLayoutEstimate::Contiguous);
+        Ok(())
+    }
+
+    #[test]
+    fn nary_pair_model_distinguishes_recoverable_and_copying_strides() -> Result<()> {
+        let pair = |layout| {
+            vec![
+                planner_meta(0, &[("a", 2), ("b", 3), ("k", 5)], layout),
+                planner_meta(1, &[("k", 5), ("n", 7)], NaryLayoutEstimate::Contiguous),
+            ]
+        };
+        let output = named_axes(&["a", "b", "n"]);
+        let order = named_axes(&["a", "b", "k", "n"]);
+
+        let (recovered, _) = model_pair_details(
+            &pair(NaryLayoutEstimate::Strided(vec![3, 1, 6])),
+            0,
+            1,
+            &output,
+            &order,
+        )?;
+        let (copied, _) = model_pair_details(
+            &pair(NaryLayoutEstimate::Strided(vec![15, 1, 3])),
+            0,
+            1,
+            &output,
+            &order,
+        )?;
+
+        assert_eq!(recovered.copy_bytes, 0);
+        assert_eq!(copied.copy_bytes, 2 * 3 * 5 * 4);
         Ok(())
     }
 

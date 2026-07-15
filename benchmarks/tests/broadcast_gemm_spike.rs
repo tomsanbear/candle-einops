@@ -97,6 +97,20 @@ fn direct_and_slice_candidates_cover_their_structural_boundaries() -> Result<()>
 }
 
 #[test]
+fn stride_zero_batch_matmul_is_not_a_valid_cpu_candidate() -> Result<()> {
+    let left = Tensor::ones((1, 32, 32), DType::F32, &Device::Cpu)?;
+    let right = Tensor::ones((32, 32, 32), DType::F32, &Device::Cpu)?;
+    let stride_zero = left.broadcast_as((32, 32, 32))?.matmul(&right)?;
+    let eager = eager_expansion_probe(&left, &right)?.output;
+    assert_ne!(
+        flat(&stride_zero)?,
+        flat(&eager)?,
+        "Candle 0.11 CPU unexpectedly made stride-zero batched matmul value-safe"
+    );
+    Ok(())
+}
+
+#[test]
 fn selected_candidate_matches_eager_values_and_gradients() -> Result<()> {
     for scenario in broadcast_scenarios() {
         let inputs = scenario.setup(&Device::Cpu)?;

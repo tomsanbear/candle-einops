@@ -1,9 +1,8 @@
 use std::collections::BTreeMap;
-use std::fs;
 use std::process::Command;
 
 use candle_einops_parity_runner::{
-    PROTOCOL_VERSION, NormalizedResponse, Operation, OracleClient, OracleRequest, OracleValue,
+    NormalizedResponse, Operation, OracleClient, OracleRequest, OracleValue, PROTOCOL_VERSION,
     ParityConfig, PatternId, persist_replay,
 };
 
@@ -41,6 +40,38 @@ fn live_client_validates_hello_reuses_one_child_and_preserves_order() {
     assert_eq!(responses[1].case_id(), Some("ordered-1"));
     assert!(matches!(responses[0], NormalizedResponse::Success(_)));
 
+    let mut invalid = transpose_request("invalid-shape");
+    invalid.values.truncate(1);
+    let responses = client
+        .evaluate(&[transpose_request("success"), invalid])
+        .expect("oracle errors are protocol data");
+    let NormalizedResponse::Success(success) = &responses[0] else {
+        panic!("expected success: {:?}", responses[0]);
+    };
+    assert_eq!(success.shape, [3, 2]);
+    assert_eq!(success.values.len(), 6);
+    let NormalizedResponse::Error(error) = &responses[1] else {
+        panic!("expected normalized error: {:?}", responses[1]);
+    };
+    assert_eq!(error.case_id.as_deref(), Some("invalid-shape"));
+    assert_eq!(error.error.kind, "ValueError");
+    assert!(!error.error.message.contains("Traceback"));
+
+    let request = transpose_request("replay-7");
+    let json = serde_json::to_string(&request).expect("request serializes");
+    let directory = tempfile::tempdir().expect("temporary replay directory");
+    let path = directory.path().join("failure.json");
+    persist_replay(&path, &request).expect("failure is persisted");
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("replay is readable"),
+        json
+    );
+    let from_json = client.replay_json(&json).expect("JSON replay succeeds");
+    let from_file = client.replay_file(&path).expect("file replay succeeds");
+    assert_eq!(from_json, from_file);
+    assert_eq!(from_json.case_id(), Some("replay-7"));
+
+    assert_eq!(client.child_id(), child_id, "all calls reuse one child");
     let status = client.shutdown().expect("child exits after stdin closes");
     assert!(status.success());
 }
@@ -61,52 +92,17 @@ fn out_of_order_case_identity_is_rejected() {
     let mut command = Command::new("sh");
     command.args([
         "-c",
-        "printf '%s\\n' '{\"kind\":\"hello\",\"protocol_version\":1,\"service\":\"fake\"}'; read ignored; printf '%s\\n' '{\"case_id\":\"wrong\",\"ok\":true,\"shape\":[],\"values\":[]}'",
+        "printf '%s\\n' '{\"kind\":\"hello\",\"protocol_version\":1,\"service\":\"candle-einops-python-oracle\"}'; read ignored; printf '%s\\n' '{\"case_id\":\"wrong\",\"ok\":true,\"shape\":[],\"values\":[]}'",
     ]);
     let mut client = OracleClient::spawn(command).expect("valid fake hello");
     let error = client
         .evaluate(&[transpose_request("expected")])
         .expect_err("mismatched response id must fail");
-    assert!(error.to_string().contains("expected `expected`, received `wrong`"));
-}
-
-#[test]
-fn success_and_error_results_are_normalized() {
-    let mut client = OracleClient::spawn_uv().expect("locked Python oracle starts");
-    let mut invalid = transpose_request("invalid-shape");
-    invalid.values.truncate(1);
-    let responses = client
-        .evaluate(&[transpose_request("success"), invalid])
-        .expect("oracle errors are protocol data");
-
-    let NormalizedResponse::Success(success) = &responses[0] else {
-        panic!("expected success: {:?}", responses[0]);
-    };
-    assert_eq!(success.shape, [3, 2]);
-    assert_eq!(success.values.len(), 6);
-
-    let NormalizedResponse::Error(error) = &responses[1] else {
-        panic!("expected normalized error: {:?}", responses[1]);
-    };
-    assert_eq!(error.case_id.as_deref(), Some("invalid-shape"));
-    assert_eq!(error.error.kind, "ValueError");
-    assert!(!error.error.message.contains("Traceback"));
-}
-
-#[test]
-fn replay_json_and_file_execute_the_exact_request() {
-    let request = transpose_request("replay-7");
-    let json = serde_json::to_string(&request).expect("request serializes");
-    let directory = tempfile::tempdir().expect("temporary replay directory");
-    let path = directory.path().join("failure.json");
-    persist_replay(&path, &request).expect("failure is persisted");
-    assert_eq!(fs::read_to_string(&path).expect("replay is readable"), json);
-
-    let mut client = OracleClient::spawn_uv().expect("locked Python oracle starts");
-    let from_json = client.replay_json(&json).expect("JSON replay succeeds");
-    let from_file = client.replay_file(&path).expect("file replay succeeds");
-    assert_eq!(from_json, from_file);
-    assert_eq!(from_json.case_id(), Some("replay-7"));
+    assert!(
+        error
+            .to_string()
+            .contains("expected `expected`, received `wrong`")
+    );
 }
 
 #[test]

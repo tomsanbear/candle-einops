@@ -15,6 +15,7 @@ import numpy as np
 
 
 PROTOCOL_VERSION = 1
+SERVICE_NAME = "candle-einops-python-oracle"
 
 
 def _json_number(value: Any) -> int | float | str:
@@ -81,6 +82,18 @@ def evaluate_request(request: Mapping[str, Any]) -> dict[str, Any]:
 def serve(stdin: TextIO, stdout: TextIO) -> None:
     """Serve ordered JSONL requests until EOF."""
 
+    stdout.write(
+        json.dumps(
+            {
+                "kind": "hello",
+                "protocol_version": PROTOCOL_VERSION,
+                "service": SERVICE_NAME,
+            },
+            separators=(",", ":"),
+        )
+        + "\n"
+    )
+    stdout.flush()
     for line in stdin:
         if not line.strip():
             continue

@@ -117,6 +117,19 @@ class AdvisoryComparisonTests(unittest.TestCase):
                 self.assertEqual(report["scenarios"][0]["status"], "incomparable")
                 self.assertEqual(report["scenarios"][0]["reason"], reason)
 
+    def test_matching_unknown_schema_is_incomparable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = self.write_runs(
+                root, "base", BASE_SHA, [10_000] * 5, schema_version=2
+            )
+            head = self.write_runs(
+                root, "head", HEAD_SHA, [12_000] * 5, schema_version=2
+            )
+            report = compare_benchmarks.compare_files(base, head, BASE_SHA, HEAD_SHA)
+        self.assertEqual(report["scenarios"][0]["status"], "incomparable")
+        self.assertEqual(report["scenarios"][0]["reason"], "unsupported_schema")
+
     def test_missing_scenario_is_explicitly_incomparable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

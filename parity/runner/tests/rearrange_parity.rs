@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use candle_core::{Device, Shape, Tensor};
+use candle_einops::einops;
 use candle_einops_parity_runner::{
     NormalizedResponse, Operation, OracleClient, OracleRequest, OracleValue, ParityConfig,
     PatternId, persist_replay,
@@ -292,6 +293,26 @@ fn explicit_edge_cases() -> Vec<RearrangeCase> {
         RearrangeCase::deterministic(RearrangePattern::InvalidDecompose, &[3, 2], Some(2)),
         RearrangeCase::deterministic(RearrangePattern::InvalidSqueeze, &[2, 3, 1], None),
     ]
+}
+
+fn run_rust_case(case: &RearrangeCase, input: &Tensor) -> candle_core::Result<Tensor> {
+    let factor = case.factor.unwrap_or(1);
+    match case.pattern {
+        RearrangePattern::Permute2d => einops!("rows columns -> columns rows", input),
+        RearrangePattern::Permute3d => einops!("a b c -> c a b", input),
+        RearrangePattern::Compose => einops!("a b c -> (a b) c", input),
+        RearrangePattern::RuntimeDecompose | RearrangePattern::InvalidDecompose => {
+            einops!("(a {factor}) c -> {factor} a c", input)
+        }
+        RearrangePattern::SqueezeSingletons | RearrangePattern::InvalidSqueeze => {
+            einops!("1 a 1 -> a", input)
+        }
+        RearrangePattern::Ellipsis0
+        | RearrangePattern::Ellipsis1
+        | RearrangePattern::Ellipsis2
+        | RearrangePattern::Ellipsis3 => einops!("a .. z -> z a ..", input),
+        RearrangePattern::NonContiguous => einops!("c a b -> (a b) c", input),
+    }
 }
 
 fn compare_batch(client: &mut OracleClient, cases: &[RearrangeCase]) -> TestCaseResult {

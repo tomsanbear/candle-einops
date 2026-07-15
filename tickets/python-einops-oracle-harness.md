@@ -1,13 +1,16 @@
 ---
 id: python-einops-oracle-harness
 title: Establish a locked Python einops oracle harness
-status: todo
+status: in-progress
 priority: p0
 dependencies: []
 related: []
 scopes: [parity]
 shared_scopes: [ticketing]
 tags: [python-einops-parity]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784137007
 ---
 # Establish a locked Python einops oracle harness
 

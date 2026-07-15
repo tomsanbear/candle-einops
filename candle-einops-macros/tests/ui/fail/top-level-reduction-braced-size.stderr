@@ -2,4 +2,4 @@ error: Axis sizes are not allowed in top-level reductions
  --> tests/ui/fail/top-level-reduction-braced-size.rs:4:21
   |
 4 |     let _ = einops!("sum({axis}) ->", ());
-  |                     ^^^^^^^^^^^^^^^^^
+  |                     ^^^^^^^^^^^^^^^^

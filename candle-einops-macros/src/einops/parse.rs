@@ -125,7 +125,14 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
                     requires_decomposition = true;
                     minimum_rank += 1;
                 } else if peek_reduce_kw(input) {
+                    let span = input.span();
                     let identifiers = parse_reduce_fn(input)?;
+                    if identifiers.iter().any(|(_, shape, _)| shape.is_some()) {
+                        return Err(syn::Error::new(
+                            span,
+                            "Axis sizes are not allowed in top-level reductions",
+                        ));
+                    }
                     minimum_rank += identifiers.iter().filter(|(name, ..)| name != "..").count();
                     // We account for dimensions skipped during reduction operations
                     // like `sum(a b c)`, where three dimensions are reduced
@@ -418,6 +425,31 @@ pub fn parse_composition_permute_repeat(
 ) -> syn::Result<(Vec<Composition>, Vec<Index>, Vec<(Index, Shape)>)> {
     // We calculate the span to report errors later
     let input_span = input.span();
+    let mut left_names = HashSet::new();
+    for expression in decomposition {
+        let (name, is_anonymous_literal) = match expression {
+            Decomposition::Named {
+                name,
+                shape: Some(Shape::Lit(size)),
+                ..
+            } => (name, name == &size.to_string()),
+            Decomposition::Named { name, .. } | Decomposition::Derived { name, .. } => {
+                (name, false)
+            }
+        };
+        // Literal axes such as `max(2)` are anonymous and may be reused.
+        if is_anonymous_literal {
+            continue;
+        }
+        if !left_names.insert(name) {
+            let message = if name == ".." {
+                "Ellipsis `..` appears more than once on the left".to_string()
+            } else {
+                format!("Axis `{name}` appears more than once on the left")
+            };
+            return Err(syn::Error::new(input_span, message));
+        }
+    }
     // We check if ignored dimensions are reduced
     let is_ignore_reduced = decomposition.iter().any(|expression| {
         matches!(expression, Decomposition::Named {name, operation: Some(_), ..} if name.as_str() == "..")
@@ -527,12 +559,6 @@ pub fn parse_composition_permute_repeat(
                                 format!("Axis `{name}` cannot be assigned a size on the right"),
                             ));
                         }
-                        if !consumed.insert(name.clone()) {
-                            return Err(syn::Error::new(
-                                input_span,
-                                format!("Axis `{name}` appears more than once on the right"),
-                            ));
-                        }
                         permute.push(index.clone());
                     } else {
                         // New identifiers represents repetition
@@ -543,6 +569,12 @@ pub fn parse_composition_permute_repeat(
                             )
                         })?;
                         repeat.push((index_fn(i), shape));
+                    }
+                    if !consumed.insert(name.clone()) {
+                        return Err(syn::Error::new(
+                            input_span,
+                            format!("Axis `{name}` appears more than once on the right"),
+                        ));
                     }
                     composition.push(Composition::Individual(index_fn(i)))
                 } else if input.peek(syn::LitInt) {
@@ -569,13 +601,13 @@ pub fn parse_composition_permute_repeat(
                     index_fn = Box::new(Index::Unknown);
                 } else if input.peek(syn::token::Brace) {
                     let (name, shape) = parse_braced_expression(input)?;
+                    if !consumed.insert(name.clone()) {
+                        return Err(syn::Error::new(
+                            input_span,
+                            format!("Axis `{name}` appears more than once on the right"),
+                        ));
+                    }
                     if let Some(index) = positions.get(&name) {
-                        if !consumed.insert(name.clone()) {
-                            return Err(syn::Error::new(
-                                input_span,
-                                "A braced axis appears more than once on the right",
-                            ));
-                        }
                         permute.push(index.clone());
                     } else {
                         repeat.push((index_fn(i), shape));
@@ -656,12 +688,6 @@ fn parse_right_parenthesized(
                         format!("Axis `{name}` cannot be assigned a size on the right"),
                     ));
                 }
-                if !consumed.insert(name.clone()) {
-                    return Err(syn::Error::new(
-                        span,
-                        format!("Axis `{name}` appears more than once on the right"),
-                    ));
-                }
                 permute.push(index.clone());
             } else {
                 let shape = shape.ok_or_else(|| {
@@ -672,19 +698,25 @@ fn parse_right_parenthesized(
                 })?;
                 repeat.push((index_fn(index), shape));
             }
+            if !consumed.insert(name.clone()) {
+                return Err(syn::Error::new(
+                    span,
+                    format!("Axis `{name}` appears more than once on the right"),
+                ));
+            }
             Ok(index_fn(index))
         } else if content.peek(syn::LitInt) {
             repeat.push((index_fn(index), Shape::Lit(parse_usize(content)?)));
             Ok(index_fn(index))
         } else if content.peek(syn::token::Brace) {
             let (name, shape) = parse_braced_expression(content)?;
+            if !consumed.insert(name.clone()) {
+                return Err(syn::Error::new(
+                    span,
+                    format!("Axis `{name}` appears more than once on the right"),
+                ));
+            }
             if let Some(index) = positions.get(&name) {
-                if !consumed.insert(name) {
-                    return Err(syn::Error::new(
-                        span,
-                        "A braced axis appears more than once on the right",
-                    ));
-                }
                 permute.push(index.clone());
             } else {
                 repeat.push((index_fn(index), shape));

@@ -159,16 +159,16 @@ fn equivalent_repeat() -> Result<()> {
         ),
         (
             "1 b c d -> (d copy:3 1) 3 b c",
-            "(d min(copy:3) one:1) max(three:3) b c -> one b c d"
+            "(d min(copy:3) one:1) max(three) b c -> one b c d"
         ),
         (
             "1 .. d -> 1 (copy1:2 d copy2:3) ..",
             "1 (min(copy1:2) d max(copy2:3)) .. -> 1 .. d"
         ),
-        ("1 .. -> 3 ..", "max(copy:3) .. -> 1 .."),
+        ("1 .. -> 3 ..", "max(copy) .. -> 1 .."),
         (
             "1 b c d -> (1 1) (1 b) 2 c 3 d (1 1)",
-            "(max(one1:1 one2:1)) (min(one3:1) b) min(two:2) c max(three:3) d (min(one4:1 one5:1)) -> 1 b c d"
+            "(max(one1:1 one2:1)) (min(one3:1) b) min(two) c max(three) d (min(one4:1 one5:1)) -> 1 b c d"
         ),
         input
     ];
@@ -185,15 +185,12 @@ fn equivalent_repeat() -> Result<()> {
             "a b c -> (c a) (copy1:1 b copy2:2)",
             "(c a:2) (min(copy1:1) b max(copy2:2)) -> a b c"
         ),
-        ("a .. -> a .. copy:4", "a .. max(copy:4) -> a .."),
+        ("a .. -> a .. copy:4", "a .. max(copy) -> a .."),
         (
             ".. c -> .. (copy1:1 c copy2:2)",
             ".. (min(copy1:1) c max(copy2:2)) -> .. c"
         ),
-        (
-            ".. -> copy1:2 .. copy2:3",
-            "max(copy1:2) .. min(copy2:3) -> .."
-        ),
+        (".. -> copy1:2 .. copy2:3", "max(copy1) .. min(copy2) -> .."),
         (
             "a b c -> copy1:2 a copy2:1 b c 1",
             "min(copy1) a max(copy2) b c 1 -> a b c"

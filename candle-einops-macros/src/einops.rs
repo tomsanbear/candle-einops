@@ -86,6 +86,7 @@ impl syn::parse::Parse for ParsedExpression {
 
 #[derive(Debug)]
 struct Expression {
+    minimum_input_rank: usize,
     // A bool that is 'true' if,
     // - A new dimension is derived
     // - Dimensions of size 1 need squeezing
@@ -104,7 +105,8 @@ struct Expression {
 
 impl syn::parse::Parse for Expression {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let (decomposition, requires_decomposition) = parse_decomposition(input)?;
+        let (decomposition, requires_decomposition, minimum_input_rank) =
+            parse_decomposition(input)?;
 
         let reduce = parse_reduce(&decomposition);
 
@@ -112,6 +114,7 @@ impl syn::parse::Parse for Expression {
             parse_composition_permute_repeat(input, &decomposition)?;
 
         Ok(Expression {
+            minimum_input_rank,
             requires_decomposition,
             decomposition,
             reduce,
@@ -132,6 +135,7 @@ impl quote::ToTokens for ParsedExpression {
             expression,
         } = self;
         let Expression {
+            minimum_input_rank,
             requires_decomposition,
             decomposition,
             reduce,
@@ -257,7 +261,15 @@ impl quote::ToTokens for ParsedExpression {
                 );));
                 return;
             };
-            quote!(let #ignored_len_ident = #shape_ident.len() - #index;)
+            quote!(
+                let #ignored_len_ident = #shape_ident.len().checked_sub(#index).ok_or_else(|| {
+                    #candle_crate::Error::msg(::std::format!(
+                        "ellipsis requires at least {} axes, input rank is {}",
+                        #index,
+                        #shape_ident.len(),
+                    ))
+                })?;
+            )
         } else {
             proc_macro2::TokenStream::new()
         };
@@ -280,25 +292,26 @@ impl quote::ToTokens for ParsedExpression {
             proc_macro2::TokenStream::new()
         };
 
-        // We need the shape of the tensor, if either of ignored length calculation, or
-        // decomposition operation has to take place
-        let shape_tokens = match (
-            ignored_len_tokens.is_empty(),
-            decomposition_tokens.is_empty(),
-            // If all of the shapes of input tensor is known, we can skip
-            // calculating the shape of the tensor
-            decomposition.iter().any(|expression| {
-                matches!(
-                    expression,
-                    Decomposition::Derived { .. } | Decomposition::Named { shape: None, .. }
-                )
-            }),
-        ) {
-            (true, true, _) => proc_macro2::TokenStream::new(),
-            (false, _, _) | (_, false, true) => {
-                quote!(let #shape_ident = #runtime_crate::Backend::shape(&#tensor_ident);)
+        let shape_tokens = if tokens_empty.iter().all(|empty| *empty) {
+            proc_macro2::TokenStream::new()
+        } else {
+            quote!(let #shape_ident = #runtime_crate::Backend::shape(&#tensor_ident);)
+        };
+
+        let rank_validation_tokens = if shape_tokens.is_empty() {
+            proc_macro2::TokenStream::new()
+        } else {
+            let last_required_index = minimum_input_rank.saturating_sub(1);
+            quote! {
+                if #shape_ident.len() < #minimum_input_rank {
+                    return ::core::result::Result::Err(#candle_crate::Error::msg(::std::format!(
+                        "shape index {} out of range for rank {}; einops expression requires at least {} axes",
+                        #last_required_index,
+                        #shape_ident.len(),
+                        #minimum_input_rank,
+                    )));
+                }
             }
-            (_, false, false) => proc_macro2::TokenStream::new(),
         };
 
         // We have to recalculate the shape of the tensor before repeat transformation
@@ -329,6 +342,8 @@ impl quote::ToTokens for ParsedExpression {
             #tensor_tokens
 
             #shape_tokens
+
+            #rank_validation_tokens
 
             #ignored_len_tokens
 

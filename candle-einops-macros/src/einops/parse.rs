@@ -95,10 +95,11 @@ pub enum Operation {
     Prod,
 }
 
-pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition>, bool)> {
+pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition>, bool, usize)> {
     // Length of dimensions inside parenthesis,
     // we need it to account for the dimensions skipped during the iteration
     let mut parenthesized_len = 0;
+    let mut minimum_rank = 0;
     let (decomposition, requires_decomposition, _) = (0..)
         // We parse till we reach '->'. The token is consumed after the fold so
         // parsing failures can be propagated instead of panicking here.
@@ -122,8 +123,10 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
                     let content_expression = parse_left_parenthesized(input, index_fn(i))?;
                     decomposition.extend(content_expression);
                     requires_decomposition = true;
+                    minimum_rank += 1;
                 } else if peek_reduce_kw(input) {
                     let identifiers = parse_reduce_fn(input)?;
+                    minimum_rank += identifiers.iter().filter(|(name, ..)| name != "..").count();
                     // We account for dimensions skipped during reduction operations
                     // like `sum(a b c)`, where three dimensions are reduced
                     parenthesized_len += identifiers.len().saturating_sub(1);
@@ -163,6 +166,7 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
                         index: index_fn(i),
                         operation: None,
                     });
+                    minimum_rank += 1;
                 } else if input.peek(syn::LitInt) {
                     let lit_int = input.parse::<syn::LitInt>()?;
                     if lit_int.base10_parse::<usize>()? != 1 {
@@ -175,6 +179,7 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
                     }
                     // We have to reshape to squeeze the 1 sized dimension
                     requires_decomposition = true;
+                    minimum_rank += 1;
                 } else if input.peek(syn::Token![..]) {
                     input.parse::<syn::Token![..]>()?;
                     decomposition.push(Decomposition::Named {
@@ -195,7 +200,7 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
 
     input.parse::<syn::Token![->]>()?;
 
-    Ok((decomposition, requires_decomposition))
+    Ok((decomposition, requires_decomposition, minimum_rank))
 }
 
 fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec<Decomposition>> {

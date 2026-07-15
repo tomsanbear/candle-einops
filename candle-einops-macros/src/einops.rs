@@ -3,7 +3,7 @@ mod tokens;
 
 use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::{Ident, Span};
-use quote::{format_ident, quote};
+use quote::quote;
 use syn::parse::ParseStream;
 
 use parse::{
@@ -37,7 +37,7 @@ impl syn::parse::Parse for ParsedExpression {
         input.parse::<syn::Token![,]>()?;
 
         let (tensor_ident, tensor_tokens) = {
-            let tensor_ident = Ident::new("input", Span::call_site());
+            let tensor_ident = private_ident("input");
             let expr = input.parse::<syn::Expr>()?;
             let tensor_tokens = quote!(let #tensor_ident = #expr;);
             (tensor_ident, tensor_tokens)
@@ -48,10 +48,7 @@ impl syn::parse::Parse for ParsedExpression {
             // doctests compile as an external wrapper crate. The runtime crate
             // provides this canonical self-alias for ordinary in-crate calls.
             Ok(FoundCrate::Itself) => syn::parse_quote!(::candle_einops),
-            Ok(FoundCrate::Name(name)) => {
-                let ident = Ident::new(&name, Span::call_site());
-                syn::parse_quote!(::#ident)
-            }
+            Ok(FoundCrate::Name(name)) => external_crate_path(&name)?,
             Err(error) => {
                 return Err(syn::Error::new(
                     Span::call_site(),
@@ -62,10 +59,7 @@ impl syn::parse::Parse for ParsedExpression {
 
         let candle_crate = match crate_name("candle-core") {
             Ok(FoundCrate::Itself) => syn::parse_quote!(crate),
-            Ok(FoundCrate::Name(name)) => {
-                let ident = Ident::new(&name, Span::call_site());
-                syn::parse_quote!(::#ident)
-            }
+            Ok(FoundCrate::Name(name)) => external_crate_path(&name)?,
             Err(error) => {
                 return Err(syn::Error::new(
                     Span::call_site(),
@@ -82,6 +76,19 @@ impl syn::parse::Parse for ParsedExpression {
             expression,
         })
     }
+}
+
+fn private_ident(name: &str) -> Ident {
+    Ident::new(&format!("__candle_einops_{name}"), Span::mixed_site())
+}
+
+fn external_crate_path(name: &str) -> syn::Result<syn::Path> {
+    syn::parse_str(&format!("::r#{name}")).map_err(|_| {
+        syn::Error::new(
+            Span::call_site(),
+            format!("dependency alias `{name}` cannot be used as a Rust crate path"),
+        )
+    })
 }
 
 #[derive(Debug)]
@@ -145,11 +152,11 @@ impl quote::ToTokens for ParsedExpression {
         } = expression;
 
         // Variable to store the shape slice
-        let shape_ident = format_ident!("{}_{}", tensor_ident, "shape");
+        let shape_ident = private_ident("input_shape");
 
         // Variable that stores the length of dimensions ignored
         // in the expression using '..' symbol
-        let ignored_len_ident = format_ident!("{}_{}", tensor_ident, "ignored_len");
+        let ignored_len_ident = private_ident("input_ignored_len");
 
         // If needed we generate tokens for decomposing the tensor
         let decomposition_tokens = if *requires_decomposition {

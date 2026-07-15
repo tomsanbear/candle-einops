@@ -25,8 +25,8 @@ fn main() -> Result<()> {
     let repeated = einops!("rows .. -> rows .. {input_ignored_len}", &tensor)?;
     assert_eq!(repeated.dims(), &[2, 3, 5]);
 
-    let composed = einops!("rows .. -> (rows ..)", &tensor)?;
-    assert_eq!(composed.dims(), &[6]);
+    let permuted = einops!("rows .. columns -> columns .. rows", &tensor)?;
+    assert_eq!(permuted.dims(), &[3, 2]);
 
     let reduced = einops!("sum(..) ->", &tensor)?;
     assert_eq!(reduced.to_scalar::<f32>()?, 15f32);

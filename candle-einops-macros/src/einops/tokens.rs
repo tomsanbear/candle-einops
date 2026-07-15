@@ -2,6 +2,13 @@ use crate::einops::{Composition, Decomposition, Index, Operation, Shape};
 
 use quote::quote;
 
+fn private_ident(name: &str) -> proc_macro2::Ident {
+    proc_macro2::Ident::new(
+        &format!("__candle_einops_{name}"),
+        proc_macro2::Span::mixed_site(),
+    )
+}
+
 pub fn to_tokens_composition(
     runtime_crate: &syn::Path,
     right_expression: &[Composition],
@@ -121,7 +128,7 @@ pub fn to_tokens_composition(
                 .into_iter()
                 .chain(#ignored)
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         (false, false, false) => quote!(
             [#(#before_ignored),*]
@@ -129,14 +136,14 @@ pub fn to_tokens_composition(
                 .chain(#ignored)
                 .chain([#(#after_ignored),*].into_iter())
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
 
         ),
         (true, false, false) => quote!(
             #ignored
                 .chain([#(#after_ignored),*].into_iter())
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         _ => unreachable!(),
     };
@@ -226,7 +233,7 @@ pub fn to_tokens_permute(
                 .into_iter()
                 .chain(#ignored_permute)
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         (false, false, false) => quote!(
             [#(#before_ignored),*]
@@ -234,14 +241,14 @@ pub fn to_tokens_permute(
                 .chain(#ignored_permute)
                 .chain([#(#after_ignored),*].into_iter())
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
 
         ),
         (true, false, false) => quote!(
             #ignored_permute
                 .chain([#(#after_ignored),*].into_iter())
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         _ => unreachable!(),
     };
@@ -287,7 +294,7 @@ pub fn to_tokens_reduce(
                     Index::Range(i) => {
                         ignored_indices = Some(quote!((#i..(#i + #ignored_len_ident)).into_iter()));
                         ignored_operations =
-                            Some(quote!(std::iter::repeat(#operation).take(#ignored_len_ident)));
+                            Some(quote!(::std::iter::repeat(#operation).take(#ignored_len_ident)));
                     }
                 }
                 (
@@ -310,7 +317,7 @@ pub fn to_tokens_reduce(
                     #tensor_ident,
                     &mut #ignored_indices
                         .zip(#ignored_operations)
-                        .collect::<Vec<(_, _)>>()
+                        .collect::<::std::vec::Vec<(_, _)>>()
                 )?;
             )
         }
@@ -326,7 +333,7 @@ pub fn to_tokens_reduce(
                                 .into_iter()
                                 .chain(#ignored_operations)
                         )
-                        .collect::<Vec<(_, _)>>()
+                        .collect::<::std::vec::Vec<(_, _)>>()
                 )?;
             )
         }
@@ -426,7 +433,7 @@ pub fn to_tokens_decomposition(
                 .into_iter()
                 .chain(#ignored_indices)
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         (false, false, false) => quote!(
             [#(#known_indices),*]
@@ -434,16 +441,16 @@ pub fn to_tokens_decomposition(
                 .chain(#ignored_indices)
                 .chain([#(#unknown_indices),*].into_iter())
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         (true, false, false) => quote!(
             #ignored_indices
                 .chain([#(#unknown_indices),*].into_iter())
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         (true, false, true) => quote!(
-            #ignored_indices.collect::<Vec<_>>()
+            #ignored_indices.collect::<::std::vec::Vec<_>>()
         ),
         _ => unreachable!(),
     };
@@ -458,21 +465,25 @@ fn checked_derived_dimension(
     dimension: proc_macro2::TokenStream,
     shape_calc: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
+    let dimension_ident = private_ident("dimension");
+    let factor_ident = private_ident("factor");
     quote!({
-        let dimension = #dimension;
-        let factor = (#shape_calc).ok_or_else(|| {
+        let #dimension_ident = #dimension;
+        let #factor_ident = (#shape_calc).ok_or_else(|| {
             #candle_crate::Error::msg("decomposition factor product overflows usize")
         })?;
-        if factor == 0 {
+        if #factor_ident == 0 {
             return ::core::result::Result::Err(#candle_crate::Error::msg(
                 "decomposition factor must be non-zero",
             ));
         }
-        if dimension % factor != 0 {
+        if #dimension_ident % #factor_ident != 0 {
             return ::core::result::Result::Err(#candle_crate::Error::msg(::std::format!(
-                "dimension size {dimension} is not divisible by decomposition factor {factor}",
+                "dimension size {} is not divisible by decomposition factor {}",
+                #dimension_ident,
+                #factor_ident,
             )));
         }
-        dimension / factor
+        #dimension_ident / #factor_ident
     })
 }

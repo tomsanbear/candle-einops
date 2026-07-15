@@ -893,6 +893,150 @@ impl Scenario for ReductionFusionScenario {
     }
 }
 
+#[derive(Clone, Copy)]
+enum RepeatFamily {
+    SingleAxis,
+    TwoAxis,
+}
+
+#[derive(Clone, Copy)]
+enum RepeatMode {
+    Construct,
+    Consume,
+}
+
+pub struct RepeatBroadcastScenario {
+    id: &'static str,
+    family: RepeatFamily,
+    mode: RepeatMode,
+}
+
+#[must_use]
+pub fn repeat_broadcast_scenarios() -> [RepeatBroadcastScenario; 4] {
+    use RepeatFamily::{SingleAxis, TwoAxis};
+    use RepeatMode::{Construct, Consume};
+    [
+        RepeatBroadcastScenario {
+            id: "repeat/broadcast/single-axis/construct",
+            family: SingleAxis,
+            mode: Construct,
+        },
+        RepeatBroadcastScenario {
+            id: "repeat/broadcast/single-axis/consume",
+            family: SingleAxis,
+            mode: Consume,
+        },
+        RepeatBroadcastScenario {
+            id: "repeat/broadcast/two-axis/construct",
+            family: TwoAxis,
+            mode: Construct,
+        },
+        RepeatBroadcastScenario {
+            id: "repeat/broadcast/two-axis/consume",
+            family: TwoAxis,
+            mode: Consume,
+        },
+    ]
+}
+
+impl RepeatBroadcastScenario {
+    fn input_side(&self) -> usize {
+        match self.family {
+            RepeatFamily::SingleAxis => 256,
+            RepeatFamily::TwoAxis => 128,
+        }
+    }
+
+    fn output_elements(&self) -> usize {
+        match self.family {
+            RepeatFamily::SingleAxis => 256 * 32 * 256,
+            RepeatFamily::TwoAxis => 16 * 128 * 128 * 16,
+        }
+    }
+
+    fn maybe_consume(&self, tensor: Tensor) -> Result<Tensor> {
+        match self.mode {
+            RepeatMode::Construct => Ok(tensor),
+            RepeatMode::Consume => tensor.contiguous(),
+        }
+    }
+}
+
+impl Scenario for RepeatBroadcastScenario {
+    fn id(&self) -> ScenarioId {
+        ScenarioId::new(self.id)
+    }
+
+    fn tracked(&self) -> bool {
+        true
+    }
+
+    fn work(&self) -> WorkUnits {
+        let input_elements = self.input_side() * self.input_side();
+        let output_elements = self.output_elements();
+        WorkUnits::new(
+            output_elements as u64,
+            ((input_elements + output_elements) * size_of::<f32>()) as u64,
+            None,
+        )
+    }
+
+    fn setup(&self, device: &Device) -> Result<Vec<Tensor>> {
+        let side = self.input_side();
+        let values = (0..side * side)
+            .map(|index| (index % 251) as f32 / 251.)
+            .collect::<Vec<_>>();
+        Ok(vec![
+            Tensor::from_vec(values, (side, side), device)?.permute([1, 0])?,
+        ])
+    }
+
+    fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {
+        let repeated = match self.family {
+            RepeatFamily::SingleAxis => einops!("row column -> copies:32 row column", &inputs[0])?,
+            RepeatFamily::TwoAxis => {
+                einops!("row column -> row outer:16 column inner:16", &inputs[0])?
+            }
+        };
+        self.maybe_consume(repeated)
+    }
+
+    fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
+        let repeated = match self.family {
+            RepeatFamily::SingleAxis => inputs[0].unsqueeze(0)?.repeat((32, 1, 1))?,
+            RepeatFamily::TwoAxis => inputs[0]
+                .unsqueeze(1)?
+                .unsqueeze(3)?
+                .repeat((1, 16, 1, 16))?,
+        };
+        self.maybe_consume(repeated)
+    }
+
+    fn check(&self, library: &Tensor, reference: &Tensor) -> Result<()> {
+        if library.dims() != reference.dims() {
+            candle_core::bail!("repeat broadcast outputs have different shapes")
+        }
+        if matches!(self.mode, RepeatMode::Construct) && library.is_contiguous() {
+            candle_core::bail!("repeat construct output unexpectedly materialized")
+        }
+        let library = library.flatten_all()?.to_vec1::<f32>()?;
+        let reference = reference.flatten_all()?.to_vec1::<f32>()?;
+        for (index, (&library, &reference)) in library.iter().zip(&reference).enumerate() {
+            let tolerance = if matches!(self.mode, RepeatMode::Consume) {
+                1e-4 * reference.abs().max(1.)
+            } else {
+                0.
+            };
+            if (library - reference).abs() > tolerance {
+                candle_core::bail!(
+                    "repeat broadcast output {index} differs: {library} vs {reference}, tolerance {tolerance}"
+                )
+            }
+        }
+        Ok(())
+    }
+}
+
 pub fn criterion_plumbing_benchmark(criterion: &mut Criterion) {
     let device = Device::Cpu;
     let scenario = PlumbingScenario;
@@ -967,6 +1111,31 @@ pub fn criterion_reduction_fusion(criterion: &mut Criterion) {
                 bencher.iter(|| {
                     measure_operation(&prepared, operation, &synchronizer, &clock)
                         .expect("reduction fusion sample must succeed")
+                });
+            });
+        }
+    }
+}
+
+pub fn criterion_repeat_broadcast(criterion: &mut Criterion) {
+    let device = Device::Cpu;
+    let synchronizer = DeviceSynchronizer(&device);
+    let clock = MonotonicClock;
+    for scenario in repeat_broadcast_scenarios() {
+        let prepared = prepare(&scenario, &device).expect("repeat broadcast setup must succeed");
+        for operation in [Operation::Library, Operation::Reference] {
+            let name = format!(
+                "{}/{}",
+                scenario.id().as_str(),
+                match operation {
+                    Operation::Library => "library",
+                    Operation::Reference => "reference",
+                }
+            );
+            criterion.bench_function(&name, |bencher| {
+                bencher.iter(|| {
+                    measure_operation(&prepared, operation, &synchronizer, &clock)
+                        .expect("repeat broadcast sample must succeed")
                 });
             });
         }

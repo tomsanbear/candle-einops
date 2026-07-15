@@ -6,7 +6,7 @@ use candle_core::Device;
 use candle_einops_benchmarks::{
     BenchmarkRecord, DeviceSynchronizer, Fingerprint, MonotonicClock, PlumbingScenario, Scenario,
     binary_fast_path_scenarios, broadcast_gemm_spike, diagonal_spike, measure_pair, prepare,
-    product_scenarios, reduction_fusion_scenarios,
+    product_scenarios, reduction_fusion_scenarios, repeat_broadcast_scenarios,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -38,6 +38,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let products = product_scenarios();
     let binary = binary_fast_path_scenarios();
     let reductions = reduction_fusion_scenarios();
+    let repeats = repeat_broadcast_scenarios();
     let mut scenarios: Vec<&dyn Scenario> = if include_plumbing {
         vec![&plumbing]
     } else {
@@ -54,6 +55,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         );
         scenarios.extend(binary.iter().map(|scenario| scenario as &dyn Scenario));
         scenarios.extend(reductions.iter().map(|scenario| scenario as &dyn Scenario));
+        scenarios.extend(repeats.iter().map(|scenario| scenario as &dyn Scenario));
         scenarios.extend(
             broadcast_gemm_spike::broadcast_scenarios()
                 .iter()

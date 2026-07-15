@@ -5,7 +5,9 @@ contains an untracked plumbing scenario, product-reduction and diagonal-lowering
 spikes, plus paired binary einsum fast-path scenarios for Hadamard, outer,
 rank-2 GEMM, and rank-3 batched GEMM. Homogeneous reduction fusion owns four
 paired sum/mean scenarios across contiguous trailing and strided non-adjacent
-multi-axis layouts.
+multi-axis layouts. Repeat broadcast lowering owns one large single-axis family
+and one two-axis family, each split into view-construction and
+materializing-consumption modes.
 
 Use the repository wrapper for every supported operation:
 

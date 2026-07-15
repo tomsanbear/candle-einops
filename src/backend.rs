@@ -66,6 +66,9 @@ pub trait Backend {
     fn reshape(self, shape: &[usize]) -> Result<Self::Output>;
     fn transpose(self, axes: &[usize]) -> Result<Self::Output>;
     fn reduce_axes(self, axes_operations: &mut [(usize, Operation)]) -> Result<Self::Output>;
+    /// Inserts new axes as broadcast views.
+    ///
+    /// The returned tensor can be non-contiguous and can alias the input.
     fn add_axes(self, naxes: usize, pos2len: &[(usize, usize)]) -> Result<Self::Output>;
 }
 
@@ -132,14 +135,14 @@ impl<T: AsRef<Tensor>> Backend for T {
     }
 
     fn add_axes(self, naxes: usize, pos2len: &[(usize, usize)]) -> Result<Self::Output> {
-        let mut output = self.as_ref().clone();
+        let input = self.as_ref();
 
-        let expected_naxes = output.rank() + pos2len.len();
+        let expected_naxes = input.rank() + pos2len.len();
         if naxes != expected_naxes {
             candle_core::bail!("add_axes: expected final rank {expected_naxes}, got {naxes}")
         }
 
-        let mut repeats = vec![1; naxes];
+        let mut inserted_lengths = vec![1; naxes];
         let mut occupied = vec![false; naxes];
 
         for &(axis_pos, axis_len) in pos2len {
@@ -152,36 +155,40 @@ impl<T: AsRef<Tensor>> Backend for T {
                 candle_core::bail!("add_axes: duplicate axis position {axis_pos}")
             }
             occupied[axis_pos] = true;
-            repeats[axis_pos] = axis_len;
+            inserted_lengths[axis_pos] = axis_len;
         }
 
-        if repeats.contains(&0) {
-            let input_shape = output.dims();
-            let mut input_axis = 0;
-            let final_shape = (0..naxes)
-                .map(|axis| {
-                    if occupied[axis] {
-                        repeats[axis]
-                    } else {
-                        let len = input_shape[input_axis];
-                        input_axis += 1;
-                        len
-                    }
-                })
+        let mut singleton_shape = Vec::with_capacity(naxes);
+        let mut final_shape = Vec::with_capacity(naxes);
+        let mut input_axis = 0;
+        for axis in 0..naxes {
+            if occupied[axis] {
+                singleton_shape.push(1);
+                final_shape.push(inserted_lengths[axis]);
+            } else {
+                let length = input.dims()[input_axis];
+                singleton_shape.push(length);
+                final_shape.push(length);
+                input_axis += 1;
+            }
+        }
+
+        let expanded = if input.is_contiguous() {
+            input.reshape(Shape::from_dims(&singleton_shape))?
+        } else {
+            let mut output = input.clone();
+            let mut positions = pos2len
+                .iter()
+                .map(|&(axis_pos, _)| axis_pos)
                 .collect::<Vec<_>>();
-            return Tensor::zeros(
-                Shape::from_dims(&final_shape),
-                output.dtype(),
-                output.device(),
-            );
-        }
+            positions.sort_unstable();
+            for axis_pos in positions {
+                output = output.unsqueeze(axis_pos)?;
+            }
+            output
+        };
 
-        for &(axis_pos, _) in pos2len {
-            output = output.unsqueeze(axis_pos)?;
-        }
-
-        let shape = Shape::from_dims(&repeats[..]);
-        output.repeat(shape)
+        expanded.broadcast_as(Shape::from_dims(&final_shape))
     }
 }
 

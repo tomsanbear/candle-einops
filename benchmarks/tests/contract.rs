@@ -4,6 +4,7 @@ use candle_core::{Device, Result, Tensor};
 use candle_einops_benchmarks::{
     Backend, BenchmarkRecord, Clock, Fingerprint, Operation, Scenario, ScenarioId, Synchronizer,
     WorkUnits, binary_fast_path_scenarios, measure_pair, prepare, reduction_fusion_scenarios,
+    repeat_broadcast_scenarios,
 };
 
 #[derive(Clone)]
@@ -17,6 +18,29 @@ impl EventLog {
     fn take(&self) -> Vec<&'static str> {
         std::mem::take(&mut *self.0.lock().expect("event log lock"))
     }
+}
+
+#[test]
+fn repeat_broadcast_scenarios_are_exactly_the_ticket_owned_matrix() -> Result<()> {
+    let scenarios = repeat_broadcast_scenarios();
+    let ids = scenarios
+        .iter()
+        .map(|scenario| scenario.id().as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids,
+        [
+            "repeat/broadcast/single-axis/construct",
+            "repeat/broadcast/single-axis/consume",
+            "repeat/broadcast/two-axis/construct",
+            "repeat/broadcast/two-axis/consume",
+        ]
+    );
+    for scenario in &scenarios {
+        assert!(scenario.tracked());
+        prepare(scenario, &Device::Cpu)?;
+    }
+    Ok(())
 }
 
 #[test]

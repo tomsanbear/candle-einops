@@ -212,12 +212,19 @@ fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec
 
     let mut content_expression = Vec::new();
 
-    let (derived_name, derived_index, running_mul, shape_expr) = (0..)
+    let (derived_name, derived_index, derived_operation, running_mul, shape_expr) = (0..)
         // We continue till we parse everything inside the parenthesis
         .take_while(|_| !content.is_empty())
         .try_fold(
-            (None, None, 1, Vec::new()),
-            |(mut derived_name, mut derived_index, mut running_mul, mut shape_expr), i| {
+            (None, None, None, 1, Vec::new()),
+            |(
+                mut derived_name,
+                mut derived_index,
+                mut derived_operation,
+                mut running_mul,
+                mut shape_expr,
+            ),
+             i| {
                 // Closure to keep a running multiple of the shapes,
                 // and updating the list with new dimensions with known shape
                 let mut update_values = |name, shape, operation| {
@@ -240,6 +247,7 @@ fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec
                         }
                         derived_name = Some(name);
                         derived_index = Some(i);
+                        derived_operation = operation;
                     }
                     Ok(())
                 };
@@ -275,7 +283,13 @@ fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec
                         "Unknown character found inside the brackets of the left expression",
                     ));
                 };
-                Ok((derived_name, derived_index, running_mul, shape_expr))
+                Ok((
+                    derived_name,
+                    derived_index,
+                    derived_operation,
+                    running_mul,
+                    shape_expr,
+                ))
             },
         )?;
 
@@ -294,7 +308,7 @@ fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec
             Decomposition::Derived {
                 name: derived_name,
                 index,
-                operation: None,
+                operation: derived_operation,
                 shape_calc: quote::quote!(
                     (#running_mul * [#(#shape_expr),*].iter().product::<usize>())
                 ),
@@ -352,8 +366,18 @@ pub fn parse_reduce(decomposition: &[Decomposition]) -> Vec<(Index, Operation)> 
                 index: Index::Known(_),
                 operation: Some(operation),
                 ..
+            }
+            | Decomposition::Derived {
+                index: Index::Known(_),
+                operation: Some(operation),
+                ..
             } => Some((Index::Known(i), operation)),
             Decomposition::Named {
+                index: Index::Unknown(_),
+                operation: Some(operation),
+                ..
+            }
+            | Decomposition::Derived {
                 index: Index::Unknown(_),
                 operation: Some(operation),
                 ..
@@ -396,6 +420,9 @@ pub fn parse_composition_permute_repeat(
             !matches!(
                 expression,
                 Decomposition::Named {
+                    operation: Some(_),
+                    ..
+                } | Decomposition::Derived {
                     operation: Some(_),
                     ..
                 }

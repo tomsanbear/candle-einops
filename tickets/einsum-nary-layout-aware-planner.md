@@ -18,7 +18,7 @@ exact model only for arity three or four when current greedy estimates at least
 100,000 FLOPs. Retain current greedy for arity above four, smaller work,
 overflow/model errors, unsupported operand metadata, planner-budget overruns,
 and CUDA/Metal until each backend has synchronized crossover data. The CPU
-budget is 150 us on the frozen arity-four corpus.
+exact-planner budget is 175 us on the frozen arity-four corpus.
 
 ## Red-first contract
 

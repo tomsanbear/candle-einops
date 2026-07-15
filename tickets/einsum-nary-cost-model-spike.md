@@ -53,5 +53,5 @@ only for arity three or four when the current greedy estimate is at least
 100,000 FLOPs; otherwise retain current greedy. The exhaustive arity-three
 through arity-six implementation remains a test oracle. See
 `benchmarks/nary-cost-model-spike.md` for the checked model, stable tie-break,
-150 us CPU budget, broadcast-GEMM no-go treatment, backend caveats, numerical
+175 us CPU budget, broadcast-GEMM no-go treatment, backend caveats, numerical
 policy, and synchronized measurements.

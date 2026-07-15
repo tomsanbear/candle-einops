@@ -72,10 +72,10 @@ use 501 synchronized samples.
 
 | Fixture | Current score | Exact score | Current FLOPs | Exact FLOPs | Current peak | Exact peak | Greedy planner | Exact planner |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| linear chain | 25,322 | 17,447 | 16,500 | 9,375 | 2,075 | 1,875 | 18.625 us | 112.958 us |
-| balanced tree | 214,208 | 88,064 | 139,328 | 18,432 | 18,432 | 16,640 | 18.500 us | 112.042 us |
-| broadcast-heavy | 752,832 | 517,952 | 505,280 | 291,840 | 31,424 | 25,504 | 24.292 us | 137.958 us |
-| layout-hostile | 29,522 | 21,647 | 16,500 | 9,375 | 2,075 | 1,875 | 18.541 us | 111.958 us |
+| linear chain | 25,322 | 17,447 | 16,500 | 9,375 | 2,075 | 1,875 | 22.292 us | 135.000 us |
+| balanced tree | 214,208 | 88,064 | 139,328 | 18,432 | 18,432 | 16,640 | 21.708 us | 131.375 us |
+| broadcast-heavy | 752,832 | 517,952 | 505,280 | 291,840 | 31,424 | 25,504 | 27.417 us | 156.084 us |
+| layout-hostile | 29,522 | 21,647 | 16,500 | 9,375 | 2,075 | 1,875 | 21.709 us | 131.541 us |
 
 | Fixture | Current wall time (95% CI) | Selected wall time (95% CI) | Current / selected |
 | --- | ---: | ---: | ---: |
@@ -97,8 +97,8 @@ The threshold and weights are CPU calibration data, not universal constants.
 CUDA and Metal must retain current greedy until synchronized device
 measurements establish their own crossover: host planning is proportionally
 more expensive for fast device contractions, and copy/submission costs differ
-by backend. The planner-time budget for the frozen arity-four CPU cases is
-150 us; exceeding it falls back to current greedy.
+by backend. The exact-planner time budget for the frozen arity-four CPU cases is
+175 us; exceeding it falls back to current greedy.
 
 Floating-point reassociation need not be bitwise identical. Forward values and
 input gradients must match the current association within the benchmark's

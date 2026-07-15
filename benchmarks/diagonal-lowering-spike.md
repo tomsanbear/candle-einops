@@ -12,6 +12,23 @@ and Criterion's `cached-reference-floor` label remain the prebuilt-index floor;
 the latter excludes per-invocation index construction and is not a second
 library implementation.
 
+A same-machine release-harness check used 101 samples at the exact pre-change
+commit `4ee0f51` and implementation commit `0904bfc`. These single-process
+medians are implementation evidence, not a portable threshold or CI gate.
+
+| case | pre-change library | selected library | movement |
+| --- | ---: | ---: | ---: |
+| `i i`, n=16 | 417 ns | 458 ns | +9.8% |
+| `i i`, n=64 | 542 ns | 583 ns | +7.6% |
+| `i i`, n=256 | 1,167 ns | 1,209 ns | +3.6% |
+| `i j i j`, n=4 | 1,500 ns | 833 ns | -44.5% |
+| `i j i j`, n=8 | 3,458 ns | 1,167 ns | -66.3% |
+| `i j i j`, n=16 | 14,625 ns | 2,459 ns | -83.2% |
+
+The simple path remains sequential and changes by less than 10% and 42 ns at
+all three points. The interleaved path avoids the full-input copy and improves
+at every scaling point. Generated JSON remained outside the repository.
+
 ## Evidence
 
 The repository wrapper ran both probes with 1,001 samples on Candle 0.11.0,

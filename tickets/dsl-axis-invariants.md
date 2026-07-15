@@ -1,7 +1,7 @@
 ---
 id: dsl-axis-invariants
 title: Enforce DSL axis invariants
-status: todo
+status: in-progress
 priority: p0
 dependencies: [panic-free-parser]
 related: []
@@ -9,6 +9,9 @@ scopes: [macros]
 shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784123738
 ---
 # Enforce DSL axis invariants
 

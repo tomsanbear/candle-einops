@@ -1,7 +1,7 @@
 ---
 id: einsum-zero-k-autograd
 title: Preserve autograd through zero-length contractions
-status: in-progress
+status: review
 priority: p0
 dependencies: [performance-harness-foundation, einsum-device-dtype-gradient-matrix]
 related: []

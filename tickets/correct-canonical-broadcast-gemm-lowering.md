@@ -1,7 +1,7 @@
 ---
 id: correct-canonical-broadcast-gemm-lowering
 title: Correct canonical broadcast GEMM lowering
-status: todo
+status: in-progress
 priority: p0
 dependencies: []
 related: [einsum-broadcast-gemm-spike]
@@ -9,6 +9,9 @@ scopes: [runtime]
 shared_scopes: [tests, benchmarks, ticketing]
 paths: []
 tags: [kernel-enqueue-hardening]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784156512
 ---
 # Correct canonical broadcast GEMM lowering
 

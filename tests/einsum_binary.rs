@@ -101,6 +101,38 @@ fn binary_values_match_independent_oracles() -> Result<()> {
 }
 
 #[test]
+fn canonical_batched_gemm_materializes_broadcasts_before_matmul() -> Result<()> {
+    let left_singleton = Tensor::ones((1, 32, 32), DType::F32, &Device::Cpu)?;
+    let left_full = Tensor::ones((32, 32, 32), DType::F32, &Device::Cpu)?;
+    let right_singleton = Tensor::ones((1, 32, 32), DType::F32, &Device::Cpu)?;
+    let right_full = Tensor::ones((32, 32, 32), DType::F32, &Device::Cpu)?;
+
+    let left_broadcast = einsum!(
+        "batch row inner, batch inner column -> batch row column",
+        &left_singleton,
+        &right_full
+    )?;
+    let left_expected = left_singleton.broadcast_matmul(&right_full)?;
+    assert_close(
+        &left_broadcast,
+        &left_expected,
+        "canonical left batch broadcast",
+    )?;
+
+    let right_broadcast = einsum!(
+        "batch row inner, batch inner column -> batch row column",
+        &left_full,
+        &right_singleton
+    )?;
+    let right_expected = left_full.broadcast_matmul(&right_singleton)?;
+    assert_close(
+        &right_broadcast,
+        &right_expected,
+        "canonical right batch broadcast",
+    )
+}
+
+#[test]
 fn binary_scalars_broadcast_contract_and_zero_dimensions() -> Result<()> {
     let scalar = Tensor::new(3f32, &Device::Cpu)?;
     let other = Tensor::new(4f32, &Device::Cpu)?;

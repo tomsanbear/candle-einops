@@ -98,8 +98,32 @@ impl<T: AsRef<Tensor>> Backend for T {
                 candle_core::bail!("add_axes: duplicate axis position {axis_pos}")
             }
             occupied[axis_pos] = true;
-            output = output.unsqueeze(axis_pos)?;
             repeats[axis_pos] = axis_len;
+        }
+
+        if repeats.contains(&0) {
+            let input_shape = output.dims();
+            let mut input_axis = 0;
+            let final_shape = (0..naxes)
+                .map(|axis| {
+                    if occupied[axis] {
+                        repeats[axis]
+                    } else {
+                        let len = input_shape[input_axis];
+                        input_axis += 1;
+                        len
+                    }
+                })
+                .collect::<Vec<_>>();
+            return Tensor::zeros(
+                Shape::from_dims(&final_shape),
+                output.dtype(),
+                output.device(),
+            );
+        }
+
+        for &(axis_pos, _) in pos2len {
+            output = output.unsqueeze(axis_pos)?;
         }
 
         let shape = Shape::from_dims(&repeats[..]);

@@ -1,7 +1,7 @@
 ---
 id: semantic-expansion-fixes
 title: Fix semantic macro expansion defects
-status: todo
+status: done
 priority: p0
 dependencies: [dsl-axis-invariants]
 related: []

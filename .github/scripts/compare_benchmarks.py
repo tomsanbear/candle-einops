@@ -56,6 +56,16 @@ def _load_document(path: Path, expected_sha: str, side: str) -> dict[str, dict[s
             raise ComparisonInputError(f"{path} record {index} has no scenario_id")
         if scenario_id in records:
             raise ComparisonInputError(f"{path} repeats scenario_id {scenario_id}")
+        schema_version = record.get("schema_version")
+        if not isinstance(schema_version, int) or isinstance(schema_version, bool):
+            raise ComparisonInputError(f"{path} {scenario_id} has an invalid schema version")
+        sample_count = record.get("sample_count")
+        if schema_version == 1 and (
+            not isinstance(sample_count, int)
+            or isinstance(sample_count, bool)
+            or sample_count <= 0
+        ):
+            raise ComparisonInputError(f"{path} {scenario_id} has an invalid sample count")
         fingerprint = record.get("fingerprint")
         if not isinstance(fingerprint, dict):
             raise ComparisonInputError(f"{path} {scenario_id} has no fingerprint object")
@@ -93,7 +103,12 @@ def _fingerprint_key(record: dict[str, Any]) -> tuple[Any, ...] | None:
     fingerprint = record.get("fingerprint")
     if not isinstance(fingerprint, dict) or any(field not in fingerprint for field in FINGERPRINT_FIELDS):
         return None
-    return tuple(fingerprint[field] for field in FINGERPRINT_FIELDS)
+    values = tuple(fingerprint[field] for field in FINGERPRINT_FIELDS)
+    if any(not isinstance(value, str) or not value for value in values[:-1]):
+        return None
+    if values[-1] is not None and (not isinstance(values[-1], str) or not values[-1]):
+        return None
+    return values
 
 
 def _median(values: list[float]) -> float:
@@ -170,6 +185,11 @@ def _compare_scenario(
     if base_order is None or head_order is None or base_order != head_order:
         return _incomparable(scenario_id, "sampling_policy_mismatch")
 
+    base_samples = _constant(base, "sample_count")
+    head_samples = _constant(head, "sample_count")
+    if base_samples is None or head_samples is None or base_samples != head_samples:
+        return _incomparable(scenario_id, "sample_count_mismatch")
+
     base_fingerprints = [_fingerprint_key(record) for record in base]
     head_fingerprints = [_fingerprint_key(record) for record in head]
     if (
@@ -198,6 +218,7 @@ def _compare_scenario(
         "scenario_id": scenario_id,
         "status": status,
         "workload": base_workload,
+        "samples_per_process": base_samples,
         "base_process_median_ns": _median(base_medians),
         "head_process_median_ns": _median(head_medians),
         "paired_median_delta_ns": median_delta,
@@ -225,6 +246,8 @@ def compare_files(
     scenario_ids = sorted(
         set().union(*(run.keys() for run in base_runs), *(run.keys() for run in head_runs))
     )
+    if not scenario_ids:
+        raise ComparisonInputError("no benchmark scenarios were supplied")
     scenarios = [
         _compare_scenario(
             scenario_id,

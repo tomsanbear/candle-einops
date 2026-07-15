@@ -45,6 +45,8 @@ jobs:
           exact_sha='^[0-9a-fA-F]{40}$'
           [[ "$BASE_SHA" =~ $exact_sha ]] || { echo "base_sha must be an exact SHA" >&2; exit 2; }
           [[ "$HEAD_SHA" =~ $exact_sha ]] || { echo "head_sha must be an exact SHA" >&2; exit 2; }
+          [[ "$(git cat-file -t "$BASE_SHA")" == commit ]] || { echo "base_sha must identify a commit object" >&2; exit 2; }
+          [[ "$(git cat-file -t "$HEAD_SHA")" == commit ]] || { echo "head_sha must identify a commit object" >&2; exit 2; }
           git cat-file -e "$BASE_SHA^{commit}"
           git cat-file -e "$HEAD_SHA^{commit}"
           base_sha="$(git rev-parse "$BASE_SHA^{commit}")"
@@ -68,11 +70,13 @@ jobs:
             local side="$1"
             local worktree="$2"
             local pair="$3"
-            local arguments=(run --samples 25 --output "$RESULTS/json/$side/run-$pair.json")
+            local target="$RESULTS/build/$side"
+            local arguments=(cargo +1.94 run --locked --manifest-path benchmarks/Cargo.toml --bin harness --)
+            arguments+=(--samples 25 --output "$RESULTS/json/$side/run-$pair.json")
             if [[ -n "$BENCHMARK_FILTER" ]]; then
               arguments+=(--filter "$BENCHMARK_FILTER")
             fi
-            (cd "$worktree" && python3 .github/scripts/run_benchmarks.py "${arguments[@]}")
+            (cd "$worktree" && CARGO_TARGET_DIR="$target" "${arguments[@]}")
           }
           for pair in $(seq 1 5); do
             if (( pair % 2 == 1 )); then
@@ -104,8 +108,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git -C "$BASE_WORKTREE" diff --exit-code
-          git -C "$HEAD_WORKTREE" diff --exit-code
+          test "$(git -C "$BASE_WORKTREE" rev-parse HEAD)" = "$BASE_SHA"
+          test "$(git -C "$HEAD_WORKTREE" rev-parse HEAD)" = "$HEAD_SHA"
+          test -z "$(git -C "$BASE_WORKTREE" status --porcelain --untracked-files=all)"
+          test -z "$(git -C "$HEAD_WORKTREE" status --porcelain --untracked-files=all)"
       - name: Produce advisory-only comparison
         shell: bash
         run: |

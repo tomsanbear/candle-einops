@@ -395,8 +395,10 @@ where
     }
 
     if execution == BinaryExecution::CanonicalMatmul {
-        let left = broadcast_if_needed(&left, &left_shape, "einsum binary left broadcast")?;
-        let right = broadcast_if_needed(&right, &right_shape, "einsum binary right broadcast")?;
+        let left =
+            materialize_broadcast_if_needed(&left, &left_shape, "einsum binary left broadcast")?;
+        let right =
+            materialize_broadcast_if_needed(&right, &right_shape, "einsum binary right broadcast")?;
         let output = left
             .matmul(&right)
             .map_err(|error| error.context("einsum binary B/M/K/N matmul"))?;
@@ -2228,12 +2230,17 @@ fn dynamic_permutation<T: Eq>(current: &[T], desired: &[T]) -> Vec<usize> {
         .collect()
 }
 
-fn broadcast_if_needed(tensor: &Tensor, shape: &[usize], context: &'static str) -> Result<Tensor> {
+fn materialize_broadcast_if_needed(
+    tensor: &Tensor,
+    shape: &[usize],
+    context: &'static str,
+) -> Result<Tensor> {
     if tensor.dims() == shape {
         Ok(tensor.clone())
     } else {
         tensor
             .broadcast_as(shape)
+            .and_then(|tensor| tensor.contiguous())
             .map_err(|error| error.context(context))
     }
 }

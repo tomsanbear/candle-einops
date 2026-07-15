@@ -257,6 +257,34 @@ fn binary_cpu_gradients_match_direct_candle() -> Result<()> {
         &[1, 3],
         |left, right| einsum!("batch feature, batch feature -> batch feature", left, right),
         Tensor::broadcast_mul,
+    )?;
+    compare_binary_gradients(
+        &(0..16).map(|value| value as f32 / 16.).collect::<Vec<_>>(),
+        &[1, 4, 4],
+        &(0..48).map(|value| value as f32 / 48.).collect::<Vec<_>>(),
+        &[3, 4, 4],
+        |left, right| {
+            einsum!(
+                "batch row inner, batch inner column -> batch row column",
+                left,
+                right
+            )
+        },
+        Tensor::broadcast_matmul,
+    )?;
+    compare_binary_gradients(
+        &(0..48).map(|value| value as f32 / 48.).collect::<Vec<_>>(),
+        &[3, 4, 4],
+        &(0..16).map(|value| value as f32 / 16.).collect::<Vec<_>>(),
+        &[1, 4, 4],
+        |left, right| {
+            einsum!(
+                "batch row inner, batch inner column -> batch row column",
+                left,
+                right
+            )
+        },
+        Tensor::broadcast_matmul,
     )
 }
 

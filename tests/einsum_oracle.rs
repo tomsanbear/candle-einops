@@ -638,6 +638,17 @@ fn nary_oracle_covers_chains_live_labels_and_safe_reductions() {
         evaluate("private a b, b c, c d -> a d", &[private, middle, tail]),
         Ok(tensor(&[2, 5], &[24.; 10]))
     );
+    assert_eq!(
+        evaluate(
+            "feature, feature, feature -> feature",
+            &[
+                tensor(&[1], &[2.]),
+                tensor(&[3], &[1., 2., 3.]),
+                tensor(&[1], &[5.]),
+            ]
+        ),
+        Ok(tensor(&[3], &[10., 20., 30.]))
+    );
 }
 
 #[test]

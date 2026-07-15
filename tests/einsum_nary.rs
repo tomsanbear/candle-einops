@@ -51,6 +51,20 @@ fn nary_preserves_live_labels_and_reduces_only_safe_labels() -> Result<()> {
             .iter()
             .all(|&v| v == 24.)
     );
+
+    let singleton_left = Tensor::new(&[2f32], &Device::Cpu)?;
+    let broadcast = Tensor::new(&[1f32, 2., 3.], &Device::Cpu)?;
+    let singleton_right = Tensor::new(&[5f32], &Device::Cpu)?;
+    assert_eq!(
+        einsum!(
+            "feature, feature, feature -> feature",
+            &singleton_left,
+            &broadcast,
+            &singleton_right
+        )?
+        .to_vec1::<f32>()?,
+        [10., 20., 30.]
+    );
     Ok(())
 }
 
@@ -62,6 +76,24 @@ fn nary_combines_ellipsis_diagonals_scalars_and_zero_dimensions() -> Result<()> 
     assert_eq!(
         einsum!(".. i i, .. i j, j -> ..", &diagonal, &matrix, &vector)?.to_vec1::<f32>()?,
         [24., 78.]
+    );
+
+    let ellipsis_left = Tensor::ones((2, 1, 2, 3), DType::F32, &Device::Cpu)?;
+    let ellipsis_middle = Tensor::ones((4, 3, 2), DType::F32, &Device::Cpu)?;
+    let ellipsis_right = Tensor::ones((2, 5), DType::F32, &Device::Cpu)?;
+    let ellipsis = einsum!(
+        ".. a b, .. b c, c d -> a .. d",
+        &ellipsis_left,
+        &ellipsis_middle,
+        &ellipsis_right
+    )?;
+    assert_eq!(ellipsis.dims(), &[2, 2, 4, 5]);
+    assert!(
+        ellipsis
+            .flatten_all()?
+            .to_vec1::<f32>()?
+            .iter()
+            .all(|&v| v == 6.)
     );
 
     let scalar = Tensor::new(3f32, &Device::Cpu)?;
@@ -78,6 +110,46 @@ fn nary_combines_ellipsis_diagonals_scalars_and_zero_dimensions() -> Result<()> 
     assert_eq!(
         einsum!("a b, b c, c -> a", &empty_left, &empty_middle, &tail)?.to_vec1::<f32>()?,
         [0., 0.]
+    );
+    Ok(())
+}
+
+#[test]
+fn nary_validates_every_operand_before_planning() -> Result<()> {
+    let matrix = Tensor::ones((2, 3), DType::F32, &Device::Cpu)?;
+    let vector = Tensor::ones(3, DType::F32, &Device::Cpu)?;
+    let wrong_rank = Tensor::ones((3, 1), DType::F32, &Device::Cpu)?;
+    let error = einsum!(
+        "row feature, feature, feature -> row",
+        &matrix,
+        &vector,
+        &wrong_rank
+    )
+    .expect_err("third-operand rank mismatch must fail");
+    assert!(error.to_string().contains("einsum operand 2 has rank"));
+
+    let wrong_dtype = Tensor::ones(3, DType::F64, &Device::Cpu)?;
+    let error = einsum!(
+        "row feature, feature, feature -> row",
+        &matrix,
+        &vector,
+        &wrong_dtype
+    )
+    .expect_err("third-operand dtype mismatch must fail");
+    assert!(error.to_string().contains("different dtypes"));
+
+    let incompatible = Tensor::ones(4, DType::F32, &Device::Cpu)?;
+    let error = einsum!(
+        "row feature, feature, feature -> row",
+        &matrix,
+        &vector,
+        &incompatible
+    )
+    .expect_err("global broadcast mismatch must fail");
+    assert!(
+        error
+            .to_string()
+            .contains("cannot broadcast extents 3 and 4")
     );
     Ok(())
 }

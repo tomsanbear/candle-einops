@@ -28,6 +28,16 @@ pub struct BroadcastScenario {
     case: BroadcastCase,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StructuralMetrics {
+    pub eager_copy_bytes: usize,
+    pub eager_peak_temporary_elements: usize,
+    pub eager_gemm_submissions: usize,
+    pub selected_copy_bytes: usize,
+    pub selected_peak_temporary_elements: usize,
+    pub selected_gemm_submissions: usize,
+}
+
 #[derive(Clone, Copy, Debug)]
 enum BroadcastCase {
     Left,
@@ -237,6 +247,25 @@ impl BroadcastScenario {
         }
     }
 
+    pub fn structural_metrics(self, device: &Device) -> Result<StructuralMetrics> {
+        let inputs = self.setup(device)?;
+        let eager = eager_expansion_probe(&inputs[0], &inputs[1])?;
+        Ok(StructuralMetrics {
+            eager_copy_bytes: eager
+                .left_copy_elements
+                .saturating_add(eager.right_copy_elements)
+                .saturating_mul(size_of::<f32>()),
+            eager_peak_temporary_elements: eager.peak_temporary_elements,
+            eager_gemm_submissions: 1,
+            selected_copy_bytes: 0,
+            selected_peak_temporary_elements: match self.selected_strategy() {
+                CandidateStrategy::Direct => 0,
+                CandidateStrategy::Sliced => self.output_elements(),
+            },
+            selected_gemm_submissions: self.modeled_submissions(),
+        })
+    }
+
     fn input_elements(self) -> usize {
         match self.case {
             BroadcastCase::Left | BroadcastCase::Right => 33 * 32 * 32,
@@ -245,7 +274,7 @@ impl BroadcastScenario {
         }
     }
 
-    fn output_elements(self) -> usize {
+    pub fn output_elements(self) -> usize {
         match self.case {
             BroadcastCase::Left | BroadcastCase::Right => 32 * 32 * 32,
             BroadcastCase::Both => 64 * 32 * 32,

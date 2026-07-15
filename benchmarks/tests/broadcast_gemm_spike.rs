@@ -1,12 +1,58 @@
 use candle_core::{DType, Device, Result, Tensor, Var};
 use candle_einops_benchmarks::Scenario;
 use candle_einops_benchmarks::broadcast_gemm_spike::{
-    broadcast_scenarios, direct_broadcast_gemm, eager_expansion_probe, selected_broadcast_gemm,
-    sliced_broadcast_gemm,
+    StructuralMetrics, broadcast_scenarios, direct_broadcast_gemm, eager_expansion_probe,
+    selected_broadcast_gemm, sliced_broadcast_gemm,
 };
 
 fn flat(tensor: &Tensor) -> Result<Vec<f32>> {
     tensor.flatten_all()?.to_vec1::<f32>()
+}
+
+#[test]
+fn frozen_cases_report_copy_peak_and_submission_metrics() -> Result<()> {
+    let metrics = broadcast_scenarios()
+        .iter()
+        .map(|scenario| scenario.structural_metrics(&Device::Cpu))
+        .collect::<Result<Vec<_>>>()?;
+    assert_eq!(
+        metrics,
+        vec![
+            StructuralMetrics {
+                eager_copy_bytes: 131_072,
+                eager_peak_temporary_elements: 32_768,
+                eager_gemm_submissions: 1,
+                selected_copy_bytes: 0,
+                selected_peak_temporary_elements: 32_768,
+                selected_gemm_submissions: 32,
+            },
+            StructuralMetrics {
+                eager_copy_bytes: 131_072,
+                eager_peak_temporary_elements: 32_768,
+                eager_gemm_submissions: 1,
+                selected_copy_bytes: 0,
+                selected_peak_temporary_elements: 32_768,
+                selected_gemm_submissions: 32,
+            },
+            StructuralMetrics {
+                eager_copy_bytes: 524_288,
+                eager_peak_temporary_elements: 131_072,
+                eager_gemm_submissions: 1,
+                selected_copy_bytes: 0,
+                selected_peak_temporary_elements: 65_536,
+                selected_gemm_submissions: 64,
+            },
+            StructuralMetrics {
+                eager_copy_bytes: 65_536,
+                eager_peak_temporary_elements: 16_384,
+                eager_gemm_submissions: 1,
+                selected_copy_bytes: 0,
+                selected_peak_temporary_elements: 0,
+                selected_gemm_submissions: 1,
+            },
+        ]
+    );
+    Ok(())
 }
 
 #[test]

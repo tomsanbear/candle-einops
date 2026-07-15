@@ -1,0 +1,5 @@
+error: invalid einsum axis label `column$`
+ --> tests/ui/fail/einsum-invalid-label.rs:4:21
+  |
+4 |     let _ = einsum!("row column$ -> row", ());
+  |                     ^^^^^^^^^^^^^^^^^^^^^

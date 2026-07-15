@@ -1,0 +1,5 @@
+error: unary einsum accepts exactly one operand expression
+ --> tests/ui/fail/einsum-operand-count.rs:4:38
+  |
+4 |     let _ = einsum!("row -> row", (), ());
+  |                                      ^

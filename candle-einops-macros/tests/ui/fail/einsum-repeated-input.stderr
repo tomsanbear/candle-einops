@@ -1,0 +1,5 @@
+error: repeated einsum input label `row` is reserved for diagonal support
+ --> tests/ui/fail/einsum-repeated-input.rs:4:21
+  |
+4 |     let _ = einsum!("row row -> row", ());
+  |                     ^^^^^^^^^^^^^^^^

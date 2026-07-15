@@ -1,0 +1,5 @@
+error: einsum `..` is reserved for ellipsis support
+ --> tests/ui/fail/einsum-ellipsis.rs:4:21
+  |
+4 |     let _ = einsum!(".. row -> row", ());
+  |                     ^^^^^^^^^^^^^^^

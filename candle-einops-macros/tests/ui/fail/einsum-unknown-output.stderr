@@ -1,0 +1,5 @@
+error: einsum output label `missing` does not occur in the input
+ --> tests/ui/fail/einsum-unknown-output.rs:4:21
+  |
+4 |     let _ = einsum!("row -> missing", ());
+  |                     ^^^^^^^^^^^^^^^^

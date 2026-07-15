@@ -1,0 +1,5 @@
+error: einsum equation requires exactly one explicit `->`
+ --> tests/ui/fail/einsum-missing-arrow.rs:4:21
+  |
+4 |     let _ = einsum!("row column", ());
+  |                     ^^^^^^^^^^^^

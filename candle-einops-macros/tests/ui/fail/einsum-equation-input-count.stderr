@@ -1,0 +1,5 @@
+error: unary einsum supports exactly one input axis list; equation contains 2
+ --> tests/ui/fail/einsum-equation-input-count.rs:4:21
+  |
+4 |     let _ = einsum!("row, row -> row", ());
+  |                     ^^^^^^^^^^^^^^^^^

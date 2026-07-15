@@ -1,0 +1,5 @@
+error: duplicate einsum output label `row`
+ --> tests/ui/fail/einsum-duplicate-output.rs:4:21
+  |
+4 |     let _ = einsum!("row column -> row row", ());
+  |                     ^^^^^^^^^^^^^^^^^^^^^^^

@@ -243,11 +243,9 @@ impl Equation {
         let identity = |permutation: &[usize]| permutation.iter().copied().eq(0..permutation.len());
         if plan.reduction_axes.iter().all(Vec::is_empty)
             && plan.permutations.iter().all(|value| identity(value))
-            && plan.batch_labels.len() <= 1
             && plan.left_free_rank == 1
             && plan.contracted_labels.len() == 1
             && plan.right_free_rank == 1
-            && identity(&plan.output_permutation)
         {
             BinaryLowering::CanonicalMatmul
         } else {
@@ -576,15 +574,11 @@ mod tests {
             BinaryLowering::CanonicalMatmul
         );
         assert_eq!(
-            lowering(
-                "outer batch row inner, outer batch inner column -> outer batch row column"
-            ),
+            lowering("outer batch row inner, outer batch inner column -> outer batch row column"),
             BinaryLowering::CanonicalMatmul
         );
         assert_eq!(
-            lowering(
-                "outer batch row inner, outer batch inner column -> column batch row outer"
-            ),
+            lowering("outer batch row inner, outer batch inner column -> column batch row outer"),
             BinaryLowering::CanonicalMatmul
         );
         assert_eq!(

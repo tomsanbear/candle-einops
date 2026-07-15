@@ -351,8 +351,7 @@ where
     };
 
     if execution == BinaryExecution::CanonicalMatmul {
-        let canonical = spec.batch_rank <= 1
-            && spec.left_free_rank == 1
+        let canonical = spec.left_free_rank == 1
             && spec.contracted_rank == 1
             && spec.right_free_rank == 1
             && spec.reduction_axes.iter().all(|axes| axes.is_empty())

@@ -133,6 +133,26 @@ fn canonical_batched_gemm_materializes_broadcasts_before_matmul() -> Result<()> 
 }
 
 #[test]
+fn canonical_gemm_keeps_arbitrary_exact_batches_and_output_views() -> Result<()> {
+    let left = Tensor::arange(0f32, (2 * 2 * 4 * 3) as f32, &Device::Cpu)?
+        .reshape((2, 2, 4, 3))?
+        .transpose(2, 3)?;
+    let right = Tensor::arange(0f32, (2 * 2 * 5 * 4) as f32, &Device::Cpu)?
+        .reshape((2, 2, 5, 4))?
+        .transpose(2, 3)?;
+    assert!(!left.is_contiguous());
+    assert!(!right.is_contiguous());
+
+    let actual = einsum!(
+        "outer batch row inner, outer batch inner column -> column batch row outer",
+        &left,
+        &right
+    )?;
+    let expected = left.matmul(&right)?.permute((3, 1, 2, 0))?;
+    assert_close(&actual, &expected, "arbitrary exact batch direct GEMM")
+}
+
+#[test]
 fn binary_scalars_broadcast_contract_and_zero_dimensions() -> Result<()> {
     let scalar = Tensor::new(3f32, &Device::Cpu)?;
     let other = Tensor::new(4f32, &Device::Cpu)?;

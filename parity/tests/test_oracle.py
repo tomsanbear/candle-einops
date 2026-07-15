@@ -65,6 +65,60 @@ class OracleContractTests(unittest.TestCase):
         self.assertEqual(reduced["shape"], [2])
         self.assertEqual(reduced["values"], [2.0, 6.0])
 
+    def test_einsum_accepts_multiple_operands_and_omitted_ellipsis(self) -> None:
+        matrix_product = evaluate_request(
+            {
+                "case_id": "einsum-matmul",
+                "operation": "einsum",
+                "pattern": "row inner, inner column -> row column",
+                "operands": [
+                    {
+                        "dtype": "float32",
+                        "shape": [2, 3],
+                        "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                    },
+                    {
+                        "dtype": "float32",
+                        "shape": [3, 1],
+                        "values": [2.0, 3.0, 4.0],
+                    },
+                ],
+            }
+        )
+        omitted_ellipsis = evaluate_request(
+            {
+                "case_id": "einsum-omitted-ellipsis",
+                "operation": "einsum",
+                "pattern": "... row inner -> row",
+                "operands": [
+                    {
+                        "dtype": "float32",
+                        "shape": [2, 2, 2],
+                        "values": [1.0] * 8,
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(
+            matrix_product,
+            {
+                "case_id": "einsum-matmul",
+                "ok": True,
+                "shape": [2, 1],
+                "values": [20.0, 47.0],
+            },
+        )
+        self.assertEqual(
+            omitted_ellipsis,
+            {
+                "case_id": "einsum-omitted-ellipsis",
+                "ok": True,
+                "shape": [2],
+                "values": [4.0, 4.0],
+            },
+        )
+
     def test_zero_sized_shapes_and_scalar_results_are_serializable(self) -> None:
         response = evaluate_request(
             {

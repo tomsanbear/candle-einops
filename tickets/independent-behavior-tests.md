@@ -6,7 +6,7 @@ priority: p1
 dependencies: [candle-011-baseline]
 related: []
 scopes: [tests]
-shared_scopes: []
+shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
 ---

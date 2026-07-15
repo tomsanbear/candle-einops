@@ -6,7 +6,7 @@ priority: p0
 dependencies: []
 related: []
 scopes: [tooling, macros]
-shared_scopes: []
+shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
 ---

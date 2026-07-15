@@ -6,7 +6,7 @@ priority: p1
 dependencies: [semantic-expansion-fixes]
 related: []
 scopes: [macros]
-shared_scopes: []
+shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
 ---

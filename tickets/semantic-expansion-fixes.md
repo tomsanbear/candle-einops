@@ -6,7 +6,7 @@ priority: p0
 dependencies: [dsl-axis-invariants]
 related: []
 scopes: [macros, tests]
-shared_scopes: []
+shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
 ---

@@ -6,7 +6,7 @@ priority: p1
 dependencies: [product-reduction, rename-safe-expansions]
 related: []
 scopes: [runtime, macros, tests, docs]
-shared_scopes: []
+shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
 ---

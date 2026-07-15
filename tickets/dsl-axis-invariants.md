@@ -6,7 +6,7 @@ priority: p0
 dependencies: [panic-free-parser]
 related: []
 scopes: [macros]
-shared_scopes: []
+shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
 ---

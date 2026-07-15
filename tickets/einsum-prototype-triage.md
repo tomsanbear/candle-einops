@@ -6,7 +6,7 @@ priority: p2
 dependencies: []
 related: [release-readiness]
 scopes: [docs]
-shared_scopes: []
+shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization, follow-up]
 ---

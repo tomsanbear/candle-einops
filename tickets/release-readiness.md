@@ -6,7 +6,7 @@ priority: p1
 dependencies: [candle-style-errors, ci-release-hygiene, independent-behavior-tests]
 related: []
 scopes: [docs, runtime, macros, tooling]
-shared_scopes: []
+shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
 ---

@@ -1,16 +1,13 @@
 ---
 id: einsum-nary-cost-model-spike
 title: Design a layout-aware n-ary contraction cost model
-status: in-progress
+status: done
 priority: p1
 dependencies: [performance-harness-foundation, einsum-binary-fastpaths, einsum-broadcast-gemm-spike]
 related: [einsum-broadcast-gemm-lowering, einsum-nary-layout-aware-planner]
 scopes: []
 shared_scopes: [tests, benchmarks, docs, ticketing]
 tags: [performance-0.2]
-claimed_from: todo
-assignee: ci-release
-lease_expires_at: 1784145100
 ---
 # Design a layout-aware n-ary contraction cost model
 

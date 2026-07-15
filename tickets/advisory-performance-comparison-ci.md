@@ -1,16 +1,13 @@
 ---
 id: advisory-performance-comparison-ci
 title: Add reproducible advisory performance comparisons
-status: in-progress
+status: done
 priority: p2
 dependencies: [performance-harness-foundation, repeat-broadcast-view-lowering, homogeneous-reduction-fusion, einsum-binary-fastpaths]
 related: [gpu-performance-observability]
 scopes: [tooling]
 shared_scopes: [benchmarks, docs, ticketing]
 tags: [performance-0.2]
-claimed_from: todo
-assignee: ci-release
-lease_expires_at: 1784147144
 ---
 # Add reproducible advisory performance comparisons
 
@@ -50,3 +47,19 @@ semantics are absent. Make policy and workflow green afterward.
 
 - No scheduled hosted-runner trend job, badge, PR bot comment, or automatic issue.
 - No GPU threshold; GPU observability remains opt-in and diagnostic.
+
+## Result
+
+- Required CI compiles and smoke-tests the locked standalone harness without
+  comparing timings.
+- A pinned, manual-only workflow collects five alternating process pairs from
+  exact commit objects in clean detached worktrees, with Cargo output stored
+  outside each worktree and expiring JSON/Criterion artifacts uploaded for
+  inspection.
+- The versioned comparison report matches scenario IDs and declares schema,
+  workload, sample-count, sampling-policy, and environment differences
+  incomparable. Its paired thresholds remain advisory-only and require three
+  independent observations before follow-up.
+- Contract tests and policy validators cover report behavior, workflow
+  isolation, immutable action references, and the absence of mutation or
+  timing gates.

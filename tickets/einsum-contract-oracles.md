@@ -1,13 +1,13 @@
 ---
 id: einsum-contract-oracles
 title: Freeze einsum semantics and independent oracles
-status: todo
+status: done
 priority: p0
 dependencies: [edge-shape-dtype-properties]
 related: []
 scopes: [tests, docs]
 shared_scopes: [ticketing]
-paths: []
+paths: [docs/einsum-contract.md]
 tags: [einsum-implementation]
 ---
 # Freeze einsum semantics and independent oracles

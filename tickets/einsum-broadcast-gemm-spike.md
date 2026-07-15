@@ -40,7 +40,15 @@ absent candidates. Preserve a case demonstrating the current expanded copy.
 - Selected design preserves dtype/device/gradient semantics and covers zero/singleton dimensions.
 - Refine the conditional implementation ticket with explicit fast/fallback rules.
 
+## Result
+
+NO-GO for a new portable broadcast lowering. CPU slicing removed expanded
+operand copies but was slower in all three broadcast cases, and raw stride-zero
+batch `matmul` produced incorrect values. Preserve direct `matmul` only for
+no-expansion layouts and eager materialization for broadcast, zero, unsupported,
+and backend-specific fallback cases. Full evidence and reopening criteria are in
+`benchmarks/broadcast-gemm-spike.md`.
+
 ## Non-goals
 
 No Candle fork, universal strategy selected from one CPU, or claim of exact GPU enqueue counts.
-

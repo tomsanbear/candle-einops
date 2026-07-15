@@ -1,0 +1,26 @@
+[package]
+name = "candle-einops-benchmarks"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.94"
+publish = false
+
+[workspace]
+resolver = "3"
+
+[features]
+default = []
+cuda = ["candle-core/cuda"]
+metal = ["candle-core/metal"]
+
+[dependencies]
+candle-core = { version = "=0.11.0" }
+candle-einops = { path = ".." }
+criterion = { version = "=0.7.0" }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = { version = "=1.0.149" }
+
+[[bench]]
+name = "measurement"
+harness = false
+

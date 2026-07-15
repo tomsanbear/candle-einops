@@ -5,9 +5,10 @@ use std::path::PathBuf;
 use candle_core::Device;
 use candle_einops_benchmarks::{
     BenchmarkRecord, DeviceSynchronizer, Fingerprint, MonotonicClock, PlumbingScenario, Scenario,
-    binary_fast_path_scenarios, broadcast_gemm_spike, diagonal_spike, identity_reshape_scenarios,
-    measure_pair, nary_cost_model_spike, permute_compose_layout_spike, prepare, product_scenarios,
-    reduction_fusion_scenarios, repeat_broadcast_scenarios, zero_k_scenarios,
+    binary_fast_path_scenarios, binary_operand_packing, broadcast_gemm_spike, diagonal_spike,
+    identity_reshape_scenarios, measure_pair, nary_cost_model_spike, permute_compose_layout_spike,
+    prepare, product_scenarios, reduction_fusion_scenarios, repeat_broadcast_scenarios,
+    zero_k_scenarios,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -38,6 +39,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let plumbing = PlumbingScenario;
     let products = product_scenarios();
     let binary = binary_fast_path_scenarios();
+    let binary_packing = binary_operand_packing::scenarios();
     let zero_k = zero_k_scenarios();
     let reductions = reduction_fusion_scenarios();
     let repeats = repeat_broadcast_scenarios();
@@ -59,6 +61,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .map(|scenario| scenario as &dyn Scenario),
         );
         scenarios.extend(binary.iter().map(|scenario| scenario as &dyn Scenario));
+        scenarios.extend(
+            binary_packing
+                .iter()
+                .map(|scenario| scenario as &dyn Scenario),
+        );
         scenarios.extend(zero_k.iter().map(|scenario| scenario as &dyn Scenario));
         scenarios.extend(reductions.iter().map(|scenario| scenario as &dyn Scenario));
         scenarios.extend(repeats.iter().map(|scenario| scenario as &dyn Scenario));

@@ -12,6 +12,7 @@ use candle_einops::{einops, einsum};
 use criterion::Criterion;
 use serde::{Deserialize, Serialize};
 
+pub mod binary_operand_packing;
 pub mod broadcast_gemm_spike;
 pub mod diagonal_spike;
 pub mod nary_cost_model_spike;

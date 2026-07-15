@@ -2313,6 +2313,22 @@ fn pack_canonical_operand(
     Ok(output)
 }
 
+/// Packs already-canonical operand groups through the production layout path.
+#[cfg(feature = "benchmark-internals")]
+#[doc(hidden)]
+pub fn benchmark_pack_canonical_operand(
+    tensor: &Tensor,
+    packed_shape: &[usize],
+    group_lengths: &[usize],
+) -> Result<Tensor> {
+    pack_canonical_operand(
+        tensor,
+        packed_shape,
+        group_lengths,
+        "benchmark canonical operand packing",
+    )
+}
+
 fn apply_output_permutation(output: Tensor, permutation: &[usize]) -> Result<Tensor> {
     if permutation.iter().copied().eq(0..permutation.len()) {
         Ok(output)

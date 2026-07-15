@@ -4,9 +4,10 @@ use candle_core::{Device, Result, Tensor};
 use candle_einops_benchmarks::broadcast_gemm_spike::broadcast_scenarios;
 use candle_einops_benchmarks::{
     Backend, BenchmarkRecord, Clock, Fingerprint, Operation, SamplingOrderPolicy, Scenario,
-    ScenarioId, Synchronizer, WorkUnits, binary_fast_path_scenarios, identity_reshape_scenarios,
-    measure_pair, permute_compose_layout_spike, prepare, reduction_fusion_scenarios,
-    repeat_broadcast_scenarios, run_synchronized_operation, zero_k_scenarios,
+    ScenarioId, Synchronizer, WorkUnits, binary_fast_path_scenarios, binary_operand_packing,
+    identity_reshape_scenarios, measure_pair, permute_compose_layout_spike, prepare,
+    reduction_fusion_scenarios, repeat_broadcast_scenarios, run_synchronized_operation,
+    zero_k_scenarios,
 };
 
 #[derive(Clone)]
@@ -20,6 +21,26 @@ impl EventLog {
     fn take(&self) -> Vec<&'static str> {
         std::mem::take(&mut *self.0.lock().expect("event log lock"))
     }
+}
+
+#[test]
+fn binary_operand_packing_is_one_mechanism_in_construct_and_consume_modes() -> Result<()> {
+    let scenarios = binary_operand_packing::scenarios();
+    assert_eq!(
+        scenarios
+            .iter()
+            .map(|scenario| scenario.id().as_str())
+            .collect::<Vec<_>>(),
+        [
+            "einsum/binary-packing/recovered-view/construct",
+            "einsum/binary-packing/recovered-view/consume",
+        ]
+    );
+    for scenario in scenarios {
+        assert!(scenario.tracked());
+        prepare(scenario, &Device::Cpu)?;
+    }
+    Ok(())
 }
 
 fn flat_f32(tensor: &Tensor) -> Result<Vec<f32>> {

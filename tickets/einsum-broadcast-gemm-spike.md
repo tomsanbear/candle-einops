@@ -1,16 +1,13 @@
 ---
 id: einsum-broadcast-gemm-spike
 title: Select a broadcast-aware GEMM materialization strategy
-status: in-progress
+status: done
 priority: p0
 dependencies: [performance-harness-foundation, einsum-binary-fastpaths]
 related: [einsum-broadcast-gemm-lowering]
 scopes: []
 shared_scopes: [tests, benchmarks, docs, ticketing]
 tags: [performance-0.2]
-claimed_from: todo
-assignee: ci-release
-lease_expires_at: 1784144284
 ---
 # Select a broadcast-aware GEMM materialization strategy
 

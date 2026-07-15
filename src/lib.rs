@@ -64,7 +64,9 @@ pub use backend::Backend;
 #[doc(hidden)]
 pub mod __private {
     pub use crate::einsum::{
-        BinaryEinsumSpec, UnaryEinsumSpec, execute_binary_einsum, execute_unary_einsum,
+        BinaryEinsumSpec, EinsumAxisPattern, EllipsisEinsumSpec, UnaryEinsumSpec,
+        execute_binary_einsum, execute_binary_ellipsis_einsum, execute_unary_einsum,
+        execute_unary_ellipsis_einsum,
     };
 }
 

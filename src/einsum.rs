@@ -101,6 +101,41 @@ pub struct BinaryEinsumSpec<'a> {
     output_permutation: &'a [usize],
 }
 
+/// One compile-time axis-list pattern containing at most one runtime ellipsis.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug)]
+pub struct EinsumAxisPattern<'a> {
+    labels: &'a [&'a str],
+    ellipsis_position: Option<usize>,
+}
+
+impl<'a> EinsumAxisPattern<'a> {
+    /// Constructs an axis pattern emitted by `candle-einops-macros`.
+    #[doc(hidden)]
+    pub const fn new(labels: &'a [&'a str], ellipsis_position: Option<usize>) -> Self {
+        Self {
+            labels,
+            ellipsis_position,
+        }
+    }
+}
+
+/// Runtime-rank-dependent plan for an equation containing ellipses.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug)]
+pub struct EllipsisEinsumSpec<'a> {
+    operands: &'a [EinsumAxisPattern<'a>],
+    output: EinsumAxisPattern<'a>,
+}
+
+impl<'a> EllipsisEinsumSpec<'a> {
+    /// Constructs an ellipsis plan emitted by `candle-einops-macros`.
+    #[doc(hidden)]
+    pub const fn new(operands: &'a [EinsumAxisPattern<'a>], output: EinsumAxisPattern<'a>) -> Self {
+        Self { operands, output }
+    }
+}
+
 impl<'a> BinaryEinsumSpec<'a> {
     /// Constructs a plan emitted by `candle-einops-macros`.
     #[doc(hidden)]
@@ -290,6 +325,331 @@ where
     }
 }
 
+/// Expands and executes a unary equation containing an ellipsis.
+#[doc(hidden)]
+pub fn execute_unary_ellipsis_einsum<T>(operand: &T, spec: EllipsisEinsumSpec<'_>) -> Result<Tensor>
+where
+    T: AsRef<Tensor> + ?Sized,
+{
+    if spec.operands.len() != 1 {
+        candle_core::bail!(
+            "invalid ellipsis einsum plan: unary execution received {} operand patterns",
+            spec.operands.len()
+        )
+    }
+    let operand = operand.as_ref();
+    let capture = ellipsis_capture(operand, 0, spec.operands[0])?;
+    let normalized = normalize_ellipsis_operand(operand, spec.operands[0], capture, capture, 0)?;
+    let input_axes = expand_axis_pattern(spec.operands[0], capture, true);
+    let output_axes = expand_axis_pattern(spec.output, capture, false);
+    validate_expanded_output(&[&input_axes], &output_axes)?;
+    let permutation = output_axes
+        .iter()
+        .chain(input_axes.iter().filter(|axis| !output_axes.contains(axis)))
+        .map(|axis| {
+            input_axes
+                .iter()
+                .position(|candidate| candidate == axis)
+                .expect("validated unary ellipsis axis")
+        })
+        .collect::<Vec<_>>();
+    execute_unary_einsum(
+        &normalized,
+        UnaryEinsumSpec::new(input_axes.len(), output_axes.len(), &permutation),
+    )
+}
+
+/// Expands and executes a binary equation containing an ellipsis.
+#[doc(hidden)]
+pub fn execute_binary_ellipsis_einsum<L, R>(
+    left: &L,
+    right: &R,
+    spec: EllipsisEinsumSpec<'_>,
+) -> Result<Tensor>
+where
+    L: AsRef<Tensor> + ?Sized,
+    R: AsRef<Tensor> + ?Sized,
+{
+    if spec.operands.len() != 2 {
+        candle_core::bail!(
+            "invalid ellipsis einsum plan: binary execution received {} operand patterns",
+            spec.operands.len()
+        )
+    }
+    let left = left.as_ref();
+    let right = right.as_ref();
+    let captures = [
+        ellipsis_capture(left, 0, spec.operands[0])?,
+        ellipsis_capture(right, 1, spec.operands[1])?,
+    ];
+    let maximum_capture = captures[0].max(captures[1]);
+    let left = normalize_ellipsis_operand(left, spec.operands[0], captures[0], maximum_capture, 0)?;
+    let right =
+        normalize_ellipsis_operand(right, spec.operands[1], captures[1], maximum_capture, 1)?;
+    let left_axes = expand_axis_pattern(spec.operands[0], maximum_capture, true);
+    let right_axes = expand_axis_pattern(spec.operands[1], maximum_capture, true);
+    let output_axes = expand_axis_pattern(spec.output, maximum_capture, false);
+    validate_expanded_output(&[&left_axes, &right_axes], &output_axes)?;
+    let plan = classify_expanded_binary(&left_axes, &right_axes, &output_axes);
+    let batch_label_storage = plan
+        .batch
+        .iter()
+        .map(ExpandedAxis::display_name)
+        .collect::<Vec<_>>();
+    let contracted_label_storage = plan
+        .contracted
+        .iter()
+        .map(ExpandedAxis::display_name)
+        .collect::<Vec<_>>();
+    let batch_labels = batch_label_storage
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let contracted_labels = contracted_label_storage
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    execute_binary_einsum(
+        &left,
+        &right,
+        BinaryEinsumSpec::new(
+            [left_axes.len(), right_axes.len()],
+            [&plan.left_reductions, &plan.right_reductions],
+            [&plan.left_permutation, &plan.right_permutation],
+            plan.batch.len(),
+            plan.left_free.len(),
+            plan.contracted.len(),
+            plan.right_free.len(),
+            &batch_labels,
+            &contracted_labels,
+            &plan.output_permutation,
+        ),
+    )
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ExpandedAxis<'a> {
+    Named(&'a str),
+    Ellipsis(usize),
+}
+
+impl ExpandedAxis<'_> {
+    fn display_name(&self) -> String {
+        match self {
+            Self::Named(name) => (*name).to_owned(),
+            Self::Ellipsis(index) => format!("..[{index}]"),
+        }
+    }
+}
+
+fn ellipsis_capture(
+    operand: &Tensor,
+    operand_index: usize,
+    pattern: EinsumAxisPattern<'_>,
+) -> Result<usize> {
+    if let Some(position) = pattern.ellipsis_position {
+        if position > pattern.labels.len() {
+            candle_core::bail!(
+                "invalid ellipsis einsum plan: operand {operand_index} ellipsis position {position} exceeds {} explicit labels",
+                pattern.labels.len()
+            )
+        }
+        operand.rank().checked_sub(pattern.labels.len()).ok_or_else(|| {
+            candle_core::Error::msg(format!(
+                "einsum operand {operand_index} has rank {}, but {} explicit axes leave no valid ellipsis capture",
+                operand.rank(),
+                pattern.labels.len()
+            ))
+        })
+    } else if operand.rank() == pattern.labels.len() {
+        Ok(0)
+    } else {
+        candle_core::bail!(
+            "einsum operand {operand_index} has rank {}, expected {} because its axis list has no ellipsis",
+            operand.rank(),
+            pattern.labels.len()
+        )
+    }
+}
+
+fn normalize_ellipsis_operand(
+    operand: &Tensor,
+    pattern: EinsumAxisPattern<'_>,
+    capture: usize,
+    maximum_capture: usize,
+    operand_index: usize,
+) -> Result<Tensor> {
+    let missing = maximum_capture.checked_sub(capture).ok_or_else(|| {
+        candle_core::Error::msg("invalid ellipsis einsum plan: capture exceeds maximum")
+    })?;
+    let insertion = pattern.ellipsis_position.unwrap_or(0);
+    let mut normalized = operand.clone();
+    for _ in 0..missing {
+        normalized = normalized.unsqueeze(insertion).map_err(|error| {
+            error.context(format!(
+                "einsum operand {operand_index} ellipsis right-alignment"
+            ))
+        })?;
+    }
+    Ok(normalized)
+}
+
+fn expand_axis_pattern<'a>(
+    pattern: EinsumAxisPattern<'a>,
+    ellipsis_rank: usize,
+    implicit_operand_ellipsis: bool,
+) -> Vec<ExpandedAxis<'a>> {
+    let synthetic = (0..ellipsis_rank).map(ExpandedAxis::Ellipsis);
+    match pattern.ellipsis_position {
+        Some(position) => pattern.labels[..position]
+            .iter()
+            .copied()
+            .map(ExpandedAxis::Named)
+            .chain(synthetic)
+            .chain(
+                pattern.labels[position..]
+                    .iter()
+                    .copied()
+                    .map(ExpandedAxis::Named),
+            )
+            .collect(),
+        None if implicit_operand_ellipsis => synthetic
+            .chain(pattern.labels.iter().copied().map(ExpandedAxis::Named))
+            .collect(),
+        None => pattern
+            .labels
+            .iter()
+            .copied()
+            .map(ExpandedAxis::Named)
+            .collect(),
+    }
+}
+
+fn validate_expanded_output(
+    inputs: &[&[ExpandedAxis<'_>]],
+    output: &[ExpandedAxis<'_>],
+) -> Result<()> {
+    for axis in output {
+        if !inputs.iter().any(|input| input.contains(axis)) {
+            candle_core::bail!(
+                "invalid ellipsis einsum plan: output axis `{}` does not occur in an input",
+                axis.display_name()
+            )
+        }
+    }
+    Ok(())
+}
+
+struct ExpandedBinaryPlan<'a> {
+    batch: Vec<ExpandedAxis<'a>>,
+    left_free: Vec<ExpandedAxis<'a>>,
+    contracted: Vec<ExpandedAxis<'a>>,
+    right_free: Vec<ExpandedAxis<'a>>,
+    left_reductions: Vec<usize>,
+    right_reductions: Vec<usize>,
+    left_permutation: Vec<usize>,
+    right_permutation: Vec<usize>,
+    output_permutation: Vec<usize>,
+}
+
+fn classify_expanded_binary<'a>(
+    left: &[ExpandedAxis<'a>],
+    right: &[ExpandedAxis<'a>],
+    output: &[ExpandedAxis<'a>],
+) -> ExpandedBinaryPlan<'a> {
+    let mut all = Vec::new();
+    for axis in left.iter().chain(right) {
+        if !all.contains(axis) {
+            all.push(*axis);
+        }
+    }
+    let batch = all
+        .iter()
+        .copied()
+        .filter(|axis| left.contains(axis) && right.contains(axis) && output.contains(axis))
+        .collect::<Vec<_>>();
+    let left_free = all
+        .iter()
+        .copied()
+        .filter(|axis| left.contains(axis) && !right.contains(axis) && output.contains(axis))
+        .collect::<Vec<_>>();
+    let contracted = all
+        .iter()
+        .copied()
+        .filter(|axis| left.contains(axis) && right.contains(axis) && !output.contains(axis))
+        .collect::<Vec<_>>();
+    let right_free = all
+        .iter()
+        .copied()
+        .filter(|axis| !left.contains(axis) && right.contains(axis) && output.contains(axis))
+        .collect::<Vec<_>>();
+    let left_reductions = left
+        .iter()
+        .enumerate()
+        .filter_map(|(index, axis)| {
+            (!right.contains(axis) && !output.contains(axis)).then_some(index)
+        })
+        .collect();
+    let right_reductions = right
+        .iter()
+        .enumerate()
+        .filter_map(|(index, axis)| {
+            (!left.contains(axis) && !output.contains(axis)).then_some(index)
+        })
+        .collect();
+    let left_remaining = left
+        .iter()
+        .copied()
+        .filter(|axis| right.contains(axis) || output.contains(axis))
+        .collect::<Vec<_>>();
+    let right_remaining = right
+        .iter()
+        .copied()
+        .filter(|axis| left.contains(axis) || output.contains(axis))
+        .collect::<Vec<_>>();
+    let left_canonical = batch
+        .iter()
+        .chain(&left_free)
+        .chain(&contracted)
+        .copied()
+        .collect::<Vec<_>>();
+    let right_canonical = batch
+        .iter()
+        .chain(&contracted)
+        .chain(&right_free)
+        .copied()
+        .collect::<Vec<_>>();
+    let canonical_output = batch
+        .iter()
+        .chain(&left_free)
+        .chain(&right_free)
+        .copied()
+        .collect::<Vec<_>>();
+    ExpandedBinaryPlan {
+        batch,
+        left_free,
+        contracted,
+        right_free,
+        left_reductions,
+        right_reductions,
+        left_permutation: dynamic_permutation(&left_remaining, &left_canonical),
+        right_permutation: dynamic_permutation(&right_remaining, &right_canonical),
+        output_permutation: dynamic_permutation(&canonical_output, output),
+    }
+}
+
+fn dynamic_permutation<T: Eq>(current: &[T], desired: &[T]) -> Vec<usize> {
+    desired
+        .iter()
+        .map(|axis| {
+            current
+                .iter()
+                .position(|candidate| candidate == axis)
+                .expect("validated ellipsis classification")
+        })
+        .collect()
+}
+
 fn prepare_operand(
     operand: &Tensor,
     operand_index: usize,
@@ -419,6 +779,31 @@ mod tests {
         );
         assert!(execute_binary_einsum(&left, &right, invalid).is_err());
         assert!(checked_product(&[usize::MAX, 2], "test").is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn ellipsis_runtime_validates_rank_and_normalizes_right_alignment() -> Result<()> {
+        let vector = Tensor::zeros(1, DType::F32, &Device::Cpu)?;
+        let invalid_operands = [EinsumAxisPattern::new(&["row", "inner"], Some(0))];
+        let invalid =
+            EllipsisEinsumSpec::new(&invalid_operands, EinsumAxisPattern::new(&["row"], Some(0)));
+        assert!(execute_unary_ellipsis_einsum(&vector, invalid).is_err());
+
+        let left = Tensor::ones((2, 1, 2, 3), DType::F32, &Device::Cpu)?;
+        let right = Tensor::ones((4, 3, 2), DType::F32, &Device::Cpu)?;
+        let valid_operands = [
+            EinsumAxisPattern::new(&["row", "inner"], Some(0)),
+            EinsumAxisPattern::new(&["inner", "column"], Some(0)),
+        ];
+        let valid = EllipsisEinsumSpec::new(
+            &valid_operands,
+            EinsumAxisPattern::new(&["row", "column"], Some(1)),
+        );
+        assert_eq!(
+            execute_binary_ellipsis_einsum(&left, &right, valid)?.dims(),
+            &[2, 2, 4, 2]
+        );
         Ok(())
     }
 }

@@ -1,7 +1,7 @@
 ---
 id: einsum-binary-gemm-slice
 title: Implement binary GEMM-lowered einsum
-status: todo
+status: done
 priority: p0
 dependencies: [einsum-unary-explicit-slice]
 related: []

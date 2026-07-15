@@ -1,16 +1,13 @@
 ---
 id: einsum-diagonal-lowering-spike
 title: Select an efficient repeated-label diagonal strategy
-status: in-progress
+status: done
 priority: p1
 dependencies: [performance-harness-foundation]
 related: [einsum-diagonal-fastpath]
 scopes: []
 shared_scopes: [tests, benchmarks, docs, ticketing]
 tags: [performance-0.2]
-claimed_from: todo
-assignee: ci-release
-lease_expires_at: 1784143089
 ---
 # Select an efficient repeated-label diagonal strategy
 

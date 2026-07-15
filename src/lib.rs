@@ -18,12 +18,21 @@
 extern crate self as candle_einops;
 
 mod backend;
+mod einsum;
 
 /// The result type returned by [`einops!`] and [`Backend`] transformations.
 pub use candle_core::Result;
 pub use candle_einops_macros::einops;
 
 pub use backend::Backend;
+
+/// Implementation details used by macros generated for this crate.
+///
+/// This module is not a stable public API.
+#[doc(hidden)]
+pub mod __private {
+    pub use crate::einsum::{UnaryEinsumSpec, execute_unary_einsum};
+}
 
 /// Specifies the operation used to reduce an axis
 #[derive(Copy, Clone, Debug)]

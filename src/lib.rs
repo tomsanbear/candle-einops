@@ -32,8 +32,9 @@
 //! # }
 //! ```
 //!
-//! Two-operand equations lower contractions through Candle matrix
-//! multiplication, including batch broadcasting:
+//! Contractions lower through Candle matrix multiplication, including batch
+//! broadcasting. Equations with more than two operands use deterministic,
+//! shape-aware greedy pair selection:
 //!
 //! ```
 //! use candle_core::{Device, Result, Tensor};
@@ -44,6 +45,14 @@
 //! let right = Tensor::new(&[[1f32, 2.], [3., 4.], [5., 6.]], &Device::Cpu)?;
 //! let output = einsum!("row inner, inner column -> row column", &left, &right)?;
 //! assert_eq!(output.to_vec2::<f32>()?, [[22., 28.], [49., 64.]]);
+//! let weights = Tensor::new(&[1f32, 1.], &Device::Cpu)?;
+//! let projected = einsum!(
+//!     "row inner, inner column, column -> row",
+//!     &left,
+//!     &right,
+//!     &weights,
+//! )?;
+//! assert_eq!(projected.to_vec1::<f32>()?, [50., 113.]);
 //! # Ok(())
 //! # }
 //! ```

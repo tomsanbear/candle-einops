@@ -81,12 +81,13 @@ order.
 
 ## Scope
 
-The crate implements rearrange, reduce, and repeat operations plus unary and
-binary explicit-label `einsum!`. Einsum supports permutation, reduction,
-outer products, elementwise broadcasting, and GEMM-lowered contractions.
+The crate implements rearrange, reduce, and repeat operations plus
+arbitrary-arity explicit-label `einsum!`. Einsum supports permutation,
+reduction, outer products, elementwise broadcasting, and GEMM-lowered
+contractions.
 Ellipses provide right-aligned variable-rank broadcasting and optional
 reduction. Repeated labels within an input extract a diagonal before the
-remaining contraction, including batched diagonals and traces. Equations with
-more than two operands are reserved for later releases.
+remaining contraction, including batched diagonals and traces. Multi-operand
+equations use deterministic, shape-aware greedy contraction planning.
 
 Licensed under either Apache-2.0 or MIT, at your option.

@@ -1,9 +1,8 @@
 # Einsum contract
 
-This document records the contract for the public `einsum!` macro. Unary and
-binary explicit-label equations are implemented; larger operand counts remain
-reserved for a later slice. Each input and output axis list may contain one
-`..` for right-aligned variable-rank broadcasting.
+This document records the contract for the public `einsum!` macro. Equations
+may contain any positive number of operands. Each input and output axis list
+may contain one `..` for right-aligned variable-rank broadcasting.
 
 ## Equation and evaluation contract
 
@@ -18,6 +17,10 @@ reserved for a later slice. Each input and output axis list may contain one
 - A label repeated within one operand extracts that operand's diagonal before
   broadcasting or contraction. All repeated occurrences must have exactly
   equal extents; they never broadcast against each other.
+- Multi-operand equations greedily select the pair with the smallest retained
+  intermediate, then the fewest estimated FLOPs, then the earliest original
+  operand order. A label is reduced only after it is absent from both the
+  explicit output and every remaining operand.
 - Output labels are unique and each originates in an input.
 - Scalars and zero-sized axes are valid.
 

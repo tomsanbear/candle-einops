@@ -1,10 +1,10 @@
 [package]
 name = "candle-einops-macros"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["Thomas Santerre <thomas@santerre.xyz>"]
 edition = "2024"
 rust-version = "1.94"
-description = " Pure rust implementation of the python einops package for the Candle ML library "
+description = "Procedural macros for candle-einops"
 license = "MIT OR Apache-2.0"
 keywords = ["tensor", "candle", "einops", "machine-learning", "ai"]
 categories = ["algorithms", "science", "mathematics"]

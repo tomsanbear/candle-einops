@@ -1,23 +1,23 @@
 [package]
 name = "candle-einops"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["tomsanbear <thomas@santerre.xyz>"]
 edition = "2024"
 rust-version = "1.94"
-description = "Rust implementation of the python einops package for the Candle ML library "
+description = "Compile-time einops-style tensor operations for Candle"
 license = "MIT OR Apache-2.0"
 keywords = ["tensor", "candle", "einops", "machine-learning", "ai"]
 categories = ["algorithms", "science", "mathematics"]
-exclude = [".github/"]
+exclude = [".github/", ".ticketsplease/", "tickets/", "ticketsplease.toml"]
 repository = "https://github.com/tomsanbear/candle-einops"
 
 [dependencies]
 candle-core = { version = "0.11" }
-candle-einops-macros = { path = "candle-einops-macros", version = "0.1.2" }
+candle-einops-macros = { path = "candle-einops-macros", version = "0.2.0" }
 
 [workspace]
 members = ["candle-einops-macros"]
-resolver = "2"
+resolver = "3"
 
 [package.metadata.docs.rs]
 no-default-features = true

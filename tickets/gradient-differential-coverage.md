@@ -1,7 +1,7 @@
 ---
 id: gradient-differential-coverage
 title: Add differential gradient coverage
-status: todo
+status: done
 priority: p1
 dependencies: [runtime-rank-shape-validation, decomposition-arithmetic-safety]
 related: []

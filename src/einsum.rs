@@ -437,16 +437,15 @@ where
 }
 
 fn graph_preserving_zero(left: &Tensor, right: &Tensor, shape: &[usize]) -> Result<Tensor> {
-    let zero_anchor = |operand: &Tensor, side: &'static str| {
-        operand
-            .unsqueeze(0)
-            .and_then(|operand| operand.narrow(0, 0, 0))
-            .and_then(|operand| operand.sum_all())
-            .map_err(|error| error.context(format!("einsum binary {side} zero anchor")))
-    };
-    zero_anchor(left, "left")?
-        .add(&zero_anchor(right, "right")?)
-        .map_err(|error| error.context("einsum binary zero anchors"))?
+    let left = left
+        .flatten_all()
+        .map_err(|error| error.context("einsum binary left zero flatten"))?;
+    let right = right
+        .flatten_all()
+        .map_err(|error| error.context("einsum binary right zero flatten"))?;
+    Tensor::cat(&[&left, &right], 0)
+        .and_then(|operands| operands.sum_all())
+        .map_err(|error| error.context("einsum binary zero operand anchor"))?
         .broadcast_as(shape)
         .map_err(|error| error.context("einsum binary zero output broadcast"))
 }
@@ -2611,7 +2610,7 @@ fn classify_expanded_binary_graph<'a>(
         work,
         output_elements,
         copy_bytes,
-        submissions: reduction_submissions + if zero_core { 3 } else { 1 },
+        submissions: reduction_submissions + if zero_core { 2 } else { 1 },
         output_layout: if zero_core {
             NaryLayoutEstimate::Unsupported
         } else {

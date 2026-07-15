@@ -79,6 +79,35 @@ fn empty_batch_and_free_axes_retain_both_autograd_edges() -> Result<()> {
 }
 
 #[test]
+fn non_contiguous_zero_operands_retain_source_gradients() -> Result<()> {
+    let device = Device::Cpu;
+    let left_source = Var::zeros((0, 2), DType::F32, &device)?;
+    let right_source = Var::zeros((3, 0), DType::F32, &device)?;
+    let left = left_source.transpose(0, 1)?;
+    let right = right_source.transpose(0, 1)?;
+
+    let output = einsum!("row inner, inner column -> row column", &left, &right)?;
+    assert_eq!(output.to_vec2::<f32>()?, [[0.; 3]; 2]);
+
+    let gradients = output.sum_all()?.backward()?;
+    assert_eq!(
+        gradients
+            .get(left_source.as_tensor())
+            .expect("zero-K left source gradient")
+            .dims(),
+        [0, 2]
+    );
+    assert_eq!(
+        gradients
+            .get(right_source.as_tensor())
+            .expect("zero-K right source gradient")
+            .dims(),
+        [3, 0]
+    );
+    Ok(())
+}
+
+#[test]
 fn zero_shortcut_does_not_precede_dimension_or_dtype_validation() -> Result<()> {
     let device = Device::Cpu;
     let left = Tensor::zeros((2, 4, 0), DType::F32, &device)?;

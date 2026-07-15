@@ -63,6 +63,79 @@ def test_artifact(package: Path, env: dict[str, str]) -> None:
     )
 
 
+def test_downstream_consumers(runtime: Path, temporary: Path, env: dict[str, str]) -> None:
+    runtime_path = json.dumps(str(runtime))
+    consumers = [
+        (
+            "normal-consumer",
+            f'candle-einops = {{ path = {runtime_path} }}',
+            "use candle_core::{Device, Result, Tensor};\nuse candle_einops::einsum;",
+        ),
+        (
+            "renamed-consumer",
+            f'tensor-ops = {{ package = "candle-einops", path = {runtime_path} }}',
+            "use candle_core::{Device, Result, Tensor};\nuse tensor_ops::einsum;",
+        ),
+        (
+            "keyword-consumer",
+            f'type = {{ package = "candle-einops", path = {runtime_path} }}',
+            "use r#match::{Device, Result, Tensor};\nuse r#type::einsum;",
+        ),
+    ]
+    source_template = """{imports}
+
+fn main() -> Result<()> {{
+    let matrix = Tensor::arange(0f32, 6f32, &Device::Cpu)?.reshape((2, 3))?;
+    let transposed = einsum!("rows columns -> columns rows", &matrix)?;
+    assert_eq!(transposed.to_vec2::<f32>()?, [[0., 3.], [1., 4.], [2., 5.]]);
+    let product = einsum!("row inner, inner column -> row column", &matrix, &transposed)?;
+    assert_eq!(product.to_vec2::<f32>()?, [[5., 14.], [14., 50.]]);
+    let reduced = einsum!(".. column -> column", &matrix)?;
+    assert_eq!(reduced.to_vec1::<f32>()?, [3., 5., 7.]);
+    let square = Tensor::arange(0f32, 9f32, &Device::Cpu)?.reshape((3, 3))?;
+    let diagonal = einsum!("index index -> index", &square)?;
+    assert_eq!(diagonal.to_vec1::<f32>()?, [0., 4., 8.]);
+    let weights = Tensor::new(&[1f32, 1.], &Device::Cpu)?;
+    let nary = einsum!(
+        "row inner, inner column, column -> row",
+        &matrix,
+        &transposed,
+        &weights,
+    )?;
+    assert_eq!(nary.to_vec1::<f32>()?, [19., 64.]);
+    Ok(())
+}}
+"""
+
+    for name, runtime_dependency, imports in consumers:
+        consumer = temporary / name
+        (consumer / "src").mkdir(parents=True)
+        candle_dependency = (
+            'match = { package = "candle-core", version = "0.11" }'
+            if name == "keyword-consumer"
+            else 'candle-core = "0.11"'
+        )
+        (consumer / "Cargo.toml").write_text(
+            f"""[package]
+name = "{name}"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+{candle_dependency}
+{runtime_dependency}
+
+[workspace]
+""",
+            encoding="utf-8",
+        )
+        (consumer / "src/main.rs").write_text(
+            source_template.format(imports=imports), encoding="utf-8"
+        )
+        run(["run", "--manifest-path", str(consumer / "Cargo.toml")], cwd=consumer, env=env)
+
+
 def main() -> None:
     versions = package_versions()
     run(["package", "--workspace"], cwd=ROOT)
@@ -96,6 +169,8 @@ def main() -> None:
 
         print("Testing runtime artifact against the unpacked macro artifact", flush=True)
         test_artifact(runtime_dir, env)
+        print("Testing normal, renamed, and keyword downstream consumers", flush=True)
+        test_downstream_consumers(runtime_dir, temporary_dir, env)
 
 
 if __name__ == "__main__":

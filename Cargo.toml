@@ -4,7 +4,7 @@ version = "0.2.0"
 authors = ["tomsanbear <thomas@santerre.xyz>"]
 edition = "2024"
 rust-version = "1.94"
-description = "Compile-time einops-style tensor operations for Candle"
+description = "Compile-time einops and einsum tensor operations for Candle"
 license = "MIT OR Apache-2.0"
 keywords = ["tensor", "candle", "einops", "machine-learning", "ai"]
 categories = ["algorithms", "science", "mathematics"]
@@ -13,7 +13,7 @@ repository = "https://github.com/tomsanbear/candle-einops"
 
 [dependencies]
 candle-core = { version = "0.11" }
-candle-einops-macros = { path = "candle-einops-macros", version = "0.2.0" }
+candle-einops-macros = { path = "candle-einops-macros", version = "=0.2.0" }
 
 [workspace]
 members = ["candle-einops-macros"]

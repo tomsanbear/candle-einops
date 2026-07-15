@@ -1,11 +1,13 @@
 [package]
 name = "candle-einops-macros"
 version = "0.2.0"
-authors = ["Thomas Santerre <thomas@santerre.xyz>"]
+authors = ["tomsanbear <thomas@santerre.xyz>"]
 edition = "2024"
 rust-version = "1.94"
-description = "Procedural macros for candle-einops"
+description = "Procedural macros for candle-einops tensor transformations and einsum"
 license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/candle-einops"
+readme = "../README.md"
 keywords = ["tensor", "candle", "einops", "machine-learning", "ai"]
 categories = ["algorithms", "science", "mathematics"]
 exclude = [".github/", "tests/dependency_names.rs", "tests/fixtures/**"]

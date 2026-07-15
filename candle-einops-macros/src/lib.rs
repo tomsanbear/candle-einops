@@ -16,7 +16,9 @@ pub fn einops(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 ///
 /// Supports any positive number of operands with named axes and at most one
 /// `..` per axis list. Repeated input labels extract diagonals before
-/// contraction.
+/// contraction. Use this through `candle_einops::einsum`; generated code calls
+/// a private runtime ABI, so `candle-einops-macros` and `candle-einops` must use
+/// exactly the same version.
 #[proc_macro]
 pub fn einsum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     einsum::einsum(input.into())

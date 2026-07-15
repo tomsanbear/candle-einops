@@ -5,6 +5,9 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens, quote};
 use syn::parse::{Parse, ParseStream};
 
+#[cfg(test)]
+mod properties;
+
 pub fn einsum(input: TokenStream) -> syn::Result<TokenStream> {
     let invocation = syn::parse2::<Invocation>(input)?;
     Ok(quote!(#invocation))

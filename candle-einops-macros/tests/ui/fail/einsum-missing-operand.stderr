@@ -1,0 +1,5 @@
+error: einsum equation has 1 inputs but received 0 operand expressions
+ --> tests/ui/fail/einsum-missing-operand.rs:4:21
+  |
+4 |     let _ = einsum!("row -> row",);
+  |                     ^^^^^^^^^^^^

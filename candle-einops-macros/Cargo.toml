@@ -2,7 +2,7 @@
 name = "candle-einops-macros"
 version = "0.1.2"
 authors = ["Thomas Santerre <thomas@santerre.xyz>"]
-edition = "2021"
+edition = "2024"
 rust-version = "1.94"
 description = " Pure rust implementation of the python einops package for the Candle ML library "
 license = "MIT OR Apache-2.0"

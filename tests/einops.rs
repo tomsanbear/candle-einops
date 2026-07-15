@@ -1,5 +1,5 @@
 use candle_core::{DType, Device, IndexOp, Result, Tensor};
-use candle_einops::{einops, Backend};
+use candle_einops::{Backend, einops};
 
 #[test]
 fn candle_layers() -> Result<()> {

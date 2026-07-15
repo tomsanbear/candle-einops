@@ -6,8 +6,8 @@ use quote::{format_ident, quote};
 use syn::parse::ParseStream;
 
 use parse::{
-    parse_composition_permute_repeat, parse_decomposition, parse_reduce, Composition,
-    Decomposition, Index, Operation, Shape,
+    Composition, Decomposition, Index, Operation, Shape, parse_composition_permute_repeat,
+    parse_decomposition, parse_reduce,
 };
 use tokens::{
     to_tokens_composition, to_tokens_decomposition, to_tokens_permute, to_tokens_reduce,
@@ -89,17 +89,17 @@ impl syn::parse::Parse for Expression {
 impl quote::ToTokens for ParsedExpression {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let ParsedExpression {
-            tensor: ref tensor_ident,
-            tensor_expression: ref tensor_tokens,
-            ref expression,
+            tensor: tensor_ident,
+            tensor_expression: tensor_tokens,
+            expression,
         } = self;
         let Expression {
             requires_decomposition,
-            ref decomposition,
-            ref reduce,
-            ref permute,
-            ref repeat,
-            ref composition,
+            decomposition,
+            reduce,
+            permute,
+            repeat,
+            composition,
         } = expression;
 
         // Variable to store the shape slice

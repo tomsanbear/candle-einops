@@ -31,7 +31,8 @@ def record(
     scenario_id: str = "einsum/binary/rank2",
     schema_version: int = 1,
     elements: int = 64,
-    rust_version: str = "rustc 1.94.1",
+    rust_version: object = "rustc 1.94.1",
+    sample_count: int = 25,
     sampling_order_policy: str = "alternating_library_then_reference",
 ) -> dict[str, object]:
     estimate = {
@@ -47,7 +48,7 @@ def record(
         "scenario_id": scenario_id,
         "tracked": True,
         "workload": {"elements": elements, "bytes": elements * 4, "flops": 128},
-        "sample_count": 25,
+        "sample_count": sample_count,
         "library": estimate,
         "reference": estimate,
         "library_to_reference_ratio": 1.0,
@@ -150,6 +151,28 @@ class AdvisoryComparisonTests(unittest.TestCase):
             report["scenarios"][0]["reason"], "sampling_policy_mismatch"
         )
 
+    def test_sample_count_mismatch_is_incomparable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = self.write_runs(root, "base", BASE_SHA, [10_000] * 5)
+            head = self.write_runs(
+                root, "head", HEAD_SHA, [12_000] * 5, sample_count=999
+            )
+            report = compare_benchmarks.compare_files(base, head, BASE_SHA, HEAD_SHA)
+        self.assertEqual(report["scenarios"][0]["status"], "incomparable")
+        self.assertEqual(report["scenarios"][0]["reason"], "sample_count_mismatch")
+
+    def test_malformed_fingerprint_is_incomparable_without_crashing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = self.write_runs(root, "base", BASE_SHA, [10_000] * 5)
+            head = self.write_runs(
+                root, "head", HEAD_SHA, [12_000] * 5, rust_version=[]
+            )
+            report = compare_benchmarks.compare_files(base, head, BASE_SHA, HEAD_SHA)
+        self.assertEqual(report["scenarios"][0]["status"], "incomparable")
+        self.assertEqual(report["scenarios"][0]["reason"], "fingerprint_mismatch")
+
     def test_missing_scenario_is_explicitly_incomparable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -181,6 +204,21 @@ class AdvisoryComparisonTests(unittest.TestCase):
             base = self.write_runs(root, "base", "3" * 40, [10_000] * 5)
             head = self.write_runs(root, "head", HEAD_SHA, [12_000] * 5)
             with self.assertRaisesRegex(compare_benchmarks.ComparisonInputError, "expected base SHA"):
+                compare_benchmarks.compare_files(base, head, BASE_SHA, HEAD_SHA)
+
+    def test_empty_documents_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = []
+            head = []
+            for side, paths in (("base", base), ("head", head)):
+                for index in range(1, 6):
+                    path = root / f"{side}-{index}.json"
+                    path.write_text("[]", encoding="utf-8")
+                    paths.append(path)
+            with self.assertRaisesRegex(
+                compare_benchmarks.ComparisonInputError, "no benchmark scenarios"
+            ):
                 compare_benchmarks.compare_files(base, head, BASE_SHA, HEAD_SHA)
 
 

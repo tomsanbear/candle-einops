@@ -1,7 +1,7 @@
 ---
 id: decomposition-arithmetic-safety
 title: Make decomposition arithmetic checked and fallible
-status: todo
+status: done
 priority: p0
 dependencies: []
 related: []

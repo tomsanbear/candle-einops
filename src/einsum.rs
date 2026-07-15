@@ -1663,7 +1663,7 @@ fn checked_product(dimensions: &[usize], category: &str) -> Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use candle_core::{DType, Device};
+    use candle_core::{DType, Device, Var};
 
     #[test]
     fn rejects_invalid_runtime_specs_without_panicking() -> Result<()> {
@@ -1867,5 +1867,307 @@ mod tests {
             checked_nary_product(&[usize::MAX, usize::MAX, 0]).unwrap(),
             0
         );
+    }
+
+    fn planner_meta(
+        ordinal: usize,
+        axes: &[(&'static str, usize)],
+        layout: NaryLayoutEstimate,
+    ) -> NaryPlannerMetadata<'static> {
+        NaryPlannerMetadata::new_for_test(ordinal, axes, layout)
+    }
+
+    fn matrix_chain_metadata(
+        dimensions: [usize; 5],
+        batch: Option<usize>,
+    ) -> Vec<NaryPlannerMetadata<'static>> {
+        let [a, b, c, d, e] = dimensions;
+        let operand = |ordinal, axes: [(&'static str, usize); 2]| {
+            let mut metadata = batch
+                .map(|extent| vec![("batch", if ordinal == 0 { 1 } else { extent })])
+                .unwrap_or_default();
+            metadata.extend(axes);
+            planner_meta(ordinal, &metadata, NaryLayoutEstimate::Contiguous)
+        };
+        vec![
+            operand(0, [("a", a), ("b", b)]),
+            operand(1, [("b", b), ("c", c)]),
+            operand(2, [("c", c), ("d", d)]),
+            operand(3, [("d", d), ("e", e)]),
+        ]
+    }
+
+    #[test]
+    fn layout_aware_selection_freezes_counterexamples_and_every_boundary() {
+        let balanced = matrix_chain_metadata([128, 8, 1, 8, 128], None);
+        let selected = select_layout_aware_plan_for_test(&balanced, &["a", "e"], DType::F32, true);
+        let NaryPlannerDecision::Exact(plan) = selected else {
+            panic!("balanced CPU F32 fixture must select exact")
+        };
+        assert_eq!(
+            plan.steps
+                .iter()
+                .map(|step| step.members)
+                .collect::<Vec<_>>(),
+            [(1, 2), (4, 8), (3, 12)]
+        );
+        assert_eq!((plan.metrics.flops, plan.metrics.score), (18_432, 88_064));
+
+        let broadcast = matrix_chain_metadata([32, 32, 15, 5, 10], Some(32));
+        let NaryPlannerDecision::Exact(plan) =
+            select_layout_aware_plan_for_test(&broadcast, &["batch", "a", "e"], DType::F32, true)
+        else {
+            panic!("broadcast CPU F32 fixture must select exact")
+        };
+        assert_eq!(
+            plan.steps
+                .iter()
+                .map(|step| step.members)
+                .collect::<Vec<_>>(),
+            [(2, 4), (1, 6), (7, 8)]
+        );
+        assert_eq!(
+            (
+                plan.metrics.flops,
+                plan.metrics.copy_bytes,
+                plan.metrics.score
+            ),
+            (291_840, 131_072, 517_952)
+        );
+
+        let linear = matrix_chain_metadata([30, 35, 15, 5, 10], None);
+        assert!(matches!(
+            select_layout_aware_plan_for_test(&linear, &["a", "e"], DType::F32, true),
+            NaryPlannerDecision::Greedy(NaryGreedyReason::BelowFlopThreshold)
+        ));
+        let just_below = (0..3)
+            .map(|ordinal| planner_meta(ordinal, &[("k", 49_999)], NaryLayoutEstimate::Contiguous))
+            .collect::<Vec<_>>();
+        assert!(matches!(
+            select_layout_aware_plan_for_test(&just_below, &[], DType::F32, true),
+            NaryPlannerDecision::Greedy(NaryGreedyReason::BelowFlopThreshold)
+        ));
+        let at_threshold = (0..3)
+            .map(|ordinal| planner_meta(ordinal, &[("k", 50_000)], NaryLayoutEstimate::Contiguous))
+            .collect::<Vec<_>>();
+        assert!(matches!(
+            select_layout_aware_plan_for_test(&at_threshold, &[], DType::F32, true),
+            NaryPlannerDecision::Exact(_)
+        ));
+        assert!(matches!(
+            select_layout_aware_plan_for_test(&balanced, &["a", "e"], DType::F64, true),
+            NaryPlannerDecision::Greedy(NaryGreedyReason::DType)
+        ));
+        assert!(matches!(
+            select_layout_aware_plan_for_test(&balanced, &["a", "e"], DType::F32, false),
+            NaryPlannerDecision::Greedy(NaryGreedyReason::Backend)
+        ));
+        let mut unsupported = balanced.clone();
+        unsupported[0] = planner_meta(0, &[("a", 128), ("b", 8)], NaryLayoutEstimate::Unsupported);
+        assert!(matches!(
+            select_layout_aware_plan_for_test(&unsupported, &["a", "e"], DType::F32, true),
+            NaryPlannerDecision::Greedy(NaryGreedyReason::UnsupportedLayout)
+        ));
+        let five = (0..5)
+            .map(|ordinal| planner_meta(ordinal, &[("i", 128)], NaryLayoutEstimate::Contiguous))
+            .collect::<Vec<_>>();
+        assert!(matches!(
+            select_layout_aware_plan_for_test(&five, &["i"], DType::F32, true),
+            NaryPlannerDecision::Greedy(NaryGreedyReason::Arity)
+        ));
+    }
+
+    #[test]
+    fn exact_search_is_structurally_bounded_zero_first_checked_and_fully_stable() {
+        let equal = (0..4)
+            .map(|ordinal| planner_meta(ordinal, &[("i", 128)], NaryLayoutEstimate::Contiguous))
+            .collect::<Vec<_>>();
+        let first = plan_layout_exact_for_test(&equal, &["i"]).unwrap();
+        let second = plan_layout_exact_for_test(&equal, &["i"]).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(
+            first
+                .steps
+                .iter()
+                .map(|step| step.members)
+                .collect::<Vec<_>>(),
+            [(1, 2), (3, 4), (7, 8)]
+        );
+
+        let five = (0..5)
+            .map(|ordinal| planner_meta(ordinal, &[("i", 128)], NaryLayoutEstimate::Contiguous))
+            .collect::<Vec<_>>();
+        assert!(plan_layout_exact_for_test(&five, &["i"]).is_err());
+
+        let late_zero = vec![
+            planner_meta(
+                0,
+                &[("huge_a", usize::MAX), ("huge_b", usize::MAX)],
+                NaryLayoutEstimate::Contiguous,
+            ),
+            planner_meta(
+                1,
+                &[("huge_c", usize::MAX), ("zero", 0)],
+                NaryLayoutEstimate::Contiguous,
+            ),
+            planner_meta(2, &[], NaryLayoutEstimate::Contiguous),
+        ];
+        let decision = select_layout_aware_plan_for_test(&late_zero, &[], DType::F32, true);
+        assert!(matches!(
+            decision,
+            NaryPlannerDecision::Greedy(NaryGreedyReason::BelowFlopThreshold)
+        ));
+
+        let overflow = vec![
+            planner_meta(
+                0,
+                &[("a", usize::MAX), ("b", usize::MAX)],
+                NaryLayoutEstimate::Contiguous,
+            ),
+            planner_meta(
+                1,
+                &[("b", usize::MAX), ("c", usize::MAX)],
+                NaryLayoutEstimate::Contiguous,
+            ),
+            planner_meta(2, &[("c", 1)], NaryLayoutEstimate::Contiguous),
+        ];
+        assert!(matches!(
+            select_layout_aware_plan_for_test(&overflow, &["a"], DType::F32, true),
+            NaryPlannerDecision::Greedy(NaryGreedyReason::ModelFailure)
+        ));
+    }
+
+    fn nary_spec<'a>(
+        operands: &'a [EinsumAxisPattern<'a>],
+        output: EinsumAxisPattern<'a>,
+    ) -> EllipsisEinsumSpec<'a> {
+        EllipsisEinsumSpec::new(operands, output)
+    }
+
+    fn assert_mixed_close(left: &Tensor, right: &Tensor) -> Result<()> {
+        assert_eq!(left.dims(), right.dims());
+        let left = left.flatten_all()?.to_vec1::<f32>()?;
+        let right = right.flatten_all()?.to_vec1::<f32>()?;
+        for (&left, &right) in left.iter().zip(&right) {
+            assert!((left - right).abs() <= 0.002 * right.abs().max(1.));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn broadcast_selected_execution_matches_greedy_forward_and_every_gradient() -> Result<()> {
+        let device = Device::Cpu;
+        let patterns = [
+            EinsumAxisPattern::new(&["batch", "a", "b"], None),
+            EinsumAxisPattern::new(&["batch", "b", "c"], None),
+            EinsumAxisPattern::new(&["batch", "c", "d"], None),
+            EinsumAxisPattern::new(&["batch", "d", "e"], None),
+        ];
+        let output = EinsumAxisPattern::new(&["batch", "a", "e"], None);
+        let shapes = [[1, 32, 32], [32, 32, 15], [32, 15, 5], [32, 5, 10]];
+        let values = shapes
+            .iter()
+            .enumerate()
+            .map(|(ordinal, shape)| {
+                let elements = shape.iter().product::<usize>();
+                let values = (0..elements)
+                    .map(|index| ((index + ordinal * 7) % 23) as f32 / 23.)
+                    .collect::<Vec<_>>();
+                Tensor::from_vec(values, shape.as_slice(), &device)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let selected_vars = values
+            .iter()
+            .map(Var::from_tensor)
+            .collect::<Result<Vec<_>>>()?;
+        let greedy_vars = values
+            .iter()
+            .map(Var::from_tensor)
+            .collect::<Result<Vec<_>>>()?;
+        let selected_refs = selected_vars.iter().map(Var::as_tensor).collect::<Vec<_>>();
+        let greedy_refs = greedy_vars.iter().map(Var::as_tensor).collect::<Vec<_>>();
+        let (selected, trace) = execute_nary_einsum_for_test(
+            &selected_refs,
+            nary_spec(&patterns, output),
+            NaryExecutionStrategy::Selected,
+        )?;
+        let (greedy, _) = execute_nary_einsum_for_test(
+            &greedy_refs,
+            nary_spec(&patterns, output),
+            NaryExecutionStrategy::StreamingGreedy,
+        )?;
+        assert_mixed_close(&selected, &greedy)?;
+        assert!(trace.used_exact);
+        assert_eq!(trace.member_sequence, [(2, 4), (1, 6), (7, 8)]);
+
+        let selected_gradients = selected.sum_all()?.backward()?;
+        let greedy_gradients = greedy.sum_all()?.backward()?;
+        for (selected, greedy) in selected_vars.iter().zip(&greedy_vars) {
+            assert_mixed_close(
+                selected_gradients.get(selected.as_tensor()).unwrap(),
+                greedy_gradients.get(greedy.as_tensor()).unwrap(),
+            )?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn selected_execution_matches_frozen_greedy_forward_gradients_and_layout_trace() -> Result<()> {
+        let device = Device::Cpu;
+        let patterns = [
+            EinsumAxisPattern::new(&["a", "b"], None),
+            EinsumAxisPattern::new(&["b", "c"], None),
+            EinsumAxisPattern::new(&["c", "d"], None),
+            EinsumAxisPattern::new(&["d", "e"], None),
+        ];
+        let output = EinsumAxisPattern::new(&["a", "e"], None);
+        let values = [
+            Tensor::arange(0f32, (128 * 8) as f32, &device)?.reshape((128, 8))?,
+            Tensor::arange(0f32, 8., &device)?.reshape((8, 1))?,
+            Tensor::arange(0f32, 8., &device)?.reshape((1, 8))?,
+            Tensor::arange(0f32, (8 * 128) as f32, &device)?.reshape((8, 128))?,
+        ];
+        let selected_vars = values
+            .iter()
+            .map(Var::from_tensor)
+            .collect::<Result<Vec<_>>>()?;
+        let greedy_vars = values
+            .iter()
+            .map(Var::from_tensor)
+            .collect::<Result<Vec<_>>>()?;
+        let selected_refs = selected_vars
+            .iter()
+            .map(|var| var.as_tensor())
+            .collect::<Vec<_>>();
+        let greedy_refs = greedy_vars
+            .iter()
+            .map(|var| var.as_tensor())
+            .collect::<Vec<_>>();
+        let (selected, trace) = execute_nary_einsum_for_test(
+            &selected_refs,
+            nary_spec(&patterns, output),
+            NaryExecutionStrategy::Selected,
+        )?;
+        let (greedy, greedy_trace) = execute_nary_einsum_for_test(
+            &greedy_refs,
+            nary_spec(&patterns, output),
+            NaryExecutionStrategy::StreamingGreedy,
+        )?;
+        assert_mixed_close(&selected, &greedy)?;
+        assert!(trace.used_exact);
+        assert!(!greedy_trace.used_exact);
+        assert_eq!(trace.member_sequence, [(1, 2), (4, 8), (3, 12)]);
+        assert_eq!(trace.final_permutations, 1);
+        assert!(trace.intermediates.iter().all(|step| step.canonical));
+
+        let selected_gradients = selected.sum_all()?.backward()?;
+        let greedy_gradients = greedy.sum_all()?.backward()?;
+        for (selected, greedy) in selected_vars.iter().zip(&greedy_vars) {
+            assert_mixed_close(
+                selected_gradients.get(selected.as_tensor()).unwrap(),
+                greedy_gradients.get(greedy.as_tensor()).unwrap(),
+            )?;
+        }
+        Ok(())
     }
 }

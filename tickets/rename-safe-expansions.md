@@ -1,7 +1,7 @@
 ---
 id: rename-safe-expansions
 title: Make generated crate paths rename-safe
-status: todo
+status: in-progress
 priority: p1
 dependencies: [semantic-expansion-fixes]
 related: []
@@ -9,6 +9,9 @@ scopes: [macros]
 shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
+claimed_from: todo
+assignee: codex-rename-safe
+lease_expires_at: 1784124556
 ---
 # Make generated crate paths rename-safe
 

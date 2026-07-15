@@ -156,7 +156,7 @@ fn scalar_empty_singleton_and_non_contiguous_inputs_match_oracles() -> Result<()
         let input =
             Tensor::arange(0u32, singleton as u32, &Device::Cpu)?.reshape(&[1, singleton, 1])?;
         let output = einops!("1 middle 1 -> middle", &input)?;
-        assert_eq!(output.dims(), &[singleton as usize]);
+        assert_eq!(output.dims(), &[singleton]);
         assert_eq!(values_u32(&output)?, values_u32(&input)?);
     }
 

@@ -115,3 +115,52 @@ fn mixed_order_and_dtype_support_remain_unchanged() -> Result<()> {
     assert_eq!(library_mean.is_ok(), direct_mean.is_ok());
     Ok(())
 }
+
+#[test]
+fn collapsible_extrema_runs_preserve_values_gradients_and_fallbacks() -> Result<()> {
+    let device = Device::Cpu;
+    let values = (0..2 * 3 * 4 * 5)
+        .map(|value| value as f32)
+        .collect::<Vec<_>>();
+    for maximum in [false, true] {
+        let selected_var = Var::from_vec(values.clone(), (2, 3, 4, 5), &device)?;
+        let direct_var = Var::from_vec(values.clone(), (2, 3, 4, 5), &device)?;
+        let selected = if maximum {
+            einops!(
+                "batch channel max(row column) -> batch channel",
+                selected_var.as_tensor()
+            )?
+        } else {
+            einops!(
+                "batch channel min(row column) -> batch channel",
+                selected_var.as_tensor()
+            )?
+        };
+        let direct = if maximum {
+            direct_var.max(3)?.max(2)?
+        } else {
+            direct_var.min(3)?.min(2)?
+        };
+        assert_close(&selected, &direct, 1e-6)?;
+        let weights = Tensor::reshape(&Tensor::arange(1f32, 7., &device)?, (2, 3))?;
+        let selected_gradients = selected.mul(&weights)?.sum_all()?.backward()?;
+        let direct_gradients = direct.mul(&weights)?.sum_all()?.backward()?;
+        assert_close(
+            selected_gradients.get(selected_var.as_tensor()).unwrap(),
+            direct_gradients.get(direct_var.as_tensor()).unwrap(),
+            1e-6,
+        )?;
+    }
+
+    let contiguous = Tensor::from_vec(values, (2, 3, 4, 5), &device)?;
+    let leading = einops!("min(batch channel) row column -> row column", &contiguous)?;
+    assert_close(&leading, &contiguous.min(1)?.min(0)?, 1e-6)?;
+    let strided = contiguous.permute([0, 2, 1, 3])?;
+    let fallback = einops!("batch row min(channel column) -> batch row", &strided)?;
+    assert_close(&fallback, &strided.min(3)?.min(2)?, 1e-6)?;
+
+    let empty = Tensor::zeros((2, 3, 0, 5), DType::F32, &device)?;
+    assert!(einops!("batch channel min(row column) -> batch channel", &empty).is_err());
+    assert!(einops!("batch channel max(row column) -> batch channel", &empty).is_err());
+    Ok(())
+}

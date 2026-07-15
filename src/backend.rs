@@ -11,7 +11,10 @@ struct ReductionRun {
 fn operations_are_fusible(left: Operation, right: Operation) -> bool {
     matches!(
         (left, right),
-        (Operation::Sum, Operation::Sum) | (Operation::Mean, Operation::Mean)
+        (Operation::Sum, Operation::Sum)
+            | (Operation::Mean, Operation::Mean)
+            | (Operation::Min, Operation::Min)
+            | (Operation::Max, Operation::Max)
     )
 }
 
@@ -21,6 +24,11 @@ fn plan_reduction_runs(axes_operations: &mut [(usize, Operation)]) -> Vec<Reduct
     for &(axis, operation) in axes_operations.iter().rev() {
         if let Some(run) = runs.last_mut()
             && operations_are_fusible(run.operation, operation)
+            && (matches!(operation, Operation::Sum | Operation::Mean)
+                || run
+                    .axes
+                    .last()
+                    .is_some_and(|&previous| axis + 1 == previous))
         {
             run.axes.push(axis);
         } else {
@@ -163,13 +171,44 @@ impl<T: AsRef<Tensor>> Backend for T {
         }
 
         for run in plan_reduction_runs(axes_operations) {
-            record_backend_reduction_call();
             output = match run.operation {
-                Operation::Min => output.min(run.axes[0])?,
-                Operation::Max => output.max(run.axes[0])?,
-                Operation::Sum => output.sum(run.axes.as_slice())?,
-                Operation::Mean => output.mean(run.axes.as_slice())?,
+                Operation::Min | Operation::Max if run.axes.len() > 1 => {
+                    if let Some(collapsed) =
+                        collapse_extrema_run(&output, &run.axes, run.operation)?
+                    {
+                        record_backend_reduction_call();
+                        collapsed
+                    } else {
+                        let mut reduced = output;
+                        for axis in run.axes {
+                            record_backend_reduction_call();
+                            reduced = match run.operation {
+                                Operation::Min => reduced.min(axis)?,
+                                Operation::Max => reduced.max(axis)?,
+                                _ => unreachable!("extrema run operation"),
+                            };
+                        }
+                        reduced
+                    }
+                }
+                Operation::Min => {
+                    record_backend_reduction_call();
+                    output.min(run.axes[0])?
+                }
+                Operation::Max => {
+                    record_backend_reduction_call();
+                    output.max(run.axes[0])?
+                }
+                Operation::Sum => {
+                    record_backend_reduction_call();
+                    output.sum(run.axes.as_slice())?
+                }
+                Operation::Mean => {
+                    record_backend_reduction_call();
+                    output.mean(run.axes.as_slice())?
+                }
                 Operation::Prod => {
+                    record_backend_reduction_call();
                     let axis = run.axes[0];
                     let axis_len = output.dim(axis)?;
                     if axis_len == 0 {
@@ -249,6 +288,41 @@ impl<T: AsRef<Tensor>> Backend for T {
     }
 }
 
+fn collapse_extrema_run(
+    input: &Tensor,
+    descending_axes: &[usize],
+    operation: Operation,
+) -> Result<Option<Tensor>> {
+    let start = *descending_axes
+        .last()
+        .expect("an extrema run contains at least one axis");
+    let mut group_lengths = vec![1; start];
+    group_lengths.push(descending_axes.len());
+    group_lengths.extend(std::iter::repeat_n(
+        1,
+        input.rank() - start - descending_axes.len(),
+    ));
+    let identity = (0..input.rank()).collect::<Vec<_>>();
+    if plan_permute_compose_group_order(input.dims(), input.stride(), &identity, &group_lengths)?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    let mut collapsed_shape = input.dims()[..start].to_vec();
+    let collapsed_extent = input.dims()[start..start + descending_axes.len()]
+        .iter()
+        .try_fold(1usize, |product, &extent| product.checked_mul(extent))
+        .ok_or_else(|| candle_core::Error::msg("extrema collapsed extent overflows usize"))?;
+    collapsed_shape.push(collapsed_extent);
+    collapsed_shape.extend_from_slice(&input.dims()[start + descending_axes.len()..]);
+    let collapsed = execute_tensor_compose_axes(input, &collapsed_shape, &group_lengths)?;
+    match operation {
+        Operation::Min => collapsed.min(start).map(Some),
+        Operation::Max => collapsed.max(start).map(Some),
+        _ => unreachable!("collapsed extrema operation"),
+    }
+}
+
 pub(crate) fn execute_tensor_permute_and_compose(
     input: &Tensor,
     permutation: &[usize],
@@ -321,7 +395,7 @@ pub(crate) fn execute_tensor_permute_and_compose(
     input.permute(permutation)?.reshape(output_shape)
 }
 
-fn execute_tensor_compose_axes(
+pub(crate) fn execute_tensor_compose_axes(
     input: &Tensor,
     output_shape: &[usize],
     group_lengths: &[usize],
@@ -511,8 +585,8 @@ mod tests {
             3,
             "adjacent min may collapse; prod remains sequential"
         );
-        assert_eq!(runs[0].axes, [1, 0]);
-        assert!(matches!(runs[0].operation, Operation::Min));
+        assert_eq!(runs[2].axes, [1, 0]);
+        assert!(matches!(runs[2].operation, Operation::Min));
     }
 
     #[test]

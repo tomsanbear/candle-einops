@@ -1,4 +1,4 @@
-use candle_core::{Device, IndexOp, Result, Tensor};
+use candle_core::{DType, Device, IndexOp, Result, Tensor};
 use candle_einops::{einops, Backend};
 
 #[test]
@@ -106,6 +106,30 @@ fn equivalent_reduction() -> Result<()> {
         ("a b min(c d e) -> (a b)", ".. min(c d e) -> (..)"),
         input
     ];
+
+    Ok(())
+}
+
+#[test]
+fn product_reduction() -> Result<()> {
+    let input = Tensor::new(&[[1f32, 2., 3.], [4., 5., 6.]], &Device::Cpu)?;
+    let output = einops!("a prod(b) -> a", &input);
+    assert_eq!(output.to_vec1::<f32>()?, &[6., 120.]);
+
+    let input = Tensor::arange(1f32, 9., &Device::Cpu)?.reshape(&[2, 2, 2]);
+    let output = einops!("prod(a b) c -> c", &input);
+    assert_eq!(output.to_vec1::<f32>()?, &[105., 384.]);
+
+    let output = einops!("prod(..) c -> c", &input);
+    assert_eq!(output.to_vec1::<f32>()?, &[105., 384.]);
+
+    let input = Tensor::new(&[[1u32, 2, 3], [4, 5, 6]], &Device::Cpu)?;
+    let output = einops!("a prod(b) -> a", &input);
+    assert_eq!(output.to_vec1::<u32>()?, &[6, 120]);
+
+    let input = Tensor::zeros(&[2, 0, 3], DType::F32, &Device::Cpu)?;
+    let output = einops!("a prod(b) c -> a c", &input);
+    assert_eq!(output.to_vec2::<f32>()?, &[[1., 1., 1.], [1., 1., 1.]]);
 
     Ok(())
 }

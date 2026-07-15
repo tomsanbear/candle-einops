@@ -1,7 +1,7 @@
 ---
 id: product-reduction
 title: Implement product reduction end to end
-status: in-progress
+status: done
 priority: p0
 dependencies: [candle-011-baseline]
 related: []
@@ -9,9 +9,6 @@ scopes: [runtime, macros, tests]
 shared_scopes: [ticketing]
 paths: []
 tags: [candle-0.11-modernization]
-claimed_from: todo
-assignee: codex-root
-lease_expires_at: 1784123226
 ---
 # Implement product reduction end to end
 

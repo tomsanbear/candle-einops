@@ -38,7 +38,27 @@ impl<T: AsRef<Tensor>> Backend for T {
                 Operation::Max => output.max(*axis).unwrap(),
                 Operation::Sum => output.sum(&[*axis][..]).unwrap(),
                 Operation::Mean => output.mean(&[*axis][..]).unwrap(),
-                // TODO: implement prod
+                Operation::Prod => {
+                    let axis_len = output.dim(*axis).unwrap();
+                    if axis_len == 0 {
+                        let mut shape = output.dims().to_vec();
+                        shape.remove(*axis);
+                        Tensor::ones(Shape::from_dims(&shape), output.dtype(), output.device())
+                            .unwrap()
+                    } else {
+                        let mut product =
+                            output.narrow(*axis, 0, 1).unwrap().squeeze(*axis).unwrap();
+                        for index in 1..axis_len {
+                            let factor = output
+                                .narrow(*axis, index, 1)
+                                .unwrap()
+                                .squeeze(*axis)
+                                .unwrap();
+                            product = product.mul(&factor).unwrap();
+                        }
+                        product
+                    }
+                }
             };
         }
 

@@ -15,4 +15,6 @@ pub enum Operation {
     Sum,
     /// Get the mean value
     Mean,
+    /// Multiply all elements
+    Prod,
 }

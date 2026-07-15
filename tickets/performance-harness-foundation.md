@@ -1,13 +1,16 @@
 ---
 id: performance-harness-foundation
 title: Establish a high-signal performance measurement contract
-status: todo
+status: in-progress
 priority: p0
 dependencies: []
 related: []
 scopes: [benchmarks, tooling, docs]
 shared_scopes: [ticketing]
 tags: [performance-0.2]
+claimed_from: todo
+assignee: ci-release
+lease_expires_at: 1784142275
 ---
 # Establish a high-signal performance measurement contract
 

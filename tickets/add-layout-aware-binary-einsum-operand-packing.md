@@ -1,7 +1,7 @@
 ---
 id: add-layout-aware-binary-einsum-operand-packing
 title: Add layout-aware binary einsum operand packing
-status: todo
+status: in-progress
 priority: p0
 dependencies: [correct-canonical-broadcast-gemm-lowering]
 related: [fused-permute-compose-layout]
@@ -9,6 +9,9 @@ scopes: [runtime, macros]
 shared_scopes: [tests, benchmarks, ticketing]
 paths: []
 tags: [kernel-enqueue-hardening]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784156672
 ---
 # Add layout-aware binary einsum operand packing
 

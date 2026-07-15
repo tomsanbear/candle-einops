@@ -576,6 +576,18 @@ mod tests {
             BinaryLowering::CanonicalMatmul
         );
         assert_eq!(
+            lowering(
+                "outer batch row inner, outer batch inner column -> outer batch row column"
+            ),
+            BinaryLowering::CanonicalMatmul
+        );
+        assert_eq!(
+            lowering(
+                "outer batch row inner, outer batch inner column -> column batch row outer"
+            ),
+            BinaryLowering::CanonicalMatmul
+        );
+        assert_eq!(
             lowering("a b inner, inner c -> a b c"),
             BinaryLowering::General
         );

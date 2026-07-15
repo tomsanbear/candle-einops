@@ -4,7 +4,7 @@ title: Implement the selected layout-aware n-ary planner
 status: todo
 priority: p1
 dependencies: [einsum-nary-cost-model-spike]
-related: []
+related: [einsum-nary-cost-model-spike]
 scopes: [runtime]
 shared_scopes: [tests, benchmarks, ticketing]
 tags: [performance-0.2, conditional]
@@ -13,13 +13,28 @@ tags: [performance-0.2, conditional]
 
 ## Entry condition
 
-Implement only the model selected by the spike, within its planner-time budget.
+The spike selected a bounded hybrid for calibrated CPU backends. Implement the
+exact model only for arity at most four when current greedy estimates at least
+100,000 FLOPs. Retain current greedy for arity above four, smaller work,
+overflow/model errors, unsupported operand metadata, planner-budget overruns,
+and CUDA/Metal until each backend has synchronized crossover data. The CPU
+budget is 150 us on the frozen arity-four corpus.
 
 ## Red-first contract
 
 Freeze pair-selection assertions from every spike counterexample, deterministic
 ties, maximum test arity runtime, forward and gradient parity under changed
 association, zero-K estimates, and broadcast/layout costs before implementation.
+Use checked `u128` terms and stable original-operand member bitmasks for the
+lexicographic tie-break. The arity-five/six exact implementation is oracle-only
+and must not be reachable from production planning.
+
+The score owns FLOPs, copied bytes, the sum of pair-output elements, peak-live
+elements, and submissions with the CPU weights frozen in
+`benchmarks/nary-cost-model-spike.md`. Carry sufficient intermediate shape and
+layout metadata to estimate every candidate pair without allocating tensors.
+Model broadcast materialization as full eager expansion plus one GEMM
+submission; do not assume stride-zero batched GEMM support.
 
 ## Benchmark ownership
 
@@ -34,8 +49,11 @@ wall time against the current greedy planner.
 - Carries canonical intermediate layout when safe, avoiding permutation followed
   by inverse canonicalization.
 - Planner overhead remains negligible relative to its target contractions.
+- Falls back deterministically to current greedy on every boundary above and
+  preserves current zero-output, error, and dtype behavior.
+- Changed associations preserve forward values and input gradients within 0.2%
+  relative tolerance; bitwise floating-point equality is not required.
 
 ## Non-goals
 
 No exact global optimization at arbitrary arity or unstable nondeterministic tuning.
-

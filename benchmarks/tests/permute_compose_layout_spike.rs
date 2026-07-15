@@ -286,3 +286,40 @@ fn channel_flatten_singletons_zero_extents_and_fallback_match_existing_route() -
     assert_ne!(storage_address(&fallback), storage_address(&nchw));
     Ok(())
 }
+
+#[test]
+fn non_contiguous_sources_cover_eligible_recovery_and_exact_fallback() -> Result<()> {
+    let device = Device::Cpu;
+    let base = Tensor::arange(0f32, 24., &device)?.reshape(&[2, 3, 4])?;
+    let source = base.permute([2, 0, 1])?;
+    assert_eq!(source.dims(), [4, 2, 3]);
+    assert_eq!(source.stride(), [1, 12, 4]);
+    assert!(!source.is_contiguous());
+
+    let eligible_old = source.reshape(&[4, 6])?;
+    let (eligible, eligible_plan) = run_public_fusion_prototype(&source, &[vec![0], vec![1, 2]])?;
+    assert_eq!(
+        eligible_plan,
+        PublicFusionPlan::ReorderedPublicViews {
+            pre_permutation: vec![1, 2, 0],
+            reshape_dims: vec![6, 4],
+            post_permutation: vec![1, 0],
+        }
+    );
+    assert_eq!(
+        eligible.flatten_all()?.to_vec1::<f32>()?,
+        eligible_old.flatten_all()?.to_vec1::<f32>()?
+    );
+    assert_eq!(storage_address(&eligible), storage_address(&source));
+    assert_ne!(storage_address(&eligible_old), storage_address(&source));
+
+    let fallback_old = source.reshape(&[8, 3])?;
+    let (fallback, fallback_plan) = run_public_fusion_prototype(&source, &[vec![0, 1], vec![2]])?;
+    assert!(matches!(fallback_plan, PublicFusionPlan::Fallback { .. }));
+    assert_eq!(
+        fallback.flatten_all()?.to_vec1::<f32>()?,
+        fallback_old.flatten_all()?.to_vec1::<f32>()?
+    );
+    assert_ne!(storage_address(&fallback), storage_address(&source));
+    Ok(())
+}

@@ -1338,7 +1338,7 @@ mod tests {
 
     #[test]
     fn nary_cost_estimate_overflow_is_checked() {
-        assert!(checked_nary_product(&[usize::MAX, usize::MAX, usize::MAX]).is_err());
+        assert!(checked_nary_product(&[usize::MAX; 5]).is_err());
         assert_eq!(
             checked_nary_product(&[usize::MAX, usize::MAX, 0]).unwrap(),
             0

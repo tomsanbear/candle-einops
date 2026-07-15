@@ -1170,7 +1170,7 @@ fn original_flat_gather_offsets(
         };
         maximum_offset = next;
     }
-    if u32::try_from(maximum_offset).is_err() {
+    if maximum_offset >= u32::MAX as usize {
         return Ok(None);
     }
 

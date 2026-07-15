@@ -1,7 +1,7 @@
 ---
 id: einsum-unary-explicit-slice
 title: Implement unary explicit-output einsum
-status: todo
+status: done
 priority: p0
 dependencies: [einsum-contract-oracles, parser-never-unwinds-properties, published-artifact-verification]
 related: []

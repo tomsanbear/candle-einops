@@ -1,7 +1,7 @@
 ---
 id: spike-zero-size-contraction-submission-reduction
 title: Spike zero-size contraction submission reduction
-status: todo
+status: in-progress
 priority: p2
 dependencies: [einsum-zero-k-autograd]
 related: [einsum-zero-k-autograd]
@@ -9,6 +9,9 @@ scopes: [benchmarks]
 shared_scopes: [runtime, tests, ticketing]
 paths: []
 tags: [kernel-enqueue-hardening, spike]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784159391
 ---
 # Spike zero-size contraction submission reduction
 

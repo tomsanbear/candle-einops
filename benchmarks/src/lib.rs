@@ -797,6 +797,10 @@ pub struct ZeroKStructuralMetrics {
     pub output_elements: u64,
     pub hypothetical_contraction_flops: u64,
     pub gemm_submissions: u64,
+    pub current_public_operations: u64,
+    pub candidate_public_operations: u64,
+    pub current_temporary_elements: u64,
+    pub candidate_temporary_elements: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -835,6 +839,10 @@ impl ZeroKScenario {
                 .expect("bounded zero-K output elements"),
             hypothetical_contraction_flops: 0,
             gemm_submissions: 0,
+            current_public_operations: 3,
+            candidate_public_operations: 3,
+            current_temporary_elements: 2,
+            candidate_temporary_elements: 0,
         }
     }
 
@@ -844,6 +852,11 @@ impl ZeroKScenario {
             .add(&anchor(right)?)?
             .broadcast_as((self.rows, self.columns))
     }
+}
+
+pub fn zero_k_cat_candidate(left: &Tensor, right: &Tensor, shape: &[usize]) -> Result<Tensor> {
+    let anchor = |operand: &Tensor| operand.unsqueeze(0)?.narrow(0, 0, 0)?.sum_all();
+    anchor(left)?.add(&anchor(right)?)?.broadcast_as(shape)
 }
 
 impl Scenario for ZeroKScenario {

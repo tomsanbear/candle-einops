@@ -1,13 +1,16 @@
 ---
 id: repeat-broadcast-view-lowering
 title: Lower inserted repeat axes as broadcast views
-status: todo
+status: in-progress
 priority: p0
 dependencies: [performance-harness-foundation]
 related: []
 scopes: [runtime]
 shared_scopes: [tests, benchmarks, ticketing]
 tags: [performance-0.2]
+claimed_from: todo
+assignee: behavior-tests
+lease_expires_at: 1784148686
 ---
 # Lower inserted repeat axes as broadcast views
 

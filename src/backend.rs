@@ -33,6 +33,20 @@ impl<T: AsRef<Tensor>> Backend for T {
 
     fn reduce_axes(self, axes_operations: &mut [(usize, Operation)]) -> Result<Self::Output> {
         let mut output = self.as_ref().clone();
+        let mut occupied = vec![false; output.rank()];
+
+        for &(axis, _) in axes_operations.iter() {
+            if axis >= occupied.len() {
+                candle_core::bail!(
+                    "reduce_axes: axis {axis} out of range for rank {}",
+                    occupied.len()
+                )
+            }
+            if occupied[axis] {
+                candle_core::bail!("reduce_axes: duplicate axis {axis}")
+            }
+            occupied[axis] = true;
+        }
 
         axes_operations.sort_by_key(|(axis, _)| *axis);
 

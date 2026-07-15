@@ -1,7 +1,7 @@
 use candle_core::{Device, Result, Storage, Tensor, Var};
 use candle_einops_benchmarks::permute_compose_layout_spike::{
-    CollapseDecision, CopyReason, LayoutSpec, PublicFusionPlan, classify_permute_compose,
-    classify_public_fusion, run_public_fusion_prototype,
+    ClassifierError, CollapseDecision, CopyReason, LayoutSpec, PublicFusionPlan,
+    classify_permute_compose, classify_public_fusion, run_public_fusion_prototype,
 };
 
 fn layout(dims: &[usize], strides: &[usize], start_offset: usize) -> LayoutSpec {
@@ -132,6 +132,17 @@ fn offsets_singletons_zero_extents_and_invalid_metadata_are_conservative() {
             &[vec![0], vec![2]],
         )
         .is_err()
+    );
+    assert_eq!(
+        classify_public_fusion(
+            &layout(&[usize::MAX, 2], &[1, usize::MAX], 0),
+            &[vec![1], vec![0]],
+        ),
+        Err(ClassifierError::StrideOverflow)
+    );
+    assert_eq!(
+        classify_public_fusion(&layout(&[usize::MAX, 2], &[2, 1], 0), &[vec![0, 1]],),
+        Err(ClassifierError::ElementCountOverflow)
     );
 }
 

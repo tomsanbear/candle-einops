@@ -29,6 +29,19 @@ Twenty alternating samples on 98,304 `f32` elements produced:
 | `n (h w) c` construct | 8.505646 ms | 9.9795 us | 852.3118x |
 | `n (h w) c` consume contiguous | 8.448917 ms | 8.473417 ms | 0.99711x |
 
+Reproduction command:
+
+```console
+python3 .github/scripts/run_benchmarks.py run --filter layout/permute-compose --samples 20 --output target/benchmarks/permute-compose-spike.json
+```
+
+The wrapper's `run` operation used its current default Cargo development
+profile. The fingerprint was commit `0bead7692eb5fa1b4367edd40d4886a1ebc936c0`,
+Rust `1.94.1`, Candle `0.11.0`, macOS/aarch64, CPU device/backend. The JSON
+artifact is intentionally ignored; the durable table above records its paired
+medians and ratios. These values are decision evidence, not a release-mode or
+cross-machine performance guarantee.
+
 Construction avoids the current eager copy by three orders of magnitude. An
 immediate contiguous consumer removes that advantage: the prototype defers the
 same copy and is effectively neutral. The implementation is therefore useful
@@ -86,4 +99,3 @@ GPU timing remains outside this ticket.
 7. If no whole-group ordering is eligible, use the existing expanded
    `transpose` followed by `reshape` byte-for-byte. Do not add an unconditional
    `contiguous` call and do not retry a selected plan after a backend error.
-

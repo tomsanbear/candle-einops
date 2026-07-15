@@ -137,6 +137,73 @@ mod tests {
     use candle_core::{Device, Result};
 
     #[test]
+    fn plans_only_adjacent_homogeneous_sum_and_mean_runs() {
+        let mut sums = [
+            (0, Operation::Sum),
+            (1, Operation::Sum),
+            (2, Operation::Sum),
+        ];
+        let runs = plan_reduction_runs(&mut sums);
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].axes, [2, 1, 0]);
+        assert!(matches!(runs[0].operation, Operation::Sum));
+
+        let mut mixed = [
+            (0, Operation::Sum),
+            (1, Operation::Max),
+            (2, Operation::Sum),
+            (3, Operation::Sum),
+        ];
+        let runs = plan_reduction_runs(&mut mixed);
+        assert_eq!(runs.len(), 3);
+        assert_eq!(runs[0].axes, [3, 2]);
+        assert!(matches!(runs[0].operation, Operation::Sum));
+        assert_eq!(runs[1].axes, [1]);
+        assert!(matches!(runs[1].operation, Operation::Max));
+        assert_eq!(runs[2].axes, [0]);
+        assert!(matches!(runs[2].operation, Operation::Sum));
+
+        let mut excluded = [
+            (0, Operation::Min),
+            (1, Operation::Min),
+            (2, Operation::Prod),
+            (3, Operation::Prod),
+        ];
+        let runs = plan_reduction_runs(&mut excluded);
+        assert_eq!(runs.len(), 4, "min and prod must remain one call per axis");
+    }
+
+    #[test]
+    fn homogeneous_runs_issue_one_backend_reduction_call() -> Result<()> {
+        let input = Tensor::arange(0f32, 2. * 3. * 4., &Device::Cpu)?.reshape(&[2, 3, 4])?;
+
+        reset_backend_reduction_call_count();
+        input.reduce_axes(&mut [
+            (0, Operation::Sum),
+            (1, Operation::Sum),
+            (2, Operation::Sum),
+        ])?;
+        assert_eq!(backend_reduction_call_count(), 1);
+
+        reset_backend_reduction_call_count();
+        input.reduce_axes(&mut [
+            (0, Operation::Mean),
+            (1, Operation::Mean),
+            (2, Operation::Mean),
+        ])?;
+        assert_eq!(backend_reduction_call_count(), 1);
+
+        reset_backend_reduction_call_count();
+        input.reduce_axes(&mut [
+            (0, Operation::Sum),
+            (1, Operation::Max),
+            (2, Operation::Sum),
+        ])?;
+        assert_eq!(backend_reduction_call_count(), 3);
+        Ok(())
+    }
+
+    #[test]
     fn reduce() -> Result<()> {
         let tests = vec![
             (

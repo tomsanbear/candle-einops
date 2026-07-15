@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::collections::VecDeque;
+
 use candle_core::{DType, Result, Tensor};
 
 use crate::backend::execute_tensor_permute_and_compose;
@@ -554,6 +557,9 @@ struct NaryExecutionTrace {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct NaryIntermediateTrace {
     canonical: bool,
+    estimated: NaryPairCost,
+    execution_graph: NaryPairCost,
+    output_layout: NaryLayoutEstimate,
 }
 
 fn prepare_nary_einsum<'a>(
@@ -664,6 +670,66 @@ pub fn benchmark_nary_planner_selects_exact(
     ))
 }
 
+/// Public-operation estimates from the production binary lowering classifier.
+#[cfg(feature = "benchmark-internals")]
+#[doc(hidden)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BenchmarkBinaryGraphEstimate {
+    pub work: u128,
+    pub output_elements: u128,
+    pub copy_bytes: u128,
+    pub submissions: u128,
+}
+
+/// Runs the production lowering classifier without executing tensor operations.
+#[cfg(feature = "benchmark-internals")]
+#[doc(hidden)]
+pub fn benchmark_binary_graph_estimate(
+    left_labels: &[&str],
+    left_dims: &[usize],
+    left_strides: &[usize],
+    right_labels: &[&str],
+    right_dims: &[usize],
+    right_strides: &[usize],
+    output_labels: &[&str],
+) -> Result<BenchmarkBinaryGraphEstimate> {
+    let left_axes = left_labels
+        .iter()
+        .copied()
+        .map(ExpandedAxis::Named)
+        .collect::<Vec<_>>();
+    let right_axes = right_labels
+        .iter()
+        .copied()
+        .map(ExpandedAxis::Named)
+        .collect::<Vec<_>>();
+    let output_axes = output_labels
+        .iter()
+        .copied()
+        .map(ExpandedAxis::Named)
+        .collect::<Vec<_>>();
+    let graph = classify_expanded_binary_graph(
+        BinaryGraphOperand {
+            axes: &left_axes,
+            dims: left_dims,
+            layout: BinaryOperandLayout::Strided(left_strides),
+        },
+        BinaryGraphOperand {
+            axes: &right_axes,
+            dims: right_dims,
+            layout: BinaryOperandLayout::Strided(right_strides),
+        },
+        &output_axes,
+        4,
+    )?;
+    Ok(BenchmarkBinaryGraphEstimate {
+        work: graph.work,
+        output_elements: graph.output_elements,
+        copy_bytes: graph.copy_bytes,
+        submissions: graph.submissions,
+    })
+}
+
 fn execute_nary_einsum_internal<'a>(
     operands: &[&Tensor],
     spec: EllipsisEinsumSpec<'a>,
@@ -693,6 +759,22 @@ fn execute_nary_einsum_internal<'a>(
                 debug_assert!(left_index < right_index);
                 let right = planned.remove(right_index);
                 let left = planned.remove(left_index);
+                let graph = classify_expanded_binary_graph(
+                    BinaryGraphOperand {
+                        axes: &left.axes,
+                        dims: left.tensor.dims(),
+                        layout: BinaryOperandLayout::Strided(left.tensor.stride()),
+                    },
+                    BinaryGraphOperand {
+                        axes: &right.axes,
+                        dims: right.tensor.dims(),
+                        layout: BinaryOperandLayout::Strided(right.tensor.stride()),
+                    },
+                    &step.output_axes,
+                    left.tensor.dtype().size_in_bytes(),
+                )?;
+                let execution_graph = graph.cost();
+                debug_assert_eq!(step.estimate, execution_graph);
                 let (tensor, axes) = execute_expanded_binary_canonical(
                     &left.tensor,
                     &right.tensor,
@@ -711,9 +793,12 @@ fn execute_nary_einsum_internal<'a>(
                     },
                 );
                 trace.member_sequence.push(step.members);
-                trace
-                    .intermediates
-                    .push(NaryIntermediateTrace { canonical: true });
+                trace.intermediates.push(NaryIntermediateTrace {
+                    canonical: true,
+                    estimated: step.estimate,
+                    execution_graph,
+                    output_layout: graph.output_layout,
+                });
             }
         }
         NaryPlannerDecision::Greedy(_) => {
@@ -981,6 +1066,84 @@ enum NaryPlannerDecision<'a> {
     Exact(NaryContractionPlan<'a>),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct NaryPlanCacheOperand {
+    axes: Vec<String>,
+    dims: Vec<usize>,
+    layout: u8,
+    strides: Vec<usize>,
+}
+
+type NaryMemberPair = (u64, u64);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct NaryPlanCacheKey {
+    operands: Vec<NaryPlanCacheOperand>,
+    output: Vec<String>,
+}
+
+struct NaryCachedPlan {
+    key: NaryPlanCacheKey,
+    sequence: Vec<NaryMemberPair>,
+}
+
+thread_local! {
+    static NARY_PLAN_CACHE: RefCell<VecDeque<NaryCachedPlan>> =
+        const { RefCell::new(VecDeque::new()) };
+}
+
+fn nary_plan_cache_key(
+    operands: &[NaryPlannerMetadata<'_>],
+    output: &[ExpandedAxis<'_>],
+) -> NaryPlanCacheKey {
+    NaryPlanCacheKey {
+        operands: operands
+            .iter()
+            .map(|operand| {
+                let (layout, strides) = match &operand.layout {
+                    NaryLayoutEstimate::Contiguous => (0, Vec::new()),
+                    NaryLayoutEstimate::Strided(strides) => (1, strides.clone()),
+                    NaryLayoutEstimate::Unsupported => (2, Vec::new()),
+                };
+                NaryPlanCacheOperand {
+                    axes: operand
+                        .axes
+                        .iter()
+                        .map(|(axis, _)| axis.display_name())
+                        .collect(),
+                    dims: operand.axes.iter().map(|(_, extent)| *extent).collect(),
+                    layout,
+                    strides,
+                }
+            })
+            .collect(),
+        output: output.iter().map(ExpandedAxis::display_name).collect(),
+    }
+}
+
+fn cached_nary_sequence(key: &NaryPlanCacheKey) -> Option<Vec<NaryMemberPair>> {
+    NARY_PLAN_CACHE.with(|cache| {
+        cache
+            .borrow()
+            .iter()
+            .find(|candidate| candidate.key == *key)
+            .map(|candidate| candidate.sequence.clone())
+    })
+}
+
+fn cache_nary_sequence(key: NaryPlanCacheKey, sequence: Vec<NaryMemberPair>) {
+    NARY_PLAN_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.iter().any(|candidate| candidate.key == key) {
+            return;
+        }
+        if cache.len() == 16 {
+            cache.pop_front();
+        }
+        cache.push_back(NaryCachedPlan { key, sequence });
+    });
+}
+
 fn model_axis_extent(operand: &NaryPlannerMetadata<'_>, axis: ExpandedAxis<'_>) -> Option<usize> {
     operand
         .axes
@@ -1220,6 +1383,44 @@ fn model_greedy_plan<'a>(
     Ok(NaryContractionPlan { steps, metrics })
 }
 
+fn model_sequence_plan<'a>(
+    operands: &[NaryPlannerMetadata<'a>],
+    final_output: &[ExpandedAxis<'a>],
+    global: &[ExpandedAxis<'a>],
+    sequence: &[(u64, u64)],
+) -> Result<NaryContractionPlan<'a>> {
+    if sequence.len() + 1 != operands.len() {
+        candle_core::bail!("cached n-ary sequence has the wrong number of steps")
+    }
+    let mut state = operands.to_vec();
+    let mut metrics = model_initial_metrics(&state)?;
+    let mut steps = Vec::with_capacity(sequence.len());
+    for &members in sequence {
+        let left = state
+            .iter()
+            .position(|operand| operand.members == members.0)
+            .ok_or_else(|| candle_core::Error::msg("cached n-ary left members are not live"))?;
+        let right = state
+            .iter()
+            .position(|operand| operand.members == members.1)
+            .ok_or_else(|| candle_core::Error::msg("cached n-ary right members are not live"))?;
+        if left >= right {
+            candle_core::bail!("cached n-ary members are not in stable order")
+        }
+        let (estimate, pair_output) =
+            model_pair_details(&state, left, right, final_output, global)?;
+        model_accumulate(&mut metrics, &state, &estimate)?;
+        steps.push(NaryPlanStep {
+            members,
+            output_axes: pair_output.axes.iter().map(|(axis, _)| *axis).collect(),
+            estimate,
+        });
+        model_apply_pair(&mut state, left, right, pair_output);
+    }
+    metrics.score = model_score(&metrics)?;
+    Ok(NaryContractionPlan { steps, metrics })
+}
+
 fn model_exact_search<'a>(
     operands: &[NaryPlannerMetadata<'a>],
     final_output: &[ExpandedAxis<'a>],
@@ -1321,6 +1522,12 @@ fn select_layout_aware_plan<'a>(
             }
         }
     }
+    let cache_key = nary_plan_cache_key(operands, final_output);
+    if let Some(sequence) = cached_nary_sequence(&cache_key)
+        && let Ok(plan) = model_sequence_plan(operands, final_output, &global, &sequence)
+    {
+        return NaryPlannerDecision::Exact(plan);
+    }
     let greedy = match model_greedy_plan(operands, final_output, &global) {
         Ok(plan) => plan,
         Err(_) => return NaryPlannerDecision::Greedy(NaryGreedyReason::ModelFailure),
@@ -1329,7 +1536,13 @@ fn select_layout_aware_plan<'a>(
         return NaryPlannerDecision::Greedy(NaryGreedyReason::BelowFlopThreshold);
     }
     match model_exact_search(operands, final_output, &global) {
-        Ok(plan) => NaryPlannerDecision::Exact(plan),
+        Ok(plan) => {
+            cache_nary_sequence(
+                cache_key,
+                plan.steps.iter().map(|step| step.members).collect(),
+            );
+            NaryPlannerDecision::Exact(plan)
+        }
         Err(_) => NaryPlannerDecision::Greedy(NaryGreedyReason::ModelFailure),
     }
 }
@@ -2159,6 +2372,17 @@ struct ExpandedBinaryGraph<'a> {
     output_layout: NaryLayoutEstimate,
 }
 
+impl ExpandedBinaryGraph<'_> {
+    fn cost(&self) -> NaryPairCost {
+        NaryPairCost {
+            flops: self.work,
+            output_elements: self.output_elements,
+            copy_bytes: self.copy_bytes,
+            submissions: self.submissions,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum BinaryOperandLayout<'a> {
     Contiguous,
@@ -2209,13 +2433,17 @@ fn classify_expanded_binary_graph<'a>(
         }
     };
     let product = |axes: &[ExpandedAxis<'a>]| -> Result<u128> {
-        checked_nary_product(
-            &axes
-                .iter()
-                .copied()
-                .map(extent)
-                .collect::<Result<Vec<_>>>()?,
-        )
+        let mut value = 1_u128;
+        for &axis in axes {
+            let axis = extent(axis)? as u128;
+            if axis == 0 {
+                return Ok(0);
+            }
+            value = value
+                .checked_mul(axis)
+                .ok_or_else(|| candle_core::Error::msg("n-ary dimension product overflows u128"))?;
+        }
+        Ok(value)
     };
     let output_elements = product(output_axes)?;
     let left_reduction_work = if plan.left_reductions.is_empty() {
@@ -2243,13 +2471,12 @@ fn classify_expanded_binary_graph<'a>(
     } else {
         product(&canonical_axes)?
     };
-    let zero_core = !plan.contracted.is_empty()
-        && canonical_axes
-            .iter()
-            .copied()
-            .map(extent)
-            .collect::<Result<Vec<_>>>()?
-            .contains(&0);
+    let mut zero_core = false;
+    if !plan.contracted.is_empty() {
+        for &axis in &canonical_axes {
+            zero_core |= extent(axis)? == 0;
+        }
+    }
 
     let contiguous_strides = |dims: &[usize]| -> Result<Vec<usize>> {
         let mut strides = vec![0; dims.len()];
@@ -2270,28 +2497,41 @@ fn classify_expanded_binary_graph<'a>(
                               group_lengths: &[usize]|
      -> Result<u128> {
         let mut broadcasted = false;
+        let mut target_elements = 1_u128;
         let mut remaining_dims = Vec::with_capacity(axes.len() - reductions.len());
-        let mut target_dims = Vec::with_capacity(axes.len() - reductions.len());
         for (index, (&axis, &dimension)) in axes.iter().zip(dims).enumerate() {
             if reductions.contains(&index) {
                 continue;
             }
             let resolved = extent(axis)?;
             broadcasted |= resolved != dimension;
+            if resolved == 0 {
+                target_elements = 0;
+            } else if target_elements != 0 {
+                target_elements =
+                    target_elements
+                        .checked_mul(resolved as u128)
+                        .ok_or_else(|| {
+                            candle_core::Error::msg("binary graph copy estimate overflows u128")
+                        })?;
+            }
             remaining_dims.push(dimension);
-            target_dims.push(resolved);
         }
-        let target_dims = permutation
-            .iter()
-            .map(|&axis| target_dims[axis])
-            .collect::<Vec<_>>();
         let target_bytes = || {
-            checked_nary_product(&target_dims)?
+            target_elements
                 .checked_mul(element_bytes as u128)
                 .ok_or_else(|| candle_core::Error::msg("binary graph copy estimate overflows u128"))
         };
         if broadcasted {
             return target_bytes();
+        }
+        let naturally_contiguous =
+            !reductions.is_empty() || matches!(layout, BinaryOperandLayout::Contiguous);
+        if naturally_contiguous && permutation.iter().copied().eq(0..permutation.len()) {
+            return Ok(0);
+        }
+        if naturally_contiguous && group_lengths.iter().all(|&length| length <= 1) {
+            return Ok(0);
         }
         let strides = if reductions.is_empty() {
             match layout {
@@ -2984,6 +3224,65 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn nary_pair_model_separates_multiply_gemm_broadcast_and_zero_graphs() -> Result<()> {
+        let multiply = vec![
+            planner_meta(
+                0,
+                &[("i", 4), ("discard", 3)],
+                NaryLayoutEstimate::Contiguous,
+            ),
+            planner_meta(1, &[("j", 5)], NaryLayoutEstimate::Contiguous),
+        ];
+        let (multiply, multiply_output) = model_pair_details(
+            &multiply,
+            0,
+            1,
+            &named_axes(&["i", "j"]),
+            &named_axes(&["i", "discard", "j"]),
+        )?;
+        assert_eq!(multiply.submissions, 2);
+        assert_eq!(multiply.flops, 12 + 20);
+        assert_eq!(multiply.copy_bytes, 0);
+        assert_eq!(multiply_output.layout, NaryLayoutEstimate::Contiguous);
+
+        let broadcast = vec![
+            planner_meta(
+                0,
+                &[("batch", 1), ("m", 4), ("k", 8)],
+                NaryLayoutEstimate::Contiguous,
+            ),
+            planner_meta(
+                1,
+                &[("batch", 16), ("k", 8), ("n", 2)],
+                NaryLayoutEstimate::Contiguous,
+            ),
+        ];
+        let output = named_axes(&["batch", "m", "n"]);
+        let order = named_axes(&["batch", "m", "k", "n"]);
+        let (broadcast, broadcast_output) = model_pair_details(&broadcast, 0, 1, &output, &order)?;
+        assert_eq!(broadcast.submissions, 1);
+        assert_eq!(broadcast.copy_bytes, 16 * 4 * 8 * 4);
+        assert_eq!(broadcast_output.layout, NaryLayoutEstimate::Contiguous);
+
+        let zero = vec![
+            planner_meta(0, &[("m", 4), ("k", 0)], NaryLayoutEstimate::Contiguous),
+            planner_meta(1, &[("k", 0), ("n", 2)], NaryLayoutEstimate::Contiguous),
+        ];
+        let (zero, zero_output) = model_pair_details(
+            &zero,
+            0,
+            1,
+            &named_axes(&["m", "n"]),
+            &named_axes(&["m", "k", "n"]),
+        )?;
+        assert_eq!(zero.submissions, 3, "two zero anchors plus their add");
+        assert_eq!(zero.flops, 0);
+        assert_eq!(zero.copy_bytes, 0);
+        assert_eq!(zero_output.layout, NaryLayoutEstimate::Unsupported);
+        Ok(())
+    }
+
     fn planner_meta(
         ordinal: usize,
         axes: &[(&'static str, usize)],
@@ -3274,6 +3573,18 @@ mod tests {
         assert_eq!(trace.member_sequence, [(1, 2), (4, 8), (3, 12)]);
         assert_eq!(trace.final_permutations, 1);
         assert!(trace.intermediates.iter().all(|step| step.canonical));
+        assert!(
+            trace
+                .intermediates
+                .iter()
+                .all(|step| step.estimated == step.execution_graph)
+        );
+        assert!(
+            trace
+                .intermediates
+                .iter()
+                .all(|step| { step.output_layout == NaryLayoutEstimate::Contiguous })
+        );
 
         let selected_gradients = selected.sum_all()?.backward()?;
         let greedy_gradients = greedy.sum_all()?.backward()?;

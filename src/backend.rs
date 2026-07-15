@@ -386,22 +386,67 @@ pub(crate) fn plan_permute_compose_group_order(
     if group_lengths.len() > 8 {
         return Ok(None);
     }
-    let mut groups = Vec::with_capacity(group_lengths.len());
+    if permutation_is_c_contiguous(dims, strides, permutation)? {
+        return Ok(Some((0..group_lengths.len()).collect()));
+    }
+
+    let mut starts = Vec::with_capacity(group_lengths.len());
     let mut start = 0;
     for &length in group_lengths {
-        groups.push(permutation[start..start + length].to_vec());
+        starts.push(start);
         start += length;
     }
-    for order in group_permutations(groups.len()) {
-        let pre_permutation = order
-            .iter()
-            .flat_map(|&group| groups[group].iter().copied())
-            .collect::<Vec<_>>();
-        if permutation_is_c_contiguous(dims, strides, &pre_permutation)? {
-            return Ok(Some(order));
+    fn search(
+        dims: &[usize],
+        strides: &[usize],
+        permutation: &[usize],
+        starts: &[usize],
+        lengths: &[usize],
+        order: &mut Vec<usize>,
+        used: &mut [bool],
+    ) -> Result<Option<Vec<usize>>> {
+        if order.len() == lengths.len() {
+            let mut expected = 1usize;
+            for &group in order.iter().rev() {
+                let start = starts[group];
+                let end = start + lengths[group];
+                for &axis in permutation[start..end].iter().rev() {
+                    let extent = dims[axis];
+                    if extent > 1 && strides[axis] != expected {
+                        return Ok(None);
+                    }
+                    expected = expected.checked_mul(extent).ok_or_else(|| {
+                        candle_core::Error::msg(
+                            "permute_and_compose: stride product overflows usize",
+                        )
+                    })?;
+                }
+            }
+            return Ok(Some(order.clone()));
         }
+        for group in 0..lengths.len() {
+            if used[group] {
+                continue;
+            }
+            used[group] = true;
+            order.push(group);
+            if let Some(plan) = search(dims, strides, permutation, starts, lengths, order, used)? {
+                return Ok(Some(plan));
+            }
+            order.pop();
+            used[group] = false;
+        }
+        Ok(None)
     }
-    Ok(None)
+    search(
+        dims,
+        strides,
+        permutation,
+        &starts,
+        group_lengths,
+        &mut Vec::with_capacity(group_lengths.len()),
+        &mut vec![false; group_lengths.len()],
+    )
 }
 
 fn permutation_is_c_contiguous(
@@ -420,29 +465,6 @@ fn permutation_is_c_contiguous(
         })?;
     }
     Ok(true)
-}
-
-fn group_permutations(count: usize) -> Vec<Vec<usize>> {
-    fn visit(prefix: &mut Vec<usize>, remaining: &mut Vec<usize>, output: &mut Vec<Vec<usize>>) {
-        if remaining.is_empty() {
-            output.push(prefix.clone());
-            return;
-        }
-        for index in 0..remaining.len() {
-            let group = remaining.remove(index);
-            prefix.push(group);
-            visit(prefix, remaining, output);
-            prefix.pop();
-            remaining.insert(index, group);
-        }
-    }
-    let mut output = Vec::new();
-    visit(
-        &mut Vec::with_capacity(count),
-        &mut (0..count).collect(),
-        &mut output,
-    );
-    output
 }
 
 #[cfg(test)]

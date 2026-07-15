@@ -163,7 +163,9 @@ fn model_checks_overflow_zero_k_and_broadcast_materialization() -> Result<()> {
         ],
         &[],
     )?;
-    assert_eq!(estimate_pair(&late_zero, 0, 1)?.flops, 0);
+    let late_zero = estimate_pair(&late_zero, 0, 1)?;
+    assert_eq!(late_zero.flops, (usize::MAX as u128).pow(2) + 1);
+    assert_eq!(late_zero.submissions, 3);
 
     let broadcast = network_fixtures()
         .into_iter()

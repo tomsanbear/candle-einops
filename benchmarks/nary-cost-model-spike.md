@@ -16,14 +16,16 @@ linear and layout-hostile fixtures.
 ## Model contract
 
 All arithmetic is checked `u128`; overflow is an error and must fall back to
-the current planner in production. A pair estimate records:
+the current planner in production. A pair estimate records public-operation
+estimates:
 
-- FLOPs: the product of every axis extent in the union of the two operands;
+- work: the input traversal for each pair-local pre-reduction plus the
+  multiply/GEMM axis product (stored in the historical `flops` field);
 - output elements: the product of retained-axis extents;
-- copy bytes: the full expanded operand size for an eager broadcast
-  materialization plus the full operand size for a conservative non-contiguous
-  layout materialization;
-- submissions: one contraction submission; and
+- copy bytes: the full expanded operand size only when the production layout
+  classifier selects eager broadcast or packing materialization;
+- submissions: one per pair-local reduction plus the multiply/GEMM operation,
+  or the three public operations used by a zero-size contraction anchor; and
 - peak live elements: all live inputs plus the newly allocated pair output.
 
 The network score uses the sum of pair-output elements (including the final
@@ -45,19 +47,12 @@ lexicographically by the sequence of stable original-operand member bitmasks.
 The current-model comparator minimizes immediate pair-output elements, then
 pair FLOPs, then the production planner's stable ordinal and live-index key.
 
-The copy estimate is deliberately conservative. A direct binary fast path can
-sometimes consume a transposed layout without copying, but the general n-ary
-path may canonicalize it. The broadcast fixture follows the broadcast-GEMM
-spike's no-go result: it models a full 128 KiB eager expansion and one GEMM
-submission, not per-slice submissions and not an unsupported stride-zero
-batched GEMM.
-
-The prototype conservatively treats every materialized pair output as
-contiguous. Production must instead carry the actual intermediate layout when
-the binary lowering can return a view; an unknown or unsupported layout is a
-deterministic fallback to current greedy. The frozen layout-hostile case prices
-the initial transposed operand and does not establish a device-independent
-intermediate-layout cost.
+The benchmark oracle and runtime planner now call the same pure production
+lowering classifier. The broadcast fixture therefore models a full 128 KiB
+eager expansion and one GEMM submission, while the rank-two transposed control
+correctly records no copy because whole-group packing recovers a view. Pair
+outputs are contiguous except for the graph-preserving zero-size broadcast,
+which is explicitly unsupported as a subsequent exact-planner layout.
 
 Zero-length contracted axes contribute zero FLOPs while output/intermediate
 allocation and peak-live terms remain visible. A production planner must
@@ -72,10 +67,10 @@ use 501 synchronized samples.
 
 | Fixture | Current score | Exact score | Current FLOPs | Exact FLOPs | Current peak | Exact peak | Greedy planner | Exact planner |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| linear chain | 25,322 | 17,447 | 16,500 | 9,375 | 2,075 | 1,875 | 22.292 us | 135.000 us |
-| balanced tree | 214,208 | 88,064 | 139,328 | 18,432 | 18,432 | 16,640 | 21.708 us | 131.375 us |
-| broadcast-heavy | 752,832 | 517,952 | 505,280 | 291,840 | 31,424 | 25,504 | 27.417 us | 156.084 us |
-| layout-hostile | 29,522 | 21,647 | 16,500 | 9,375 | 2,075 | 1,875 | 21.709 us | 131.541 us |
+| linear chain | 25,322 | 17,447 | 16,500 | 9,375 | 2,075 | 1,875 | 72.875 us | 397.875 us |
+| balanced tree | 214,208 | 88,064 | 139,328 | 18,432 | 18,432 | 16,640 | 72.583 us | 396.834 us |
+| broadcast-heavy | 752,832 | 517,952 | 505,280 | 291,840 | 31,424 | 25,504 | 92.708 us | 503.666 us |
+| layout-hostile | 25,322 | 17,447 | 16,500 | 9,375 | 2,075 | 1,875 | 74.125 us | 402.042 us |
 
 | Fixture | Current wall time (95% CI) | Selected wall time (95% CI) | Current / selected |
 | --- | ---: | ---: | ---: |
@@ -88,14 +83,16 @@ The selected-path benchmark executes the production selector and executor,
 while the current side executes the frozen greedy plan. Planner probes call a
 benchmark-feature-gated production seam and report its full preparation and
 selector p95, including the metadata snapshot, greedy threshold pass, and exact
-search when selected. Each record reports `budget_us: 175` and `budget_met`, and
-the probe exits unsuccessfully if any fixture exceeds that budget. Copy-byte and
-submission values remain conservative model estimates; they are not claims
-about backend-observed copies or submissions.
+search when selected. Repeated exact signatures use a bounded thread-local
+member-sequence cache, but rebuild all three step estimates through the shared
+classifier on every hit. Each record reports `budget_us: 175` and `budget_met`,
+and the probe exits unsuccessfully if any fixture exceeds that budget.
+Copy-byte and submission values are public-operation estimates; they are not
+profiler counters or claims about backend kernel fusion.
 
-The production-seam release probe on Darwin arm64 with Rust 1.97.0 measured
-1,001-sample p95 values of 13.458 us (linear), 78.917 us (balanced), 95.791 us
-(broadcast-heavy), and 0.708 us (layout-hostile). Every record reported
+The production-seam debug probe on Darwin arm64 with Rust 1.94.1 measured
+1,001-sample p95 values of 79.709 us (linear), 34.167 us (balanced), 45.083 us
+(broadcast-heavy), and 84.791 us (layout-hostile). Every record reported
 `budget_met: true` against `budget_us: 175`.
 
 ## Backend and numerical policy

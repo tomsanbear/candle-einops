@@ -5,8 +5,8 @@ use std::time::Instant;
 
 use candle_core::{Device, Result, Tensor};
 use candle_einops::__private::{
-    EinsumAxisPattern, EllipsisEinsumSpec, benchmark_nary_planner_selects_exact,
-    execute_nary_einsum,
+    EinsumAxisPattern, EllipsisEinsumSpec, benchmark_binary_graph_estimate,
+    benchmark_nary_planner_selects_exact, execute_nary_einsum,
 };
 use criterion::Criterion;
 use serde::Serialize;
@@ -338,7 +338,7 @@ fn pair_details(
             output_labels.push(label);
         }
     }
-    let union_extents = union
+    let output_axes = output_labels
         .iter()
         .map(|label| {
             resolve_extent(
@@ -346,61 +346,63 @@ fn pair_details(
                 axis_extent(right_operand, label),
                 label,
             )
+            .map(|extent| AxisExtent::new(label, extent))
         })
         .collect::<Result<Vec<_>>>()?;
-    let output_axes = output_labels
-        .iter()
-        .map(|label| {
-            let position = union
-                .iter()
-                .position(|candidate| candidate == label)
-                .expect("output labels are drawn from the union");
-            AxisExtent::new(label, union_extents[position])
-        })
-        .collect::<Vec<_>>();
-    let flops = checked_product(
-        union_extents.iter().map(|&extent| extent as u128),
-        "pair FLOPs",
-    )?;
-    let output_elements = checked_product(
-        output_axes.iter().map(|axis| axis.extent as u128),
-        "pair output elements",
-    )?;
-
-    let materialized_bytes = |operand: &ModelOperand, other: &ModelOperand| -> Result<u128> {
-        let mut target_elements = 1_u128;
-        let mut broadcasted = false;
-        for axis in &operand.axes {
-            let target = resolve_extent(
-                Some(axis.extent),
-                axis_extent(other, axis.label),
-                axis.label,
-            )?;
-            broadcasted |= target != axis.extent;
-            target_elements = target_elements.checked_mul(target as u128).ok_or_else(|| {
-                candle_core::Error::msg("materialized operand elements overflow u128")
-            })?;
-        }
-        if broadcasted || operand.layout == LayoutClass::Transposed {
-            target_elements
-                .checked_mul(size_of::<f32>() as u128)
-                .ok_or_else(|| candle_core::Error::msg("materialized copy bytes overflow u128"))
-        } else {
-            Ok(0)
-        }
+    let labels = |operand: &ModelOperand| {
+        operand
+            .axes
+            .iter()
+            .map(|axis| axis.label)
+            .collect::<Vec<_>>()
     };
-    let copy_bytes = checked_add(
-        materialized_bytes(left_operand, right_operand)?,
-        materialized_bytes(right_operand, left_operand)?,
-        "pair copy bytes",
+    let dims = |operand: &ModelOperand| {
+        operand
+            .axes
+            .iter()
+            .map(|axis| axis.extent)
+            .collect::<Vec<_>>()
+    };
+    let strides = |operand: &ModelOperand, dims: &[usize]| -> Result<Vec<usize>> {
+        let mut storage_dims = dims.to_vec();
+        if operand.layout == LayoutClass::Transposed && storage_dims.len() >= 2 {
+            let last = storage_dims.len() - 1;
+            storage_dims.swap(last - 1, last);
+        }
+        let mut storage_strides = vec![0; storage_dims.len()];
+        let mut stride = 1usize;
+        for (axis, &extent) in storage_dims.iter().enumerate().rev() {
+            storage_strides[axis] = stride;
+            stride = stride.saturating_mul(extent);
+        }
+        if operand.layout == LayoutClass::Transposed && storage_strides.len() >= 2 {
+            let last = storage_strides.len() - 1;
+            storage_strides.swap(last - 1, last);
+        }
+        Ok(storage_strides)
+    };
+    let left_labels = labels(left_operand);
+    let left_dims = dims(left_operand);
+    let left_strides = strides(left_operand, &left_dims)?;
+    let right_labels = labels(right_operand);
+    let right_dims = dims(right_operand);
+    let right_strides = strides(right_operand, &right_dims)?;
+    let graph = benchmark_binary_graph_estimate(
+        &left_labels,
+        &left_dims,
+        &left_strides,
+        &right_labels,
+        &right_dims,
+        &right_strides,
+        &output_labels,
     )?;
     let members = left_operand.members | right_operand.members;
     Ok((
         PairEstimate {
-            flops,
-            output_elements,
-            copy_bytes,
-            submissions: 1,
+            flops: graph.work,
+            output_elements: graph.output_elements,
+            copy_bytes: graph.copy_bytes,
+            submissions: graph.submissions,
         },
         ModelOperand {
             stable_ordinal: left_operand

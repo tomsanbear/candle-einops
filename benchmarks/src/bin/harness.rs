@@ -35,13 +35,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let plumbing = PlumbingScenario;
     let products = product_scenarios();
-    let mut scenarios = products
-        .iter()
-        .map(|scenario| scenario as &dyn Scenario)
-        .collect::<Vec<_>>();
-    if include_plumbing {
-        scenarios.push(&plumbing);
-    }
+    let scenarios: Vec<&dyn Scenario> = if include_plumbing {
+        vec![&plumbing]
+    } else {
+        products
+            .iter()
+            .map(|scenario| scenario as &dyn Scenario)
+            .collect()
+    };
     let selected = scenarios
         .into_iter()
         .filter(|scenario| {

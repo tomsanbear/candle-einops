@@ -1,4 +1,4 @@
-use candle_core::{Device, Result, Tensor};
+use candle_core::{Device, Result, Tensor, Var};
 use candle_einops_benchmarks::balanced_product_axis;
 
 #[test]
@@ -11,6 +11,17 @@ fn portable_candidate_matches_product_contract() -> Result<()> {
     assert_eq!(
         balanced_product_axis(&empty, 1)?.to_vec1::<f32>()?,
         [1., 1.]
+    );
+
+    let variable = Var::from_tensor(&input)?;
+    let product = balanced_product_axis(variable.as_tensor(), 1)?;
+    let gradients = product.sum_all()?.backward()?;
+    assert_eq!(
+        gradients
+            .get(variable.as_tensor())
+            .expect("portable candidate keeps autograd")
+            .to_vec2::<f32>()?,
+        [[0., 0., -8., 0.], [-336., -280., 240., -210.]],
     );
     Ok(())
 }

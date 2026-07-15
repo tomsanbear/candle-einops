@@ -5,7 +5,7 @@ mod einops;
 /// # Example
 ///
 /// ```ignore
-/// let output = einops!("h w c -> c h w", &input);
+/// let output = einops!("h w c -> c h w", &input)?;
 /// ```
 #[proc_macro]
 pub fn einops(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

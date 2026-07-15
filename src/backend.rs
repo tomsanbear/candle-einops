@@ -80,8 +80,16 @@ impl<T: AsRef<Tensor>> Backend for T {
     }
 
     fn reshape(self, shape: &[usize]) -> Result<Self::Output> {
+        let input = self.as_ref();
         let shape = Shape::from_dims(shape);
-        self.as_ref().reshape(shape)
+        if shape.elem_count() != input.elem_count() {
+            return input.reshape(shape);
+        }
+        if input.dims() == shape.dims() {
+            Ok(input.clone())
+        } else {
+            input.reshape(shape)
+        }
     }
 
     fn transpose(self, axes: &[usize]) -> Result<Self::Output> {

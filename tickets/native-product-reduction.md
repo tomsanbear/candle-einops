@@ -1,13 +1,15 @@
 ---
 id: native-product-reduction
 title: Implement the selected native product reduction
-status: todo
+status: closed
 priority: p1
 dependencies: [product-reduction-strategy-spike, homogeneous-reduction-fusion]
 related: []
 scopes: [runtime, tooling]
 shared_scopes: [tests, benchmarks, ticketing]
 tags: [performance-0.2, conditional]
+closed_reason: wontdo
+closed_note: "Spike found no portable win for 0.2: balanced Candle operations are slower and a native path belongs upstream in Candle."
 ---
 # Implement the selected native product reduction
 

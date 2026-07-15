@@ -53,6 +53,10 @@ jobs:
         run: python3 .github/scripts/validate_python_parity_policy.py
       - name: Validate performance harness policy
         run: python3 .github/scripts/validate_performance_harness_policy.py
+      - name: Test advisory benchmark comparison contract
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 .github/scripts/test_compare_benchmarks.py
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy

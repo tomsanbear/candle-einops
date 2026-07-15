@@ -60,10 +60,11 @@ def main() -> int:
     for required_command in [
         "python3 .github/scripts/run_benchmarks.py compile",
         "python3 .github/scripts/run_benchmarks.py smoke",
+        "python3 .github/scripts/test_compare_benchmarks.py",
     ]:
         if required_command not in required_workflow:
             failures.append(f"required CI must run `{required_command}`")
-    if "compare_benchmarks.py" in required_workflow:
+    if "python3 .github/scripts/compare_benchmarks.py" in required_workflow:
         failures.append("required CI must not compare benchmark timings")
 
     if not comparison_script.is_file():

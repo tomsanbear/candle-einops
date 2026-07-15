@@ -1,13 +1,16 @@
 ---
 id: python-einops-einsum-properties
 title: Add randomized Python parity for einsum
-status: todo
+status: in-progress
 priority: p0
 dependencies: [python-einops-parity-ci]
 related: [einsum-contract-oracles]
 scopes: [parity]
 shared_scopes: [ticketing]
 tags: [python-einops-parity]
+claimed_from: todo
+assignee: behavior-tests
+lease_expires_at: 1784139209
 ---
 # Add randomized Python parity for einsum
 

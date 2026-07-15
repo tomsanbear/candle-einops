@@ -101,14 +101,9 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
     let mut parenthesized_len = 0;
     let (decomposition, requires_decomposition, _) = (0..)
         .into_iter()
-        .take_while(|_| {
-            // We parse till we reach '->'
-            if input.peek(syn::Token![->]) {
-                input.parse::<syn::Token![->]>().unwrap();
-                return false;
-            }
-            true
-        })
+        // We parse till we reach '->'. The token is consumed after the fold so
+        // parsing failures can be propagated instead of panicking here.
+        .take_while(|_| !input.peek(syn::Token![->]))
         .try_fold(
             (
                 Vec::new(),
@@ -192,6 +187,8 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
             },
         )?;
 
+    input.parse::<syn::Token![->]>()?;
+
     Ok((decomposition, requires_decomposition))
 }
 
@@ -273,10 +270,16 @@ fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec
     // once we have the running multiple of all the other shapes
     // inside the parenthesis
     if let Some(derived_index) = derived_index {
+        let derived_name = derived_name.ok_or_else(|| {
+            syn::Error::new(
+                content.span(),
+                "Internal error while deriving the decomposed axis name",
+            )
+        })?;
         content_expression.insert(
             derived_index,
             Decomposition::Derived {
-                name: derived_name.unwrap(),
+                name: derived_name,
                 index,
                 operation: None,
                 shape_calc: quote::quote!(
@@ -452,10 +455,13 @@ pub fn parse_composition_permute_repeat(
                     permute.push(index.clone());
                 } else {
                     // New identifiers represents repetition
-                    repeat.push((
-                        index_fn(i),
-                        shape.expect("New identifier on the right should have a shape"),
-                    ));
+                    let shape = shape.ok_or_else(|| {
+                        syn::Error::new(
+                            input.span(),
+                            format!("New axis `{name}` requires an explicit size"),
+                        )
+                    })?;
+                    repeat.push((index_fn(i), shape));
                 }
                 composition.push(Composition::Individual(index_fn(i)))
             } else if input.peek(syn::LitInt) {
@@ -465,12 +471,13 @@ pub fn parse_composition_permute_repeat(
             } else if input.peek(syn::Token![..]) {
                 input.parse::<syn::Token![..]>()?;
                 composition.push(Composition::Individual(Index::Range(i)));
-                permute.push(
-                    positions
-                        .get("..")
-                        .expect("Ignore should be on both sides of the expression")
-                        .clone(),
-                );
+                let index = positions.get("..").ok_or_else(|| {
+                    syn::Error::new(
+                        input.span(),
+                        "Ellipsis `..` must appear on both sides of the expression",
+                    )
+                })?;
+                permute.push(index.clone());
                 // We update the closure
                 index_fn = Box::new(Index::Unknown);
             } else if input.peek(syn::token::Brace) {
@@ -519,12 +526,13 @@ fn parse_right_parenthesized(
     let mut parse_content = |content: ParseStream, index: usize| -> syn::Result<Index> {
         if content.peek(syn::Token![..]) {
             content.parse::<syn::Token![..]>()?;
-            permute.push(
-                positions
-                    .get("..")
-                    .expect("Ignore should be on both sides of the expressions")
-                    .clone(),
-            );
+            let ignored_index = positions.get("..").ok_or_else(|| {
+                syn::Error::new(
+                    content.span(),
+                    "Ellipsis `..` must appear on both sides of the expression",
+                )
+            })?;
+            permute.push(ignored_index.clone());
             *index_fn = Box::new(Index::Unknown);
             Ok(Index::Range(index))
         } else if content.peek(syn::Ident) {
@@ -532,10 +540,13 @@ fn parse_right_parenthesized(
             if let Some(index) = positions.get(&name) {
                 permute.push(index.clone());
             } else {
-                repeat.push((
-                    index_fn(index),
-                    shape.expect("New identifier with no shape specified on the right side"),
-                ));
+                let shape = shape.ok_or_else(|| {
+                    syn::Error::new(
+                        content.span(),
+                        format!("New axis `{name}` requires an explicit size"),
+                    )
+                })?;
+                repeat.push((index_fn(index), shape));
             }
             Ok(index_fn(index))
         } else if content.peek(syn::LitInt) {
@@ -604,7 +615,7 @@ fn parse_reduce_fn(input: ParseStream) -> syn::Result<Vec<(String, Option<Shape>
         input.parse::<kw::prod>()?;
         Operation::Prod
     } else {
-        unreachable!();
+        return Err(input.error("Expected a reduction operation"));
     };
 
     let content;

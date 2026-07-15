@@ -1,7 +1,5 @@
-error: proc macro panicked
- --> tests/ui/fail/unmatched-ellipsis.rs:4:13
+error: Ellipsis `..` must appear on both sides of the expression
+ --> tests/ui/fail/unmatched-ellipsis.rs:4:21
   |
 4 |     let _ = einops!("a -> a ..", ());
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = help: message: Ignore should be on both sides of the expression
+  |                     ^^^^^^^^^^^

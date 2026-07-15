@@ -1,7 +1,5 @@
-error: proc macro panicked
- --> tests/ui/fail/missing-group-axis-size.rs:4:13
+error: New axis `b` requires an explicit size
+ --> tests/ui/fail/missing-group-axis-size.rs:4:21
   |
 4 |     let _ = einops!("a -> (a b)", ());
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = help: message: New identifier with no shape specified on the right side
+  |                     ^^^^^^^^^^^^

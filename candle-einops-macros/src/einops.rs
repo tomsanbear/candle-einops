@@ -199,7 +199,12 @@ impl quote::ToTokens for ParsedExpression {
             || repeat_ignored_len
             || composition_ignored_len
         {
-            let index = last_unknown_index.unwrap();
+            let Some(index) = last_unknown_index else {
+                tokens.extend(quote!(compile_error!(
+                    "Internal error while resolving the ellipsis position"
+                );));
+                return;
+            };
             quote!(let #ignored_len_ident = #shape_ident.len() - #index;)
         } else {
             proc_macro2::TokenStream::new()

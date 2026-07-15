@@ -84,7 +84,8 @@ order.
 The crate implements rearrange, reduce, and repeat operations plus unary and
 binary explicit-label `einsum!`. Einsum supports permutation, reduction,
 outer products, elementwise broadcasting, and GEMM-lowered contractions.
-Repeated input labels, ellipses, and equations with more than two operands are
+Ellipses provide right-aligned variable-rank broadcasting and optional
+reduction. Repeated input labels and equations with more than two operands are
 reserved for later releases.
 
 Licensed under either Apache-2.0 or MIT, at your option.

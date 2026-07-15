@@ -17,5 +17,7 @@ fn main() -> Result<()> {
     assert_eq!(transposed.dims(), &[3, 2]);
     let product = einsum!("row inner, inner column -> row column", &matrix, &transposed)?;
     assert_eq!(product.dims(), &[2, 2]);
+    let ellipsis = einsum!(".. columns -> columns ..", &matrix)?;
+    assert_eq!(ellipsis.dims(), &[3, 2]);
     Ok(())
 }

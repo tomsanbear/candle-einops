@@ -16,6 +16,22 @@
 //! # }
 //! ```
 //!
+//! A `..` captures zero or more axes. Captures from multiple operands align
+//! from the right and broadcast, while omitting `..` from the output reduces
+//! those axes:
+//!
+//! ```
+//! use candle_core::{Device, Result, Tensor};
+//! use candle_einops::einsum;
+//!
+//! # fn main() -> Result<()> {
+//! let input = Tensor::arange(0f32, 12f32, &Device::Cpu)?.reshape((2, 2, 3))?;
+//! let reduced = einsum!(".. feature -> feature", &input)?;
+//! assert_eq!(reduced.to_vec1::<f32>()?, [18., 22., 26.]);
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! Two-operand equations lower contractions through Candle matrix
 //! multiplication, including batch broadcasting:
 //!

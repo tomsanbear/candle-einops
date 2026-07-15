@@ -2,7 +2,8 @@
 
 This document records the contract for the public `einsum!` macro. Unary and
 binary explicit-label equations are implemented; larger operand counts,
-repeated labels, and ellipses remain reserved for later slices.
+repeated labels remain reserved for a later slice. Each input and output axis
+list may contain one `..` for right-aligned variable-rank broadcasting.
 
 ## Equation and evaluation contract
 

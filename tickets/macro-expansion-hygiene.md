@@ -1,7 +1,7 @@
 ---
 id: macro-expansion-hygiene
 title: Harden generated identifiers and absolute paths
-status: todo
+status: done
 priority: p1
 dependencies: []
 related: []

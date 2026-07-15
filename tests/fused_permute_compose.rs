@@ -278,3 +278,85 @@ fn fused_metadata_errors_are_deterministic_and_selected_errors_do_not_retry() ->
     assert!(<&Tensor as Backend>::permute_and_compose(&input, &[0, 1, 2], &[24], &[4]).is_err());
     Ok(())
 }
+
+fn permutations(count: usize) -> Vec<Vec<usize>> {
+    fn visit(prefix: &mut Vec<usize>, remaining: &mut Vec<usize>, output: &mut Vec<Vec<usize>>) {
+        if remaining.is_empty() {
+            output.push(prefix.clone());
+            return;
+        }
+        for index in 0..remaining.len() {
+            let axis = remaining.remove(index);
+            prefix.push(axis);
+            visit(prefix, remaining, output);
+            prefix.pop();
+            remaining.insert(index, axis);
+        }
+    }
+    let mut output = Vec::new();
+    visit(&mut Vec::new(), &mut (0..count).collect(), &mut output);
+    output
+}
+
+#[test]
+fn exhaustive_bounded_permutations_partitions_and_edge_extents_match_old_order() -> Result<()> {
+    let device = Device::Cpu;
+    for rank in 1..=4 {
+        let shape_count = 3usize.pow(rank as u32);
+        for encoded_shape in 0..shape_count {
+            let mut encoded = encoded_shape;
+            let mut dims = Vec::with_capacity(rank);
+            for _ in 0..rank {
+                dims.push(encoded % 3);
+                encoded /= 3;
+            }
+            let elements = dims.iter().product::<usize>();
+            let input = if elements == 0 {
+                Tensor::zeros(dims.as_slice(), candle_core::DType::F32, &device)?
+            } else {
+                Tensor::from_vec(
+                    (0..elements).map(|value| value as f32).collect::<Vec<_>>(),
+                    dims.as_slice(),
+                    &device,
+                )?
+            };
+            for permutation in permutations(rank) {
+                for boundaries in 0..(1usize << rank.saturating_sub(1)) {
+                    let mut group_lengths = Vec::new();
+                    let mut length = 1;
+                    for boundary in 0..rank.saturating_sub(1) {
+                        if boundaries & (1 << boundary) != 0 {
+                            group_lengths.push(length);
+                            length = 1;
+                        } else {
+                            length += 1;
+                        }
+                    }
+                    group_lengths.push(length);
+                    let mut cursor = 0;
+                    let output_shape = group_lengths
+                        .iter()
+                        .map(|&length| {
+                            let product = permutation[cursor..cursor + length]
+                                .iter()
+                                .map(|&axis| dims[axis])
+                                .product();
+                            cursor += length;
+                            product
+                        })
+                        .collect::<Vec<_>>();
+                    let selected = <&Tensor as Backend>::permute_and_compose(
+                        &input,
+                        &permutation,
+                        &output_shape,
+                        &group_lengths,
+                    )?;
+                    let old_permuted = input.permute(permutation.as_slice())?;
+                    let old = Tensor::reshape(&old_permuted, output_shape.as_slice())?;
+                    assert_values_equal(&selected, &old)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}

@@ -71,6 +71,23 @@ pub trait Backend {
     /// materialization for non-contiguous inputs.
     fn reshape(self, shape: &[usize]) -> Result<Self::Output>;
     fn transpose(self, axes: &[usize]) -> Result<Self::Output>;
+    /// Applies a permutation followed immediately by axis composition.
+    ///
+    /// Backends may specialize this boundary. The default preserves the
+    /// historical operation sequence for third-party implementations.
+    fn permute_and_compose(
+        self,
+        permutation: &[usize],
+        output_shape: &[usize],
+        _group_lengths: &[usize],
+    ) -> Result<Self::Output>
+    where
+        Self: Sized,
+        Self::Output: Backend<Output = Self::Output>,
+    {
+        let output = self.transpose(permutation)?;
+        Backend::reshape(output, output_shape)
+    }
     fn reduce_axes(self, axes_operations: &mut [(usize, Operation)]) -> Result<Self::Output>;
     /// Inserts new axes as broadcast views.
     ///
@@ -100,6 +117,18 @@ impl<T: AsRef<Tensor>> Backend for T {
 
     fn transpose(self, axes: &[usize]) -> Result<Self::Output> {
         self.as_ref().permute(axes)
+    }
+
+    fn permute_and_compose(
+        self,
+        permutation: &[usize],
+        output_shape: &[usize],
+        group_lengths: &[usize],
+    ) -> Result<Self::Output>
+    where
+        Self::Output: Backend<Output = Self::Output>,
+    {
+        execute_tensor_permute_and_compose(self.as_ref(), permutation, output_shape, group_lengths)
     }
 
     fn reduce_axes(self, axes_operations: &mut [(usize, Operation)]) -> Result<Self::Output> {
@@ -204,6 +233,126 @@ impl<T: AsRef<Tensor>> Backend for T {
 
         expanded.broadcast_as(Shape::from_dims(&final_shape))
     }
+}
+
+fn execute_tensor_permute_and_compose(
+    input: &Tensor,
+    permutation: &[usize],
+    output_shape: &[usize],
+    group_lengths: &[usize],
+) -> Result<Tensor> {
+    let rank = input.rank();
+    if permutation.len() != rank {
+        candle_core::bail!(
+            "permute_and_compose: permutation rank {} does not match input rank {rank}",
+            permutation.len()
+        )
+    }
+    let mut seen = vec![false; rank];
+    for &axis in permutation {
+        if axis >= rank || seen[axis] {
+            candle_core::bail!("permute_and_compose: invalid permutation")
+        }
+        seen[axis] = true;
+    }
+    if group_lengths.len() != output_shape.len()
+        || group_lengths.contains(&0)
+        || group_lengths
+            .iter()
+            .try_fold(0usize, |sum, &length| sum.checked_add(length))
+            != Some(rank)
+    {
+        candle_core::bail!("permute_and_compose: invalid group metadata")
+    }
+
+    let mut groups = Vec::with_capacity(group_lengths.len());
+    let mut start = 0;
+    for (&length, &expected_output) in group_lengths.iter().zip(output_shape) {
+        let end = start + length;
+        let group = permutation[start..end].to_vec();
+        let product = checked_axis_product(input.dims(), &group)?;
+        if product != expected_output {
+            candle_core::bail!(
+                "permute_and_compose: group product {product} does not match output extent {expected_output}"
+            )
+        }
+        groups.push(group);
+        start = end;
+    }
+
+    if groups.len() <= 8 {
+        for order in group_permutations(groups.len()) {
+            let pre_permutation = order
+                .iter()
+                .flat_map(|&group| groups[group].iter().copied())
+                .collect::<Vec<_>>();
+            if !permutation_is_c_contiguous(input, &pre_permutation)? {
+                continue;
+            }
+            let reshape_dims = order
+                .iter()
+                .map(|&group| output_shape[group])
+                .collect::<Vec<_>>();
+            let post_permutation = (0..groups.len())
+                .map(|desired| {
+                    order
+                        .iter()
+                        .position(|&group| group == desired)
+                        .expect("group order is a permutation")
+                })
+                .collect::<Vec<_>>();
+            let permuted = input.permute(pre_permutation)?;
+            let reshaped = permuted.reshape(&reshape_dims)?;
+            return reshaped.permute(post_permutation);
+        }
+    }
+
+    input.permute(permutation)?.reshape(output_shape)
+}
+
+fn checked_axis_product(dims: &[usize], axes: &[usize]) -> Result<usize> {
+    axes.iter().try_fold(1usize, |product, &axis| {
+        product.checked_mul(dims[axis]).ok_or_else(|| {
+            candle_core::Error::msg("permute_and_compose: group product overflows usize")
+        })
+    })
+}
+
+fn permutation_is_c_contiguous(input: &Tensor, permutation: &[usize]) -> Result<bool> {
+    let mut expected = 1usize;
+    for &axis in permutation.iter().rev() {
+        let extent = input.dims()[axis];
+        if extent > 1 && input.stride()[axis] != expected {
+            return Ok(false);
+        }
+        expected = expected.checked_mul(extent).ok_or_else(|| {
+            candle_core::Error::msg("permute_and_compose: stride product overflows usize")
+        })?;
+    }
+    Ok(true)
+}
+
+fn group_permutations(count: usize) -> Vec<Vec<usize>> {
+    fn visit(prefix: &mut Vec<usize>, remaining: &mut Vec<usize>, output: &mut Vec<Vec<usize>>) {
+        if remaining.is_empty() {
+            output.push(prefix.clone());
+            return;
+        }
+        for index in 0..remaining.len() {
+            let group = remaining.remove(index);
+            prefix.push(group);
+            visit(prefix, remaining, output);
+            prefix.pop();
+            remaining.insert(index, group);
+        }
+    }
+    let mut output = Vec::new();
+    visit(
+        &mut Vec::with_capacity(count),
+        &mut (0..count).collect(),
+        &mut output,
+    );
+    output
 }
 
 #[cfg(test)]

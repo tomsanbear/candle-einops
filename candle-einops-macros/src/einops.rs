@@ -258,6 +258,80 @@ impl quote::ToTokens for ParsedExpression {
             (proc_macro2::TokenStream::new(), false)
         };
 
+        let static_fusion = if decomposition_tokens.is_empty()
+            && reduce_tokens.is_empty()
+            && repeat_tokens.is_empty()
+            && !permute_tokens.is_empty()
+            && !composition_tokens.is_empty()
+        {
+            let permutation = permute
+                .iter()
+                .map(|index| match index {
+                    Index::Known(index) => Some(*index),
+                    _ => None,
+                })
+                .collect::<Option<Vec<_>>>();
+            let group_lengths = composition
+                .iter()
+                .map(|group| match group {
+                    Composition::Individual(Index::Known(_)) => Some(1),
+                    Composition::Combined {
+                        from: Index::Known(from),
+                        to: Some(Index::Known(to)),
+                    } => to
+                        .checked_sub(*from)
+                        .and_then(|length| length.checked_add(1)),
+                    Composition::Combined {
+                        from: Index::Known(_),
+                        to: None,
+                    } => Some(1),
+                    _ => None,
+                })
+                .collect::<Option<Vec<_>>>();
+            permutation.zip(group_lengths)
+        } else {
+            None
+        };
+        let (permute_tokens, composition_tokens, fused_tokens) = if let Some((
+            permutation,
+            group_lengths,
+        )) = static_fusion
+        {
+            let mut cursor = 0usize;
+            let output_extents = group_lengths
+                    .iter()
+                    .map(|&length| {
+                        let axes = permutation[cursor..cursor + length].to_vec();
+                        cursor += length;
+                        quote!({
+                            [#(#axes),*].into_iter().try_fold(1usize, |product, axis| {
+                                product.checked_mul(#shape_ident[axis]).ok_or_else(|| {
+                                    #candle_crate::Error::msg("permute-and-compose group product overflows usize")
+                                })
+                            })?
+                        })
+                    })
+                    .collect::<Vec<_>>();
+            (
+                proc_macro2::TokenStream::new(),
+                proc_macro2::TokenStream::new(),
+                quote! {
+                    let #tensor_ident = #runtime_crate::Backend::permute_and_compose(
+                        #tensor_ident,
+                        &[#(#permutation),*],
+                        &[#(#output_extents),*],
+                        &[#(#group_lengths),*],
+                    )?;
+                },
+            )
+        } else {
+            (
+                permute_tokens,
+                composition_tokens,
+                proc_macro2::TokenStream::new(),
+            )
+        };
+
         let ignored_len_tokens = if decomposition_ignored_len
             || reduce_ignored_len
             || permute_ignored_len
@@ -287,7 +361,7 @@ impl quote::ToTokens for ParsedExpression {
         let tokens_empty = [
             decomposition_tokens.is_empty(),
             reduce_tokens.is_empty(),
-            permute_tokens.is_empty(),
+            permute_tokens.is_empty() && fused_tokens.is_empty(),
             repeat_tokens.is_empty(),
             composition_tokens.is_empty(),
         ];
@@ -360,6 +434,7 @@ impl quote::ToTokens for ParsedExpression {
 
             #reduce_tokens
 
+            #fused_tokens
             #permute_tokens
 
             #repeat_shape_tokens

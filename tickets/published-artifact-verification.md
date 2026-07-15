@@ -1,7 +1,7 @@
 ---
 id: published-artifact-verification
 title: Verify doctests and packaged artifacts in CI
-status: todo
+status: in-progress
 priority: p1
 dependencies: [macro-expansion-hygiene]
 related: []
@@ -9,6 +9,9 @@ scopes: [tooling, macros]
 shared_scopes: [ticketing]
 paths: []
 tags: [hardening-0.2]
+claimed_from: todo
+assignee: codex-artifacts
+lease_expires_at: 1784130087
 ---
 # Verify doctests and packaged artifacts in CI
 

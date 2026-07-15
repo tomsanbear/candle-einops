@@ -1,9 +1,9 @@
-# Einsum contract and red baseline
+# Einsum contract
 
 This document records the contract for the public `einsum!` macro. Unary and
-binary explicit-label equations are implemented; larger operand counts,
-repeated labels remain reserved for a later slice. Each input and output axis
-list may contain one `..` for right-aligned variable-rank broadcasting.
+binary explicit-label equations are implemented; larger operand counts remain
+reserved for a later slice. Each input and output axis list may contain one
+`..` for right-aligned variable-rank broadcasting.
 
 ## Equation and evaluation contract
 
@@ -15,10 +15,11 @@ list may contain one `..` for right-aligned variable-rank broadcasting.
 - The macro returns `candle_core::Result<Tensor>`.
 - Labels omitted from the output are reduced. A retained label shared by
   operands broadcasts when its extents are equal or one.
+- A label repeated within one operand extracts that operand's diagonal before
+  broadcasting or contraction. All repeated occurrences must have exactly
+  equal extents; they never broadcast against each other.
 - Output labels are unique and each originates in an input.
 - Scalars and zero-sized axes are valid.
-- Repeated labels within one input and `..` are reserved for later dedicated
-  implementation slices.
 
 ## Red-first evidence
 

@@ -48,6 +48,23 @@
 //! # }
 //! ```
 //!
+//! Repeating a label within one operand extracts its diagonal. Omitting that
+//! label from the output computes a trace:
+//!
+//! ```
+//! use candle_core::{Device, Result, Tensor};
+//! use candle_einops::einsum;
+//!
+//! # fn main() -> Result<()> {
+//! let matrix = Tensor::arange(0f32, 9f32, &Device::Cpu)?.reshape((3, 3))?;
+//! let diagonal = einsum!("index index -> index", &matrix)?;
+//! assert_eq!(diagonal.to_vec1::<f32>()?, [0., 4., 8.]);
+//! let trace = einsum!("index index ->", &matrix)?;
+//! assert_eq!(trace.to_scalar::<f32>()?, 12.);
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! Unary einsum equations use whitespace-delimited named axes. Axes omitted
 //! from the explicit output are summed:
 //!

@@ -1,7 +1,7 @@
 ---
 id: grouped-rhs-error-propagation
 title: Preserve grouped RHS parser errors
-status: todo
+status: done
 priority: p0
 dependencies: []
 related: []

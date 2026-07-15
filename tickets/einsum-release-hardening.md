@@ -1,7 +1,7 @@
 ---
 id: einsum-release-hardening
 title: Complete einsum documentation packaging and release gates
-status: in-progress
+status: done
 priority: p0
 dependencies: [einsum-device-dtype-gradient-matrix]
 related: []
@@ -9,9 +9,6 @@ scopes: [runtime, macros, tests, docs, tooling]
 shared_scopes: [ticketing]
 paths: []
 tags: [einsum-implementation]
-claimed_from: todo
-assignee: codex-einsum-release
-lease_expires_at: 1784134869
 ---
 # Complete einsum documentation packaging and release gates
 

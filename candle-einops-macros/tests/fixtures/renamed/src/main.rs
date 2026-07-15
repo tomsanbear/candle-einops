@@ -22,5 +22,13 @@ fn main() -> Result<()> {
     let square = Tensor::arange(0f32, 9f32, &Device::Cpu)?.reshape((3, 3))?;
     let diagonal = einsum!("index index -> index", &square)?;
     assert_eq!(diagonal.to_vec1::<f32>()?, [0., 4., 8.]);
+    let weights = Tensor::new(&[1f32, 1.], &Device::Cpu)?;
+    let nary = einsum!(
+        "row inner, inner column, column -> row",
+        &matrix,
+        &transposed,
+        &weights
+    )?;
+    assert_eq!(nary.dims(), &[2]);
     Ok(())
 }

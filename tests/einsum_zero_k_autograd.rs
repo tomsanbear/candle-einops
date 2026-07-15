@@ -1,6 +1,11 @@
 use candle_core::{DType, Device, Result, Shape, Tensor, Var};
 use candle_einops::einsum;
 
+fn graph_preserving_zero(left: &Tensor, right: &Tensor, shape: &[usize]) -> Result<Tensor> {
+    let anchor = |operand: &Tensor| operand.unsqueeze(0)?.narrow(0, 0, 0)?.sum_all();
+    anchor(left)?.add(&anchor(right)?)?.broadcast_as(shape)
+}
+
 fn assert_graph_preserving_zero(
     left_shape: &[usize],
     right_shape: &[usize],
@@ -139,4 +144,54 @@ fn zero_k_forward_preserves_candle_dtype_support() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn accelerator_smoke(device: Result<Device>) -> Result<()> {
+    let Ok(device) = device else {
+        return Ok(());
+    };
+    let library_left = Var::zeros((2, 0), DType::F32, &device)?;
+    let library_right = Var::zeros((0, 3), DType::F32, &device)?;
+    let reference_left = Var::zeros((2, 0), DType::F32, &device)?;
+    let reference_right = Var::zeros((0, 3), DType::F32, &device)?;
+    let library = einsum!(
+        "row inner, inner column -> row column",
+        library_left.as_tensor(),
+        library_right.as_tensor()
+    )?;
+    let reference = graph_preserving_zero(
+        reference_left.as_tensor(),
+        reference_right.as_tensor(),
+        &[2, 3],
+    )?;
+    assert_eq!(library.to_vec2::<f32>()?, reference.to_vec2::<f32>()?);
+
+    for (output, left, right) in [
+        (&library, &library_left, &library_right),
+        (&reference, &reference_left, &reference_right),
+    ] {
+        let gradients = output.sum_all()?.backward()?;
+        assert_eq!(
+            gradients
+                .get(left.as_tensor())
+                .expect("zero-K left gradient")
+                .dims(),
+            [2, 0]
+        );
+        assert_eq!(
+            gradients
+                .get(right.as_tensor())
+                .expect("zero-K right gradient")
+                .dims(),
+            [0, 3]
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn cpu_and_available_accelerators_match_graph_preserving_construction() -> Result<()> {
+    accelerator_smoke(Ok(Device::Cpu))?;
+    accelerator_smoke(Device::new_metal(0))?;
+    accelerator_smoke(Device::new_cuda(0))
 }

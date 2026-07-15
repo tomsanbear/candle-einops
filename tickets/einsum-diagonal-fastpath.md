@@ -1,13 +1,16 @@
 ---
 id: einsum-diagonal-fastpath
 title: Implement selected repeated-label diagonal fast path
-status: todo
+status: in-progress
 priority: p1
 dependencies: [einsum-diagonal-lowering-spike]
 related: [einsum-diagonal-lowering-spike]
 scopes: [runtime]
 shared_scopes: [tests, benchmarks, ticketing]
 tags: [performance-0.2, conditional]
+claimed_from: todo
+assignee: diagonal-fastpath
+lease_expires_at: 1784149776
 ---
 # Implement selected repeated-label diagonal fast path
 

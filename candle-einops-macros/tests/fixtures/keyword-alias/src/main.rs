@@ -7,5 +7,11 @@ fn main() -> Result<()> {
     assert_eq!(transposed.dims(), &[3, 2]);
     let einsum_transposed = einsum!("rows columns -> columns rows", &matrix)?;
     assert_eq!(einsum_transposed.dims(), &[3, 2]);
+    let product = einsum!(
+        "row inner, inner column -> row column",
+        &matrix,
+        &einsum_transposed
+    )?;
+    assert_eq!(product.dims(), &[2, 2]);
     Ok(())
 }

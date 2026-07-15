@@ -1,8 +1,8 @@
 //! Compile-time einops-style tensor transformations for Candle.
 //!
 //! The [`einops!`] macro combines rearrange, reduce, repeat, composition, and
-//! decomposition operations. [`einsum!`] provides explicit-output unary
-//! permutations and reductions. Backend failures are returned as Candle errors.
+//! decomposition operations. [`einsum!`] provides explicit-output unary and
+//! binary tensor contractions. Backend failures are returned as Candle errors.
 //!
 //! ```
 //! use candle_core::{Device, Result, Tensor};
@@ -12,6 +12,22 @@
 //! let input = Tensor::arange(0f32, 6f32, &Device::Cpu)?.reshape((2, 3))?;
 //! let output = einops!("rows columns -> columns rows", &input)?;
 //! assert_eq!(output.dims(), &[3, 2]);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Two-operand equations lower contractions through Candle matrix
+//! multiplication, including batch broadcasting:
+//!
+//! ```
+//! use candle_core::{Device, Result, Tensor};
+//! use candle_einops::einsum;
+//!
+//! # fn main() -> Result<()> {
+//! let left = Tensor::new(&[[1f32, 2., 3.], [4., 5., 6.]], &Device::Cpu)?;
+//! let right = Tensor::new(&[[1f32, 2.], [3., 4.], [5., 6.]], &Device::Cpu)?;
+//! let output = einsum!("row inner, inner column -> row column", &left, &right)?;
+//! assert_eq!(output.to_vec2::<f32>()?, [[22., 28.], [49., 64.]]);
 //! # Ok(())
 //! # }
 //! ```

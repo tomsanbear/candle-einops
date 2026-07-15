@@ -1,7 +1,8 @@
 # Einsum contract and red baseline
 
-This document freezes the contract for the future public `einsum!` macro. It is
-not a claim that the macro is implemented yet.
+This document records the contract for the public `einsum!` macro. Unary and
+binary explicit-label equations are implemented; larger operand counts,
+repeated labels, and ellipses remain reserved for later slices.
 
 ## Equation and evaluation contract
 

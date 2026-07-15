@@ -74,15 +74,17 @@ Version 0.2 contains three compatibility changes:
 
 Dependency renaming is supported. For example,
 `tensor-ops = { package = "candle-einops", version = "0.2" }` can be imported
-with `use tensor_ops::einops;`.
+with `use tensor_ops::{einops, einsum};`.
 
 See [CHANGELOG.md](CHANGELOG.md) for the complete release notes and publish
 order.
 
 ## Scope
 
-The crate currently implements rearrange, reduce, and repeat operations. It
-does not implement `einsum`; the historical `AddEinsumSupport` branch is an
-incomplete Candle 0.4-era prototype and is not part of the 0.2 release.
+The crate implements rearrange, reduce, and repeat operations plus unary and
+binary explicit-label `einsum!`. Einsum supports permutation, reduction,
+outer products, elementwise broadcasting, and GEMM-lowered contractions.
+Repeated input labels, ellipses, and equations with more than two operands are
+reserved for later releases.
 
 Licensed under either Apache-2.0 or MIT, at your option.

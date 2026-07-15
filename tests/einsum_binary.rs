@@ -78,6 +78,25 @@ fn binary_values_match_independent_oracles() -> Result<()> {
         .to_vec3::<f32>()?,
         [[[22., 28.], [49., 64.]], [[76., 100.], [103., 136.]]]
     );
+
+    let with_private_left = Tensor::new(
+        &[
+            [[[1f32, 2., 3.], [4., 5., 6.]]],
+            [[[7., 8., 9.], [10., 11., 12.]]],
+        ],
+        &Device::Cpu,
+    )?;
+    let with_private_right = Tensor::ones((2, 3, 4, 2), DType::F32, &Device::Cpu)?;
+    let actual = einsum!(
+        "private batch row inner, batch inner column extra -> column batch row",
+        &with_private_left,
+        &with_private_right
+    )?;
+    let expected = with_private_left
+        .sum(0)?
+        .broadcast_matmul(&with_private_right.sum(3)?)?
+        .permute((2, 0, 1))?;
+    assert_close(&actual, &expected, "pre-reduction and output permutation")?;
     Ok(())
 }
 

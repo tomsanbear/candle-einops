@@ -74,6 +74,21 @@
 //! # }
 //! ```
 //!
+//! ## Dtypes, devices, and gradients
+//!
+//! `einsum!` never casts operands or transfers them between devices. Every
+//! operand in a multi-operand equation must have the same dtype and reside on
+//! the same device; mismatches return a contextual [`candle_core::Error`].
+//! Unary permutations preserve every dtype supported by the corresponding
+//! Candle operation. Contractions lower through Candle matrix multiplication
+//! and therefore inherit its dtype and device support: unsupported
+//! combinations return an error rather than being silently converted.
+//!
+//! Einsum execution is assembled from tracked public Candle operations, so
+//! floating-point inputs participate in Candle autograd. Accelerator execution
+//! likewise follows the features and devices made available by Candle; results
+//! remain on the operands' original device.
+//!
 //! Unary einsum equations use whitespace-delimited named axes. Axes omitted
 //! from the explicit output are summed:
 //!

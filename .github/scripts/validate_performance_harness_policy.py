@@ -16,6 +16,8 @@ def main() -> int:
     )
     wrapper = (ROOT / ".github/scripts/run_benchmarks.py").read_text(encoding="utf-8")
     harness = (ROOT / "benchmarks/src/lib.rs").read_text(encoding="utf-8")
+    comparison_script = ROOT / ".github/scripts/compare_benchmarks.py"
+    comparison_workflow = ROOT / ".github/workflows/advisory-performance.yml"
     failures: list[str] = []
 
     if "benchmarks/" not in root_manifest["package"].get("exclude", []):
@@ -53,6 +55,40 @@ def main() -> int:
             failures.append(f"benchmark wrapper must contain {required_text}")
     if "compile_error!" not in harness or 'feature = "cuda"' not in harness or 'feature = "metal"' not in harness:
         failures.append("benchmark crate must reject simultaneous Metal and CUDA features")
+
+    if not comparison_script.is_file():
+        failures.append("advisory benchmark comparison script is missing")
+    if not comparison_workflow.is_file():
+        failures.append("manual advisory benchmark comparison workflow is missing")
+    else:
+        workflow = comparison_workflow.read_text(encoding="utf-8")
+        required_workflow_text = [
+            "workflow_dispatch:",
+            "base_sha:",
+            "head_sha:",
+            "persist-credentials: false",
+            "git worktree add --detach",
+            "compare_benchmarks.py",
+            "advisory-only",
+            "retention-days:",
+        ]
+        for required_text in required_workflow_text:
+            if required_text not in workflow:
+                failures.append(
+                    f"advisory comparison workflow must contain {required_text}"
+                )
+        forbidden_workflow_text = [
+            "pull_request:",
+            "schedule:",
+            "git push",
+            "gh pr comment",
+            "gh issue create",
+        ]
+        for forbidden_text in forbidden_workflow_text:
+            if forbidden_text in workflow:
+                failures.append(
+                    f"advisory comparison workflow must not contain {forbidden_text}"
+                )
 
     forbidden = [
         path

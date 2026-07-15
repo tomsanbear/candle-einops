@@ -1,16 +1,13 @@
 ---
 id: python-einops-parity-ci
 title: Gate CI on reproducible Python einops parity
-status: in-progress
+status: done
 priority: p1
 dependencies: [python-einops-rearrange-properties, python-einops-repeat-reduce-properties]
 related: []
 scopes: [tooling, docs, parity]
 shared_scopes: [ticketing]
 tags: [python-einops-parity]
-claimed_from: todo
-assignee: ci-release
-lease_expires_at: 1784138611
 ---
 # Gate CI on reproducible Python einops parity
 

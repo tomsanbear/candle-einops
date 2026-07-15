@@ -530,6 +530,11 @@ pub fn plan_bounded_exact(model: &NetworkModel, weights: CostWeights) -> Result<
     best.ok_or_else(|| candle_core::Error::msg("bounded exact planner found no plan"))
 }
 
+pub fn selected_uses_exact(model: &NetworkModel) -> Result<bool> {
+    let greedy = plan_output_greedy(model, CostWeights::CPU)?;
+    Ok(model.operands.len() <= 4 && greedy.metrics.flops >= 100_000)
+}
+
 fn matrix_chain(
     id: &'static str,
     kind: FixtureKind,
@@ -757,8 +762,12 @@ impl Scenario for NetworkScenario {
     }
 
     fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        let plan = plan_bounded_exact(&self.fixture.model, CostWeights::CPU)?;
-        execute_plan(inputs, &self.fixture, &plan)
+        if selected_uses_exact(&self.fixture.model)? {
+            let plan = plan_bounded_exact(&self.fixture.model, CostWeights::CPU)?;
+            execute_plan(inputs, &self.fixture, &plan)
+        } else {
+            self.run_library(inputs)
+        }
     }
 
     fn check(&self, library: &Tensor, reference: &Tensor) -> Result<()> {

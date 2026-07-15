@@ -3,6 +3,7 @@ use candle_einops_benchmarks::Scenario;
 use candle_einops_benchmarks::nary_cost_model_spike::{
     AxisExtent, CostWeights, FixtureKind, LayoutClass, ModelOperand, NetworkModel, estimate_pair,
     network_fixtures, network_scenarios, plan_bounded_exact, plan_output_greedy,
+    selected_uses_exact,
 };
 
 #[test]
@@ -21,6 +22,34 @@ fn bounded_exact_planner_beats_output_greedy_on_frozen_counterexamples() -> Resu
         );
         assert!(exact.metrics.flops <= greedy.metrics.flops);
         assert!(exact.metrics.peak_live_elements <= greedy.metrics.peak_live_elements);
+    }
+    Ok(())
+}
+
+#[test]
+fn selected_hybrid_obeys_the_frozen_arity_and_work_budget() -> Result<()> {
+    let fixtures = network_fixtures();
+    assert!(!selected_uses_exact(&fixtures[0].model)?);
+    assert!(selected_uses_exact(&fixtures[1].model)?);
+    assert!(selected_uses_exact(&fixtures[2].model)?);
+    assert!(!selected_uses_exact(&fixtures[3].model)?);
+
+    for arity in 3..=6 {
+        let model = NetworkModel::new(
+            (0..arity)
+                .map(|ordinal| {
+                    ModelOperand::new(ordinal, &[AxisExtent::new("i", 4)], LayoutClass::Contiguous)
+                })
+                .collect(),
+            &["i"],
+        )?;
+        assert_eq!(
+            plan_bounded_exact(&model, CostWeights::CPU)?.steps.len(),
+            arity - 1
+        );
+        if arity > 4 {
+            assert!(!selected_uses_exact(&model)?);
+        }
     }
     Ok(())
 }

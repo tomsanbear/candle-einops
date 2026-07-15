@@ -158,11 +158,67 @@ pub fn cached_flat_gather(
 
 #[must_use]
 pub fn break_even_reuses(
-    _preparation_ns: u64,
-    _current_per_call_ns: u64,
-    _prepared_per_call_ns: u64,
+    preparation_ns: u64,
+    current_per_call_ns: u64,
+    prepared_per_call_ns: u64,
 ) -> Option<u64> {
-    Some(0)
+    let saved_per_call = current_per_call_ns.checked_sub(prepared_per_call_ns)?;
+    if saved_per_call == 0 {
+        return None;
+    }
+    Some(
+        preparation_ns
+            .div_ceil(saved_per_call)
+            .max(1),
+    )
+}
+
+/// Benchmark-only ownership sketch for a caller-prepared, device-bound plan.
+pub struct PreparedDiagonalPlan {
+    input_shape: Vec<usize>,
+    output_shape: Vec<usize>,
+    indices: Tensor,
+}
+
+impl PreparedDiagonalPlan {
+    pub fn repeated(extent: usize, multiplicity: usize, device: &Device) -> Result<Self> {
+        Ok(Self {
+            input_shape: vec![extent; multiplicity],
+            output_shape: vec![extent],
+            indices: build_repeated_indices(extent, multiplicity, device)?,
+        })
+    }
+
+    pub fn interleaved(
+        first_extent: usize,
+        second_extent: usize,
+        device: &Device,
+    ) -> Result<Self> {
+        Ok(Self {
+            input_shape: vec![first_extent, second_extent, first_extent, second_extent],
+            output_shape: vec![first_extent, second_extent],
+            indices: build_interleaved_indices(first_extent, second_extent, device)?,
+        })
+    }
+
+    pub fn execute(&self, input: &Tensor) -> Result<Tensor> {
+        if input.dims() != self.input_shape {
+            candle_core::bail!(
+                "prepared diagonal plan expects shape {:?}, received {:?}",
+                self.input_shape,
+                input.dims()
+            )
+        }
+        if !input.device().same_device(self.indices.device()) {
+            candle_core::bail!("prepared diagonal plan and input are on different devices")
+        }
+        cached_flat_gather(input, &self.indices, &self.output_shape)
+    }
+
+    #[must_use]
+    pub fn indices(&self) -> &Tensor {
+        &self.indices
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

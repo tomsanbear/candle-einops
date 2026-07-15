@@ -2,7 +2,7 @@ use candle_core::{Device, Result, Tensor, Var};
 use candle_einops::einsum;
 use candle_einops_benchmarks::diagonal_spike::{
     break_even_reuses, build_interleaved_indices, build_repeated_indices, cached_flat_gather,
-    cpu_storage_id, probe_current_interleaved_lowering,
+    cpu_storage_id, probe_current_interleaved_lowering, PreparedDiagonalPlan,
 };
 
 fn flat(tensor: &Tensor) -> Result<Vec<f32>> {
@@ -19,6 +19,37 @@ fn measured_break_even_reuse_counts_are_ceilings_and_reject_no_win() {
     assert_eq!(break_even_reuses(7_875, 38_500, 9_959), Some(1));
     assert_eq!(break_even_reuses(10, 5, 5), None);
     assert_eq!(break_even_reuses(10, 4, 5), None);
+}
+
+#[test]
+fn prepared_plan_is_explicitly_shape_and_device_bound_and_reusable() -> Result<()> {
+    let device = Device::Cpu;
+    let plan = PreparedDiagonalPlan::interleaved(4, 3, &device)?;
+    let index_storage = cpu_storage_id(plan.indices())?;
+    let first = Tensor::arange(0f32, 144., &device)?.reshape((4, 3, 4, 3))?;
+    let second = Tensor::arange(1f32, 145., &device)?.reshape((4, 3, 4, 3))?;
+    assert_eq!(
+        flat(&plan.execute(&first)?)?,
+        flat(&einsum!("i j i j -> i j", &first)?)?
+    );
+    assert_eq!(
+        flat(&plan.execute(&second)?)?,
+        flat(&einsum!("i j i j -> i j", &second)?)?
+    );
+    assert_eq!(cpu_storage_id(plan.indices())?, index_storage);
+
+    let wrong_shape = Tensor::zeros((4, 4), candle_core::DType::F32, &device)?;
+    assert!(plan.execute(&wrong_shape).is_err());
+    let non_contiguous = first.permute([1, 0, 3, 2])?;
+    assert!(plan.execute(&non_contiguous).is_err());
+
+    let repeated = PreparedDiagonalPlan::repeated(8, 3, &device)?;
+    let cube = Tensor::arange(0f32, 512., &device)?.reshape((8, 8, 8))?;
+    assert_eq!(
+        flat(&repeated.execute(&cube)?)?,
+        flat(&einsum!("i i i -> i", &cube)?)?
+    );
+    Ok(())
 }
 
 #[test]

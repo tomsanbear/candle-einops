@@ -1,5 +1,37 @@
 # Repeated-label diagonal lowering decision
 
+## Reusable prepared-plan follow-up
+
+Decision: **GO for a future opt-in caller-owned prepared plan; NO-GO for an
+implicit or global cache.** This spike adds only a benchmark-owned API sketch,
+not a root-library public API.
+
+Fresh 1,001-sample debug measurements at commit `6aa7eab` separate host index
+construction/device upload from steady-state flat gather. Break-even is the
+smallest positive integer `r` where `prepare + r * prepared <= r * current`.
+
+| case | current per call | prepared gather | one-time preparation | break-even uses | index bytes | gather calls/use |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `i i`, n=16 | 4.875 us | 2.416 us | 1.250 us | 1 | 64 | 1 |
+| `i i`, n=64 | 6.500 us | 3.542 us | 3.542 us | 2 | 256 | 1 |
+| `i i`, n=256 | 16.458 us | 9.958 us | 12.708 us | 2 | 1,024 | 1 |
+| `i j i j`, n=4 | 7.292 us | 2.125 us | 1.375 us | 1 | 64 | 1 |
+| `i j i j`, n=8 | 13.542 us | 3.667 us | 2.667 us | 1 | 256 | 1 |
+| `i j i j`, n=16 | 38.500 us | 9.959 us | 7.875 us | 1 | 1,024 | 1 |
+
+The minimum safe ownership contract is a plan that owns its contiguous `u32`
+index tensor and output shape, is bound to the exact input shape and Candle
+device used at preparation, and borrows each input only for execution. It must
+reject shape/device mismatches and non-contiguous inputs before gathering. The
+caller owns reuse and lifetime; the library owns no global registry,
+invalidation policy, hidden eviction, or cross-device transfer. Benchmark tests
+reuse one plan across distinct tensors, retain one index storage allocation,
+and match current values and gradients.
+
+These CPU results justify an API-design ticket only if callers request explicit
+compiled plans. They do not justify silently changing the current stateless
+`einsum!` contract or claim a GPU break-even point.
+
 Decision: **GO** for a narrow, portable fast path that gathers directly from a
 contiguous operand's original flat layout when the current repeated-axis
 permutation would force a dense copy. Keep the existing lowering for adjacent

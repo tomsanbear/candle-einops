@@ -1,7 +1,7 @@
 ---
 id: runtime-rank-shape-validation
 title: Validate generated runtime ranks and shape indices
-status: todo
+status: done
 priority: p0
 dependencies: []
 related: []

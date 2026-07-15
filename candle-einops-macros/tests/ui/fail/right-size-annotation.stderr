@@ -1,0 +1,5 @@
+error: Axis `a` cannot be assigned a size on the right
+ --> tests/ui/fail/right-size-annotation.rs:4:21
+  |
+4 |     let _ = einops!("a b -> b a:3", ());
+  |                     ^^^^^^^^^^^^^^

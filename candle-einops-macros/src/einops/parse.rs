@@ -1,5 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 use quote::ToTokens;
@@ -150,7 +150,14 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
                         },
                     );
                 } else if input.peek(syn::Ident) {
+                    let span = input.span();
                     let (name, shape) = parse_identifier(input)?;
+                    if shape.is_some() {
+                        return Err(syn::Error::new(
+                            span,
+                            "Axis sizes are only allowed inside a decomposition group on the left",
+                        ));
+                    }
                     decomposition.push(Decomposition::Named {
                         name,
                         shape,
@@ -193,8 +200,16 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
 }
 
 fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec<Decomposition>> {
+    let span = input.span();
     let content;
     syn::parenthesized!(content in input);
+
+    if content.is_empty() {
+        return Err(syn::Error::new(
+            span,
+            "Decomposition groups cannot be empty",
+        ));
+    }
 
     let mut content_expression = Vec::new();
 
@@ -390,7 +405,7 @@ pub fn parse_composition_permute_repeat(
         })
         .enumerate()
         .try_fold(HashMap::new(), |mut map, (i, expression)| {
-            let old_value = match expression {
+            let (name, index) = match expression {
                 Decomposition::Named {
                     name,
                     index: Index::Known(_),
@@ -400,7 +415,7 @@ pub fn parse_composition_permute_repeat(
                     name,
                     index: Index::Known(_),
                     ..
-                } => map.insert(name.clone(), Index::Known(i)),
+                } => (name, Index::Known(i)),
                 Decomposition::Named {
                     name,
                     index: Index::Unknown(_),
@@ -410,19 +425,24 @@ pub fn parse_composition_permute_repeat(
                     name,
                     index: Index::Unknown(_),
                     ..
-                } => map.insert(name.clone(), unknown_index_fn(i)),
+                } => (name, unknown_index_fn(i)),
                 Decomposition::Named {
                     name,
                     index: Index::Range(_),
                     ..
-                } => map.insert(name.clone(), Index::Range(i)),
+                } => (name, Index::Range(i)),
                 _ => unreachable!(),
             };
-            if old_value.is_some() {
-                return Err(input.error("Names are not unique in the left expression"));
+            if map.insert(name.clone(), index).is_some() {
+                return Err(syn::Error::new(
+                    input_span,
+                    format!("Axis `{name}` appears more than once on the left"),
+                ));
             }
             Ok(map)
         })?;
+
+    let mut consumed = HashSet::new();
 
     // To keep track of the dimensions skipped inside parenthesis
     let mut parenthesized_len: usize = 0;
@@ -444,7 +464,7 @@ pub fn parse_composition_permute_repeat(
             i += parenthesized_len;
             if input.peek(token::Paren) {
                 let (combined, combined_permute, combined_repeat, combined_len) =
-                    parse_right_parenthesized(input, i, &mut index_fn, &positions)?;
+                    parse_right_parenthesized(input, i, &mut index_fn, &positions, &mut consumed)?;
                 parenthesized_len += combined_len.saturating_sub(1);
                 permute.extend(combined_permute);
                 repeat.extend(combined_repeat);
@@ -452,6 +472,18 @@ pub fn parse_composition_permute_repeat(
             } else if input.peek(syn::Ident) {
                 let (name, shape) = parse_identifier(input)?;
                 if let Some(index) = positions.get(&name) {
+                    if shape.is_some() {
+                        return Err(syn::Error::new(
+                            input_span,
+                            format!("Axis `{name}` cannot be assigned a size on the right"),
+                        ));
+                    }
+                    if !consumed.insert(name.clone()) {
+                        return Err(syn::Error::new(
+                            input_span,
+                            format!("Axis `{name}` appears more than once on the right"),
+                        ));
+                    }
                     permute.push(index.clone());
                 } else {
                     // New identifiers represents repetition
@@ -470,6 +502,12 @@ pub fn parse_composition_permute_repeat(
                 composition.push(Composition::Individual(index_fn(i)));
             } else if input.peek(syn::Token![..]) {
                 input.parse::<syn::Token![..]>()?;
+                if !consumed.insert("..".to_string()) {
+                    return Err(syn::Error::new(
+                        input_span,
+                        "Ellipsis `..` appears more than once on the right",
+                    ));
+                }
                 composition.push(Composition::Individual(Index::Range(i)));
                 let index = positions.get("..").ok_or_else(|| {
                     syn::Error::new(
@@ -483,6 +521,12 @@ pub fn parse_composition_permute_repeat(
             } else if input.peek(syn::token::Brace) {
                 let (name, shape) = parse_braced_expression(input)?;
                 if let Some(index) = positions.get(&name) {
+                    if !consumed.insert(name.clone()) {
+                        return Err(syn::Error::new(
+                            input_span,
+                            "A braced axis appears more than once on the right",
+                        ));
+                    }
                     permute.push(index.clone());
                 } else {
                     repeat.push((index_fn(i), shape));
@@ -498,10 +542,16 @@ pub fn parse_composition_permute_repeat(
 
     // We raise an error if the right side of the expression
     // misses a indicator from the left side
-    if positions.len() != permute.len() {
+    let mut missing = positions
+        .keys()
+        .filter(|name| !consumed.contains(*name))
+        .cloned()
+        .collect::<Vec<_>>();
+    missing.sort();
+    if !missing.is_empty() {
         return Err(syn::Error::new(
             input_span,
-            "Identifiers missing on the right side of the expression",
+            format!("Axes missing on the right: {}", missing.join(", ")),
         ));
     }
 
@@ -514,9 +564,15 @@ fn parse_right_parenthesized(
     start_index: usize,
     index_fn: &mut Box<dyn Fn(usize) -> Index>,
     positions: &HashMap<String, Index>,
+    consumed: &mut HashSet<String>,
 ) -> syn::Result<(Composition, Vec<Index>, Vec<(Index, Shape)>, usize)> {
+    let span = input.span();
     let content;
     syn::parenthesized!(content in input);
+
+    if content.is_empty() {
+        return Err(syn::Error::new(span, "Composition groups cannot be empty"));
+    }
 
     let mut permute = Vec::new();
     let mut repeat = Vec::new();
@@ -526,6 +582,12 @@ fn parse_right_parenthesized(
     let mut parse_content = |content: ParseStream, index: usize| -> syn::Result<Index> {
         if content.peek(syn::Token![..]) {
             content.parse::<syn::Token![..]>()?;
+            if !consumed.insert("..".to_string()) {
+                return Err(syn::Error::new(
+                    span,
+                    "Ellipsis `..` appears more than once on the right",
+                ));
+            }
             let ignored_index = positions.get("..").ok_or_else(|| {
                 syn::Error::new(
                     content.span(),
@@ -538,6 +600,18 @@ fn parse_right_parenthesized(
         } else if content.peek(syn::Ident) {
             let (name, shape) = parse_identifier(content)?;
             if let Some(index) = positions.get(&name) {
+                if shape.is_some() {
+                    return Err(syn::Error::new(
+                        span,
+                        format!("Axis `{name}` cannot be assigned a size on the right"),
+                    ));
+                }
+                if !consumed.insert(name.clone()) {
+                    return Err(syn::Error::new(
+                        span,
+                        format!("Axis `{name}` appears more than once on the right"),
+                    ));
+                }
                 permute.push(index.clone());
             } else {
                 let shape = shape.ok_or_else(|| {
@@ -555,6 +629,12 @@ fn parse_right_parenthesized(
         } else if content.peek(syn::token::Brace) {
             let (name, shape) = parse_braced_expression(content)?;
             if let Some(index) = positions.get(&name) {
+                if !consumed.insert(name) {
+                    return Err(syn::Error::new(
+                        span,
+                        "A braced axis appears more than once on the right",
+                    ));
+                }
                 permute.push(index.clone());
             } else {
                 repeat.push((index_fn(index), shape));
@@ -599,6 +679,7 @@ fn peek_reduce_kw(input: ParseStream) -> bool {
 }
 
 fn parse_reduce_fn(input: ParseStream) -> syn::Result<Vec<(String, Option<Shape>, Operation)>> {
+    let span = input.span();
     let operation = if input.peek(kw::min) {
         input.parse::<kw::min>()?;
         Operation::Min
@@ -620,6 +701,10 @@ fn parse_reduce_fn(input: ParseStream) -> syn::Result<Vec<(String, Option<Shape>
 
     let content;
     syn::parenthesized!(content in input);
+
+    if content.is_empty() {
+        return Err(syn::Error::new(span, "Reduction groups cannot be empty"));
+    }
 
     Ok(content
         // A single operation call can have multiple dimensions,

@@ -1,0 +1,5 @@
+error: Composition groups cannot be empty
+ --> tests/ui/fail/empty-composition.rs:4:21
+  |
+4 |     let _ = einops!("a -> () a", ());
+  |                     ^^^^^^^^^^^

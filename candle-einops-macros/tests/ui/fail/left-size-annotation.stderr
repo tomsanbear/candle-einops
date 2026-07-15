@@ -1,0 +1,5 @@
+error: Axis sizes are only allowed inside a decomposition group on the left
+ --> tests/ui/fail/left-size-annotation.rs:4:21
+  |
+4 |     let _ = einops!("a:3 b -> b a", ());
+  |                     ^^^^^^^^^^^^^^

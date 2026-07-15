@@ -1,0 +1,5 @@
+error: Reduction groups cannot be empty
+ --> tests/ui/fail/empty-reduction.rs:4:21
+  |
+4 |     let _ = einops!("sum() a -> a", ());
+  |                     ^^^^^^^^^^^^^^

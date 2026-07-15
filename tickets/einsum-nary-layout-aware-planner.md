@@ -14,7 +14,7 @@ tags: [performance-0.2, conditional]
 ## Entry condition
 
 The spike selected a bounded hybrid for calibrated CPU backends. Implement the
-exact model only for arity at most four when current greedy estimates at least
+exact model only for arity three or four when current greedy estimates at least
 100,000 FLOPs. Retain current greedy for arity above four, smaller work,
 overflow/model errors, unsupported operand metadata, planner-budget overruns,
 and CUDA/Metal until each backend has synchronized crossover data. The CPU
@@ -51,8 +51,9 @@ wall time against the current greedy planner.
 - Planner overhead remains negligible relative to its target contractions.
 - Falls back deterministically to current greedy on every boundary above and
   preserves current zero-output, error, and dtype behavior.
-- Changed associations preserve forward values and input gradients within 0.2%
-  relative tolerance; bitwise floating-point equality is not required.
+- Changed associations preserve forward values and input gradients within the
+  spike's mixed tolerance `0.002 * max(abs(reference), 1)`; bitwise
+  floating-point equality is not required.
 
 ## Non-goals
 

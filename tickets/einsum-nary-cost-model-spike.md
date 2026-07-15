@@ -49,7 +49,7 @@ planning for runtime ellipsis shapes.
 ## Result
 
 GO with a bounded hybrid planner on calibrated CPU backends. Use exact planning
-only for arity at most four when the current greedy estimate is at least
+only for arity three or four when the current greedy estimate is at least
 100,000 FLOPs; otherwise retain current greedy. The exhaustive arity-three
 through arity-six implementation remains a test oracle. See
 `benchmarks/nary-cost-model-spike.md` for the checked model, stable tie-break,

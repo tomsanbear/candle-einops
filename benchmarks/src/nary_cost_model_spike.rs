@@ -221,6 +221,10 @@ pub fn measure_fixture_planners(
 }
 
 fn checked_product(values: impl IntoIterator<Item = u128>, context: &'static str) -> Result<u128> {
+    let values = values.into_iter().collect::<Vec<_>>();
+    if values.contains(&0) {
+        return Ok(0);
+    }
     values.into_iter().try_fold(1_u128, |product, value| {
         product
             .checked_mul(value)
@@ -443,8 +447,10 @@ pub fn plan_output_greedy(model: &NetworkModel, weights: CostWeights) -> Result<
                 let key = (
                     estimate.output_elements,
                     estimate.flops,
-                    state[left].members,
-                    state[right].members,
+                    state[left].stable_ordinal,
+                    state[right].stable_ordinal,
+                    left,
+                    right,
                 );
                 if best
                     .as_ref()
@@ -452,8 +458,10 @@ pub fn plan_output_greedy(model: &NetworkModel, weights: CostWeights) -> Result<
                         key < (
                             best_estimate.output_elements,
                             best_estimate.flops,
-                            state[*best_left].members,
-                            state[*best_right].members,
+                            state[*best_left].stable_ordinal,
+                            state[*best_right].stable_ordinal,
+                            *best_left,
+                            *best_right,
                         )
                     })
                 {
@@ -532,7 +540,7 @@ pub fn plan_bounded_exact(model: &NetworkModel, weights: CostWeights) -> Result<
 
 pub fn selected_uses_exact(model: &NetworkModel) -> Result<bool> {
     let greedy = plan_output_greedy(model, CostWeights::CPU)?;
-    Ok(model.operands.len() <= 4 && greedy.metrics.flops >= 100_000)
+    Ok((3..=4).contains(&model.operands.len()) && greedy.metrics.flops >= 100_000)
 }
 
 fn matrix_chain(
@@ -613,12 +621,30 @@ pub fn network_fixtures() -> Vec<NetworkFixture> {
 #[derive(Clone, Debug)]
 pub struct NetworkScenario {
     fixture: NetworkFixture,
+    current_plan: ContractionPlan,
+    selected_plan: ContractionPlan,
 }
 
 pub fn network_scenarios() -> Vec<NetworkScenario> {
     network_fixtures()
         .into_iter()
-        .map(|fixture| NetworkScenario { fixture })
+        .map(|fixture| {
+            let current_plan = plan_output_greedy(&fixture.model, CostWeights::CPU)
+                .expect("bounded fixture has a greedy plan");
+            let selected_plan = if selected_uses_exact(&fixture.model)
+                .expect("bounded fixture has a planner selection")
+            {
+                plan_bounded_exact(&fixture.model, CostWeights::CPU)
+                    .expect("selected bounded fixture has an exact plan")
+            } else {
+                current_plan.clone()
+            };
+            NetworkScenario {
+                fixture,
+                current_plan,
+                selected_plan,
+            }
+        })
         .collect()
 }
 
@@ -705,8 +731,6 @@ impl Scenario for NetworkScenario {
     }
 
     fn work(&self) -> WorkUnits {
-        let plan = plan_bounded_exact(&self.fixture.model, CostWeights::CPU)
-            .expect("bounded fixture has an exact plan");
         let input_elements = self
             .fixture
             .model
@@ -715,10 +739,11 @@ impl Scenario for NetworkScenario {
             .map(|operand| operand.elements().expect("bounded input elements"))
             .sum::<u128>();
         WorkUnits::new(
-            u64::try_from(plan.metrics.output_elements).expect("bounded output elements"),
-            u64::try_from((input_elements + plan.metrics.output_elements) * 4)
+            u64::try_from(self.selected_plan.metrics.output_elements)
+                .expect("bounded output elements"),
+            u64::try_from((input_elements + self.selected_plan.metrics.output_elements) * 4)
                 .expect("bounded workload bytes"),
-            Some(u64::try_from(plan.metrics.flops).expect("bounded FLOPs")),
+            Some(u64::try_from(self.selected_plan.metrics.flops).expect("bounded FLOPs")),
         )
     }
 
@@ -750,27 +775,11 @@ impl Scenario for NetworkScenario {
     }
 
     fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        let axes = self
-            .fixture
-            .model
-            .operands
-            .iter()
-            .map(|operand| operand.axes.iter().map(|axis| axis.label).collect())
-            .collect::<Vec<_>>();
-        let tensors = inputs.iter().collect::<Vec<_>>();
-        execute_spec(&tensors, &axes, &self.fixture.model.final_output)
+        execute_plan(inputs, &self.fixture, &self.current_plan)
     }
 
     fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        if matches!(
-            self.fixture.kind,
-            FixtureKind::BalancedTree | FixtureKind::BroadcastHeavy
-        ) {
-            let plan = plan_bounded_exact(&self.fixture.model, CostWeights::CPU)?;
-            execute_plan(inputs, &self.fixture, &plan)
-        } else {
-            self.run_library(inputs)
-        }
+        execute_plan(inputs, &self.fixture, &self.selected_plan)
     }
 
     fn check(&self, library: &Tensor, reference: &Tensor) -> Result<()> {
@@ -803,7 +812,7 @@ pub fn criterion_benchmarks(criterion: &mut Criterion) {
                 black_box(output)
             });
         });
-        criterion.bench_function(&format!("{id}/exact"), |bencher| {
+        criterion.bench_function(&format!("{id}/selected"), |bencher| {
             bencher.iter(|| {
                 let output = scenario.run_reference(black_box(&inputs)).expect("exact");
                 device.synchronize().expect("CPU sync");

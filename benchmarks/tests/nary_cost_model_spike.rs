@@ -34,6 +34,23 @@ fn selected_hybrid_obeys_the_frozen_arity_and_work_budget() -> Result<()> {
     assert!(selected_uses_exact(&fixtures[2].model)?);
     assert!(!selected_uses_exact(&fixtures[3].model)?);
 
+    let binary = NetworkModel::new(
+        vec![
+            ModelOperand::new(
+                0,
+                &[AxisExtent::new("m", 1_000), AxisExtent::new("k", 1_000)],
+                LayoutClass::Contiguous,
+            ),
+            ModelOperand::new(
+                1,
+                &[AxisExtent::new("k", 1_000), AxisExtent::new("n", 1_000)],
+                LayoutClass::Contiguous,
+            ),
+        ],
+        &["m", "n"],
+    )?;
+    assert!(!selected_uses_exact(&binary)?);
+
     for arity in 3..=6 {
         let model = NetworkModel::new(
             (0..arity)
@@ -127,6 +144,27 @@ fn model_checks_overflow_zero_k_and_broadcast_materialization() -> Result<()> {
     )?;
     assert_eq!(estimate_pair(&zero_k, 0, 1)?.flops, 0);
 
+    let late_zero = NetworkModel::new(
+        vec![
+            ModelOperand::new(
+                0,
+                &[
+                    AxisExtent::new("a", usize::MAX),
+                    AxisExtent::new("b", usize::MAX),
+                ],
+                LayoutClass::Contiguous,
+            ),
+            ModelOperand::new(
+                1,
+                &[AxisExtent::new("c", usize::MAX), AxisExtent::new("zero", 0)],
+                LayoutClass::Contiguous,
+            ),
+            ModelOperand::new(2, &[], LayoutClass::Contiguous),
+        ],
+        &[],
+    )?;
+    assert_eq!(estimate_pair(&late_zero, 0, 1)?.flops, 0);
+
     let broadcast = network_fixtures()
         .into_iter()
         .find(|fixture| fixture.kind == FixtureKind::BroadcastHeavy)
@@ -163,42 +201,43 @@ fn whole_network_scenarios_are_exactly_bounded_and_correct() -> Result<()> {
 
 #[test]
 fn selected_reassociation_preserves_gradients_on_changed_path() -> Result<()> {
-    let scenario = network_scenarios().remove(1);
-    let values = scenario.setup(&Device::Cpu)?;
-    let current_vars = values
-        .iter()
-        .map(Var::from_tensor)
-        .collect::<Result<Vec<_>>>()?;
-    let selected_vars = values
-        .iter()
-        .map(Var::from_tensor)
-        .collect::<Result<Vec<_>>>()?;
-    let current_inputs = current_vars
-        .iter()
-        .map(|variable| variable.as_tensor().clone())
-        .collect::<Vec<_>>();
-    let selected_inputs = selected_vars
-        .iter()
-        .map(|variable| variable.as_tensor().clone())
-        .collect::<Vec<_>>();
-    let current = scenario.run_library(&current_inputs)?;
-    let selected = scenario.run_reference(&selected_inputs)?;
-    let current_gradients = current.sum_all()?.backward()?;
-    let selected_gradients = selected.sum_all()?.backward()?;
-    for (current, selected) in current_vars.iter().zip(&selected_vars) {
-        let current = current_gradients
-            .get(current.as_tensor())
-            .unwrap()
-            .flatten_all()?
-            .to_vec1::<f32>()?;
-        let selected = selected_gradients
-            .get(selected.as_tensor())
-            .unwrap()
-            .flatten_all()?
-            .to_vec1::<f32>()?;
-        for (&current, &selected) in current.iter().zip(&selected) {
-            let tolerance = 0.002 * selected.abs().max(1.);
-            assert!((current - selected).abs() <= tolerance);
+    for scenario in network_scenarios().into_iter().skip(1).take(2) {
+        let values = scenario.setup(&Device::Cpu)?;
+        let current_vars = values
+            .iter()
+            .map(Var::from_tensor)
+            .collect::<Result<Vec<_>>>()?;
+        let selected_vars = values
+            .iter()
+            .map(Var::from_tensor)
+            .collect::<Result<Vec<_>>>()?;
+        let current_inputs = current_vars
+            .iter()
+            .map(|variable| variable.as_tensor().clone())
+            .collect::<Vec<_>>();
+        let selected_inputs = selected_vars
+            .iter()
+            .map(|variable| variable.as_tensor().clone())
+            .collect::<Vec<_>>();
+        let current = scenario.run_library(&current_inputs)?;
+        let selected = scenario.run_reference(&selected_inputs)?;
+        let current_gradients = current.sum_all()?.backward()?;
+        let selected_gradients = selected.sum_all()?.backward()?;
+        for (current, selected) in current_vars.iter().zip(&selected_vars) {
+            let current = current_gradients
+                .get(current.as_tensor())
+                .unwrap()
+                .flatten_all()?
+                .to_vec1::<f32>()?;
+            let selected = selected_gradients
+                .get(selected.as_tensor())
+                .unwrap()
+                .flatten_all()?
+                .to_vec1::<f32>()?;
+            for (&current, &selected) in current.iter().zip(&selected) {
+                let tolerance = 0.002 * selected.abs().max(1.);
+                assert!((current - selected).abs() <= tolerance);
+            }
         }
     }
     Ok(())

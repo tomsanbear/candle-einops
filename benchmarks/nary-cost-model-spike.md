@@ -4,7 +4,7 @@
 
 **GO with a bounded hybrid planner on calibrated CPU backends.** Keep the
 current immediate-output greedy planner for small contractions and for
-uncalibrated backends. For arity at most four, use the exact planner only when
+uncalibrated backends. For arity three or four, use the exact planner only when
 the current greedy plan estimates at least 100,000 FLOPs. The exhaustive
 arity-five and arity-six implementation is a test oracle, not a runtime path.
 
@@ -43,7 +43,7 @@ The exact oracle enumerates all pair sequences for arity three through six.
 It minimizes total weighted score, then breaks equal scores
 lexicographically by the sequence of stable original-operand member bitmasks.
 The current-model comparator minimizes immediate pair-output elements, then
-pair FLOPs, then the same stable member masks.
+pair FLOPs, then the production planner's stable ordinal and live-index key.
 
 The copy estimate is deliberately conservative. A direct binary fast path can
 sometimes consume a transposed layout without copying, but the general n-ary
@@ -51,6 +51,13 @@ path may canonicalize it. The broadcast fixture follows the broadcast-GEMM
 spike's no-go result: it models a full 128 KiB eager expansion and one GEMM
 submission, not per-slice submissions and not an unsupported stride-zero
 batched GEMM.
+
+The prototype conservatively treats every materialized pair output as
+contiguous. Production must instead carry the actual intermediate layout when
+the binary lowering can return a view; an unknown or unsupported layout is a
+deterministic fallback to current greedy. The frozen layout-hostile case prices
+the initial transposed operand and does not establish a device-independent
+intermediate-layout cost.
 
 Zero-length contracted axes contribute zero FLOPs while output/intermediate
 allocation and peak-live terms remain visible. A production planner must
@@ -72,14 +79,17 @@ use 501 synchronized samples.
 
 | Fixture | Current wall time (95% CI) | Selected wall time (95% CI) | Current / selected |
 | --- | ---: | ---: | ---: |
-| linear chain | 142.958 us (142.791–143.083) | 142.958 us (142.792–143.125) | 1.0000x |
-| balanced tree | 566.708 us (565.417–568.125) | 333.625 us (332.250–334.625) | 1.6986x |
-| broadcast-heavy | 3,003.458 us (2,998.959–3,009.292) | 2,811.958 us (2,804.250–2,817.459) | 1.0681x |
-| layout-hostile | 233.167 us (232.583–234.041) | 232.583 us (232.083–233.292) | 1.0025x |
+| linear chain | 133.334 us (132.958–133.750) | 133.542 us (133.125–133.791) | 0.9984x |
+| balanced tree | 548.500 us (547.708–550.041) | 215.417 us (214.959–216.292) | 2.5462x |
+| broadcast-heavy | 2,946.500 us (2,941.292–2,951.541) | 2,606.750 us (2,601.667–2,612.875) | 1.1303x |
+| layout-hostile | 223.250 us (222.958–224.083) | 223.083 us (222.625–223.792) | 1.0007x |
 
-The selected-path benchmark excludes planner-decision timing from both sides;
-planner cost is reported separately above. This isolates execution-path value
-and makes the runtime threshold an explicit implementation concern.
+The selected-path benchmark precomputes both prescribed plans and excludes
+planner-decision timing from both sides; planner cost is reported separately
+above. A production exact selection first obtains the greedy estimate used by
+the threshold and then pays the exact-planner cost. This isolates execution-path
+value and makes that combined runtime overhead an explicit implementation
+concern.
 
 ## Backend and numerical policy
 
@@ -92,7 +102,7 @@ by backend. The planner-time budget for the frozen arity-four CPU cases is
 
 Floating-point reassociation need not be bitwise identical. Forward values and
 input gradients must match the current association within the benchmark's
-0.2% relative tolerance. Production tests must cover changed-path forward and
+mixed tolerance `0.002 * max(abs(reference), 1)`. Production tests must cover changed-path forward and
 gradient parity before enabling the planner. Integer contraction support is
 outside this spike and must not be inferred from reassociation tests.
 
@@ -100,7 +110,7 @@ outside this spike and must not be inferred from reassociation tests.
 
 ```sh
 CARGO_TARGET_DIR=target/benchmarks cargo +1.94 run --locked --manifest-path benchmarks/Cargo.toml --bin nary_cost_probe -- --samples 1001 --output target/benchmarks/nary-cost-planner-1001.json
-python3 .github/scripts/run_benchmarks.py run --filter spike/nary-cost --samples 501 --output target/benchmarks/nary-cost-final-wall-501.json
+python3 .github/scripts/run_benchmarks.py run --filter spike/nary-cost --samples 501 --output target/benchmarks/nary-cost-final-wall-precomputed-501.json
 ```
 
 Generated JSON remains under `target/` and is not a repository artifact.

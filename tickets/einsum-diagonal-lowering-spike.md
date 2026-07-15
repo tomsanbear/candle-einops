@@ -39,7 +39,15 @@ per-call index construction before candidate APIs exist.
   device lifetime/caching, and CPU/CUDA/Metal feasibility.
 - Refine the conditional implementation ticket with exact ownership and fallback.
 
+## Result
+
+GO for one original-layout flat gather only when the original operand is
+contiguous and repeated-axis adjacency lowering would materialize a dense copy.
+The current path remains the adjacent, non-contiguous, overflow, and unsupported
+fallback. Do not introduce a cross-call/device-global cache. Full evidence and
+the CPU measurements are recorded in
+`benchmarks/diagonal-lowering-spike.md`.
+
 ## Non-goals
 
 No production runtime change in the spike and no general gather optimization.
-

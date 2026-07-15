@@ -1,11 +1,11 @@
 ---
 id: edge-shape-dtype-properties
 title: Add edge-shape and dtype property coverage
-status: todo
+status: done
 priority: p1
 dependencies: [runtime-rank-shape-validation, decomposition-arithmetic-safety]
 related: []
-scopes: [tests]
+scopes: [tests, runtime]
 shared_scopes: [ticketing]
 paths: []
 tags: [hardening-0.2]

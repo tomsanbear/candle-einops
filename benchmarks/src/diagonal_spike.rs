@@ -317,7 +317,7 @@ impl Scenario for DiagonalScenario {
             || library.flatten_all()?.to_vec1::<f32>()?
                 != reference.flatten_all()?.to_vec1::<f32>()?
         {
-            candle_core::bail!("diagonal spike candidate differs from current lowering")
+            candle_core::bail!("diagonal cached reference floor differs from the library path")
         }
         Ok(())
     }
@@ -375,19 +375,19 @@ pub fn criterion_benchmarks(criterion: &mut Criterion) {
         let id = scenario.id().as_str();
         criterion_operation(
             criterion,
-            &format!("{id}/current"),
+            &format!("{id}/library-path"),
             &prepared,
             Operation::Library,
             &synchronizer,
-            "current diagonal sample must succeed",
+            "diagonal library sample must succeed",
         );
         criterion_operation(
             criterion,
-            &format!("{id}/cached-flat-gather"),
+            &format!("{id}/cached-reference-floor"),
             &prepared,
             Operation::Reference,
             &synchronizer,
-            "diagonal candidate sample must succeed",
+            "diagonal cached reference floor must succeed",
         );
     }
 }

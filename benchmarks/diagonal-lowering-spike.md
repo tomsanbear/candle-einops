@@ -6,6 +6,12 @@ permutation would force a dense copy. Keep the existing lowering for adjacent
 diagonals and as the fallback. Do not add a device-global cache or a custom
 kernel.
 
+The implementation keeps the six versioned spike scenarios unchanged. Their
+`library` estimate now measures the selected runtime path, while `reference`
+and Criterion's `cached-reference-floor` label remain the prebuilt-index floor;
+the latter excludes per-invocation index construction and is not a second
+library implementation.
+
 ## Evidence
 
 The repository wrapper ran both probes with 1,001 samples on Candle 0.11.0,

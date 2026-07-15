@@ -4,7 +4,7 @@ mod einops;
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// let output = einops!("h w c -> c h w", &input);
 /// ```
 #[proc_macro]

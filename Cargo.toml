@@ -3,6 +3,7 @@ name = "candle-einops"
 version = "0.1.2"
 authors = ["tomsanbear <thomas@santerre.xyz>"]
 edition = "2021"
+rust-version = "1.94"
 description = "Rust implementation of the python einops package for the Candle ML library "
 license = "MIT OR Apache-2.0"
 keywords = ["tensor", "candle", "einops", "machine-learning", "ai"]
@@ -11,8 +12,12 @@ exclude = [".github/"]
 repository = "https://github.com/tomsanbear/candle-einops"
 
 [dependencies]
-candle-core = { version = "0.6" }
-candle-einops-macros = { path = "candle-einops-macros", version = "0.1.1" }
+candle-core = { version = "0.11" }
+candle-einops-macros = { path = "candle-einops-macros", version = "0.1.2" }
+
+[workspace]
+members = ["candle-einops-macros"]
+resolver = "2"
 
 [package.metadata.docs.rs]
 no-default-features = true

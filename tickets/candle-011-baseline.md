@@ -1,7 +1,7 @@
 ---
 id: candle-011-baseline
 title: Establish the Candle 0.11 baseline
-status: todo
+status: done
 priority: p0
 dependencies: []
 related: []

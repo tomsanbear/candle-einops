@@ -1,11 +1,11 @@
 ---
 id: einsum-ellipsis-slice
 title: Add einsum ellipsis broadcasting
-status: todo
+status: done
 priority: p1
 dependencies: [einsum-binary-gemm-slice]
 related: []
-scopes: [runtime, macros, tests]
+scopes: [runtime, macros, tests, docs]
 shared_scopes: [ticketing]
 paths: []
 tags: [einsum-implementation]

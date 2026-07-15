@@ -1,7 +1,7 @@
 ---
 id: permute-compose-layout-spike
 title: Determine viable permute and composition layout fusion
-status: in-progress
+status: review
 priority: p1
 dependencies: [performance-harness-foundation, identity-reshape-elision]
 related: [fused-permute-compose-layout]

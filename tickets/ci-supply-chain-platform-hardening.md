@@ -1,7 +1,7 @@
 ---
 id: ci-supply-chain-platform-hardening
 title: Harden CI permissions dependencies and platform coverage
-status: todo
+status: in-progress
 priority: p1
 dependencies: []
 related: []
@@ -9,6 +9,9 @@ scopes: [tooling]
 shared_scopes: [ticketing]
 paths: []
 tags: [hardening-0.2]
+claimed_from: todo
+assignee: codex-ci-hardening
+lease_expires_at: 1784126863
 ---
 # Harden CI permissions dependencies and platform coverage
 

@@ -548,6 +548,7 @@ enum NaryExecutionStrategy {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct NaryExecutionTrace {
     used_exact: bool,
+    used_cached_greedy: bool,
     member_sequence: Vec<(u64, u64)>,
     final_permutations: usize,
     intermediates: Vec<NaryIntermediateTrace>,
@@ -3518,6 +3519,7 @@ mod tests {
 
     #[test]
     fn selected_execution_matches_frozen_greedy_forward_gradients_and_layout_trace() -> Result<()> {
+        clear_nary_plan_cache_for_test();
         let device = Device::Cpu;
         let patterns = [
             EinsumAxisPattern::new(&["a", "b"], None),
@@ -3553,6 +3555,11 @@ mod tests {
             nary_spec(&patterns, output),
             NaryExecutionStrategy::Selected,
         )?;
+        let (_, cached_trace) = execute_nary_einsum_for_test(
+            &selected_refs,
+            nary_spec(&patterns, output),
+            NaryExecutionStrategy::Selected,
+        )?;
         let (greedy, greedy_trace) = execute_nary_einsum_for_test(
             &greedy_refs,
             nary_spec(&patterns, output),
@@ -3560,6 +3567,9 @@ mod tests {
         )?;
         assert_mixed_close(&selected, &greedy)?;
         assert!(!trace.used_exact);
+        assert!(!trace.used_cached_greedy);
+        assert!(cached_trace.used_cached_greedy);
+        assert_eq!(cached_trace.member_sequence, trace.member_sequence);
         assert!(!greedy_trace.used_exact);
         assert_eq!(trace.member_sequence, greedy_trace.member_sequence);
         assert_eq!(trace.final_permutations, 1);

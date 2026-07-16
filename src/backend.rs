@@ -313,7 +313,7 @@ fn collapse_extrema_run(
     let start = *descending_axes
         .last()
         .expect("an extrema run contains at least one axis");
-    if input.device().is_cpu() && start == 0 {
+    if input.device().is_cpu() {
         return Ok(None);
     }
     let mut group_lengths = vec![1; start];

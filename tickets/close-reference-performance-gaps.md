@@ -5,7 +5,7 @@ status: done
 priority: p0
 dependencies: [optimized-provider-performance-protocol, cuda-simple-einsum-dispatch-overhead, cuda-view-consumption-overhead, provider-aware-reduction-selection, collapsed-extrema-provider-regression, prepared-diagonal-index-plans, device-calibrated-nary-planner, cpu-zero-k-fixed-overhead, cpu-layout-consumption-overhead, nonzero-benchmark-duration-floor, cpu-product-association-overhead, layout-hostile-broadcast-gemm-overhead, cpu-leading-extrema-overhead, cpu-trailing-extrema-overhead]
 related: [repeat-broadcast-consumption-overhead]
-scopes: [ticketing]
+scopes: [ticketing, runtime, benchmarks, tests, docs, tooling]
 shared_scopes: []
 paths: []
 tags: [performance-gap, performance-0.2]

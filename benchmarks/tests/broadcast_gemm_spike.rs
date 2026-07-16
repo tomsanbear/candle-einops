@@ -1,8 +1,8 @@
 use candle_core::{DType, Device, Result, Tensor, Var};
 use candle_einops_benchmarks::Scenario;
 use candle_einops_benchmarks::broadcast_gemm_spike::{
-    StructuralMetrics, broadcast_scenarios, direct_broadcast_gemm, eager_expansion_probe,
-    selected_broadcast_gemm, sliced_broadcast_gemm,
+    LibraryStrategy, StructuralMetrics, broadcast_scenarios, direct_broadcast_gemm,
+    eager_expansion_probe, selected_broadcast_gemm, sliced_broadcast_gemm,
 };
 
 fn flat(tensor: &Tensor) -> Result<Vec<f32>> {
@@ -53,6 +53,14 @@ fn frozen_cases_report_copy_peak_and_submission_metrics() -> Result<()> {
         ]
     );
     Ok(())
+}
+
+#[test]
+fn exact_layout_hostile_batches_use_the_production_direct_route() {
+    let layout_hostile = broadcast_scenarios()
+        .last()
+        .expect("frozen layout-hostile scenario");
+    assert_eq!(layout_hostile.library_strategy(), LibraryStrategy::Direct);
 }
 
 #[test]

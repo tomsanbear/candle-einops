@@ -23,6 +23,12 @@ pub enum CandidateStrategy {
     Sliced,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LibraryStrategy {
+    Eager,
+    Direct,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct BroadcastScenario {
     id: ScenarioId,
@@ -226,6 +232,11 @@ pub fn broadcast_scenarios() -> &'static [BroadcastScenario] {
 }
 
 impl BroadcastScenario {
+    #[must_use]
+    pub const fn library_strategy(self) -> LibraryStrategy {
+        LibraryStrategy::Eager
+    }
+
     #[must_use]
     pub fn selected_strategy(self) -> CandidateStrategy {
         match self.case {

@@ -1,7 +1,7 @@
 ---
 id: nonzero-benchmark-duration-floor
 title: Represent sub-clock benchmark durations
-status: in-progress
+status: done
 priority: p2
 dependencies: [optimized-provider-performance-protocol]
 related: []
@@ -9,9 +9,6 @@ scopes: [benchmarks, tooling]
 shared_scopes: []
 paths: []
 tags: [performance-gap, hardening]
-claimed_from: todo
-assignee: codex-root
-lease_expires_at: 1784224613
 ---
 ## Goal
 

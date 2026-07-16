@@ -355,7 +355,14 @@ fn measure_operation(
     synchronizer.synchronize()?;
     let finished = clock.now_ns();
     black_box(output);
-    Ok(finished.saturating_sub(started))
+    Ok(elapsed_ns(started, finished))
+}
+
+/// Converts clock observations to a positive sample at the host timer's
+/// one-nanosecond reporting floor.
+#[must_use]
+pub fn elapsed_ns(started: u64, finished: u64) -> u64 {
+    finished.saturating_sub(started).max(1)
 }
 
 fn summarize(samples: &[u64]) -> Estimate {

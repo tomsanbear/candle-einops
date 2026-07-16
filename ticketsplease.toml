@@ -18,6 +18,7 @@ benchmarks = ["benchmarks/**"]
 docs = ["README.md", "CHANGELOG.md", "LICENSE*", "docs/**"]
 tooling = [
     "Cargo.toml",
+    "deny.toml",
     ".github/**",
     ".gitignore",
     "rust-toolchain*",

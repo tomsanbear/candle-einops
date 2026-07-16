@@ -100,6 +100,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let extended_compositions = extended_compose::scenarios();
     let extrema = extrema_spike::scenarios();
     let nary_costs = nary_cost_model_spike::network_scenarios();
+    let diagonals = diagonal_spike::scenarios();
     let mut scenarios: Vec<&dyn Scenario> = if include_plumbing {
         vec![&plumbing]
     } else {
@@ -110,7 +111,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
     if !include_plumbing {
         scenarios.extend(
-            diagonal_spike::scenarios()
+            diagonals
                 .iter()
                 .map(|scenario| scenario as &dyn Scenario),
         );

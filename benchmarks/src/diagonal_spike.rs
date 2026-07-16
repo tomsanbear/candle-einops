@@ -1,9 +1,10 @@
 //! Benchmark-only probes and candidates for repeated-label diagonal lowering.
 
 use std::hint::black_box;
+use std::cell::RefCell;
 
 use candle_core::{CpuStorage, Device, Result, Storage, Tensor};
-use candle_einops::einsum;
+pub use candle_einops::PreparedDiagonalPlan;
 use criterion::Criterion;
 use serde::Serialize;
 
@@ -179,71 +180,24 @@ pub fn break_even_reuses(
     )
 }
 
-/// Benchmark-only ownership sketch for a caller-prepared, device-bound plan.
-pub struct PreparedDiagonalPlan {
-    input_shape: Vec<usize>,
-    output_shape: Vec<usize>,
-    indices: Tensor,
-}
-
-impl PreparedDiagonalPlan {
-    pub fn repeated(extent: usize, multiplicity: usize, device: &Device) -> Result<Self> {
-        Ok(Self {
-            input_shape: vec![extent; multiplicity],
-            output_shape: vec![extent],
-            indices: build_repeated_indices(extent, multiplicity, device)?,
-        })
-    }
-
-    pub fn interleaved(
-        first_extent: usize,
-        second_extent: usize,
-        device: &Device,
-    ) -> Result<Self> {
-        Ok(Self {
-            input_shape: vec![first_extent, second_extent, first_extent, second_extent],
-            output_shape: vec![first_extent, second_extent],
-            indices: build_interleaved_indices(first_extent, second_extent, device)?,
-        })
-    }
-
-    pub fn execute(&self, input: &Tensor) -> Result<Tensor> {
-        if input.dims() != self.input_shape {
-            candle_core::bail!(
-                "prepared diagonal plan expects shape {:?}, received {:?}",
-                self.input_shape,
-                input.dims()
-            )
-        }
-        if !input.device().same_device(self.indices.device()) {
-            candle_core::bail!("prepared diagonal plan and input are on different devices")
-        }
-        cached_flat_gather(input, &self.indices, &self.output_shape)
-    }
-
-    #[must_use]
-    pub fn indices(&self) -> &Tensor {
-        &self.indices
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 enum Pattern {
     Simple,
     Interleaved,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub struct DiagonalScenario {
     id: ScenarioId,
     pattern: Pattern,
     first_extent: usize,
     second_extent: usize,
+    prepared_plan: RefCell<Option<PreparedDiagonalPlan>>,
 }
 
 impl DiagonalScenario {
     #[must_use]
-    pub fn input_elements(self) -> usize {
+    pub fn input_elements(&self) -> usize {
         match self.pattern {
             Pattern::Simple => self.first_extent * self.first_extent,
             Pattern::Interleaved => {
@@ -253,7 +207,7 @@ impl DiagonalScenario {
     }
 
     #[must_use]
-    pub fn output_elements(self) -> usize {
+    pub fn output_elements(&self) -> usize {
         match self.pattern {
             Pattern::Simple => self.first_extent,
             Pattern::Interleaved => self.first_extent * self.second_extent,
@@ -261,19 +215,19 @@ impl DiagonalScenario {
     }
 
     #[must_use]
-    pub fn index_elements(self) -> usize {
+    pub fn index_elements(&self) -> usize {
         self.output_elements()
     }
 
     #[must_use]
-    pub fn current_copy_elements(self) -> usize {
+    pub fn current_copy_elements(&self) -> usize {
         match self.pattern {
             Pattern::Simple => 0,
             Pattern::Interleaved => self.input_elements(),
         }
     }
 
-    pub fn build_indices(self, device: &Device) -> Result<Tensor> {
+    pub fn build_indices(&self, device: &Device) -> Result<Tensor> {
         match self.pattern {
             Pattern::Simple => build_repeated_indices(self.first_extent, 2, device),
             Pattern::Interleaved => {
@@ -282,7 +236,7 @@ impl DiagonalScenario {
         }
     }
 
-    fn input_shape(self) -> Vec<usize> {
+    fn input_shape(&self) -> Vec<usize> {
         match self.pattern {
             Pattern::Simple => vec![self.first_extent, self.first_extent],
             Pattern::Interleaved => vec![
@@ -294,7 +248,7 @@ impl DiagonalScenario {
         }
     }
 
-    fn output_shape(self) -> Vec<usize> {
+    fn output_shape(&self) -> Vec<usize> {
         match self.pattern {
             Pattern::Simple => vec![self.first_extent],
             Pattern::Interleaved => vec![self.first_extent, self.second_extent],
@@ -316,7 +270,7 @@ pub struct IndexPreparationRecord {
 }
 
 pub fn measure_index_preparation(
-    scenario: DiagonalScenario,
+    scenario: &DiagonalScenario,
     device: &Device,
     synchronizer: &dyn Synchronizer,
     clock: &dyn Clock,
@@ -369,18 +323,32 @@ impl Scenario for DiagonalScenario {
     fn setup(&self, device: &Device) -> Result<Vec<Tensor>> {
         let input = Tensor::arange(0f32, self.input_elements() as f32, device)?
             .reshape(self.input_shape())?;
-        Ok(vec![input, self.build_indices(device)?])
+        let plan = match self.pattern {
+            Pattern::Simple => PreparedDiagonalPlan::repeated(self.first_extent, 2, device)?,
+            Pattern::Interleaved => PreparedDiagonalPlan::interleaved(
+                self.first_extent,
+                self.second_extent,
+                device,
+            )?,
+        };
+        self.prepared_plan.replace(Some(plan));
+        Ok(vec![input])
     }
 
     fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        match self.pattern {
-            Pattern::Simple => einsum!("i i -> i", &inputs[0]),
-            Pattern::Interleaved => einsum!("i j i j -> i j", &inputs[0]),
-        }
+        self.prepared_plan
+            .borrow()
+            .as_ref()
+            .expect("scenario setup installs the prepared plan")
+            .execute(&inputs[0])
     }
 
     fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        cached_flat_gather(&inputs[0], &inputs[1], &self.output_shape())
+        let plan = self.prepared_plan.borrow();
+        let plan = plan
+            .as_ref()
+            .expect("scenario setup installs the prepared plan");
+        cached_flat_gather(&inputs[0], plan.indices(), &self.output_shape())
     }
 
     fn check(&self, library: &Tensor, reference: &Tensor) -> Result<()> {
@@ -394,54 +362,59 @@ impl Scenario for DiagonalScenario {
     }
 }
 
-static SCENARIOS: [DiagonalScenario; 6] = [
+#[must_use]
+pub fn scenarios() -> Vec<DiagonalScenario> {
+    vec![
     DiagonalScenario {
         id: ScenarioId::new("spike/diagonal/simple/n16"),
         pattern: Pattern::Simple,
         first_extent: 16,
         second_extent: 1,
+        prepared_plan: RefCell::new(None),
     },
     DiagonalScenario {
         id: ScenarioId::new("spike/diagonal/simple/n64"),
         pattern: Pattern::Simple,
         first_extent: 64,
         second_extent: 1,
+        prepared_plan: RefCell::new(None),
     },
     DiagonalScenario {
         id: ScenarioId::new("spike/diagonal/simple/n256"),
         pattern: Pattern::Simple,
         first_extent: 256,
         second_extent: 1,
+        prepared_plan: RefCell::new(None),
     },
     DiagonalScenario {
         id: ScenarioId::new("spike/diagonal/interleaved/n4"),
         pattern: Pattern::Interleaved,
         first_extent: 4,
         second_extent: 4,
+        prepared_plan: RefCell::new(None),
     },
     DiagonalScenario {
         id: ScenarioId::new("spike/diagonal/interleaved/n8"),
         pattern: Pattern::Interleaved,
         first_extent: 8,
         second_extent: 8,
+        prepared_plan: RefCell::new(None),
     },
     DiagonalScenario {
         id: ScenarioId::new("spike/diagonal/interleaved/n16"),
         pattern: Pattern::Interleaved,
         first_extent: 16,
         second_extent: 16,
+        prepared_plan: RefCell::new(None),
     },
-];
-
-#[must_use]
-pub fn scenarios() -> &'static [DiagonalScenario] {
-    &SCENARIOS
+]
 }
 
 pub fn criterion_benchmarks(criterion: &mut Criterion) {
     let device = Device::Cpu;
     let synchronizer = DeviceSynchronizer(&device);
-    for scenario in scenarios() {
+    let scenarios = scenarios();
+    for scenario in &scenarios {
         let prepared = prepare(scenario, &device).expect("diagonal setup");
         let id = scenario.id().as_str();
         criterion_operation(

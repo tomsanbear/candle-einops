@@ -36,7 +36,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let fingerprint = Fingerprint::collect_cpu()?;
     let records = diagonal_spike::scenarios()
         .iter()
-        .copied()
         .filter(|scenario| {
             filter
                 .as_deref()

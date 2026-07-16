@@ -123,6 +123,7 @@ pub use candle_core::Result;
 pub use candle_einops_macros::{einops, einsum};
 
 pub use backend::Backend;
+pub use einsum::PreparedDiagonalPlan;
 
 /// Implementation details used by macros generated for this crate.
 ///

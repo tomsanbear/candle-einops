@@ -36,15 +36,15 @@ fn prepared_diagonal_plan_reuses_device_indices_with_strict_boundaries() -> Resu
     assert_eq!(plan.output_shape(), &[4, 3]);
     assert_eq!(plan.index_dtype(), DType::U32);
 
-    assert!(plan.execute(&Tensor::zeros((4, 4), DType::F32, &device)?).is_err());
-    let noncontiguous = Tensor::zeros((3, 4, 3, 4), DType::F32, &device)?
-        .permute((1, 0, 3, 2))?;
+    assert!(
+        plan.execute(&Tensor::zeros((4, 4), DType::F32, &device)?)
+            .is_err()
+    );
+    let noncontiguous = Tensor::zeros((3, 4, 3, 4), DType::F32, &device)?.permute((1, 0, 3, 2))?;
     assert!(plan.execute(&noncontiguous).is_err());
     assert!(PreparedDiagonalPlan::new(&[2, 3], &[0, 0], &device).is_err());
     assert!(PreparedDiagonalPlan::new(&[2, 3], &[0, 1], &device).is_err());
-    assert!(
-        PreparedDiagonalPlan::new(&[usize::MAX, usize::MAX], &[0, 0], &device).is_err()
-    );
+    assert!(PreparedDiagonalPlan::new(&[usize::MAX, usize::MAX], &[0, 0], &device).is_err());
     Ok(())
 }
 

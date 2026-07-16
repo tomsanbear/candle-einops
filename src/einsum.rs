@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
 
-use candle_core::{DType, Result, Tensor};
+use candle_core::{DType, Device, Result, Tensor};
 
 use crate::backend::execute_tensor_permute_and_compose;
 
@@ -1920,6 +1920,124 @@ enum RepeatedAxisLoweringPlan {
         output_shape: Vec<usize>,
         offsets: Vec<u32>,
     },
+}
+
+/// Caller-owned, device-bound indices for repeated-axis diagonal extraction.
+///
+/// Axis ids represent the input side of an einsum equation: equal ids are the
+/// repeated labels whose diagonal is retained, and first occurrence order
+/// determines the output axes. Preparing once avoids rebuilding and uploading
+/// the same `u32` index tensor for repeated calls with the same shape.
+#[derive(Debug)]
+pub struct PreparedDiagonalPlan {
+    input_shape: Vec<usize>,
+    axis_ids: Vec<usize>,
+    output_shape: Vec<usize>,
+    indices: Tensor,
+}
+
+impl PreparedDiagonalPlan {
+    /// Prepares reusable diagonal indices for one exact shape and device.
+    pub fn new(input_shape: &[usize], axis_ids: &[usize], device: &Device) -> Result<Self> {
+        if input_shape.len() != axis_ids.len() {
+            candle_core::bail!(
+                "prepared diagonal shape rank {} does not match axis-id rank {}",
+                input_shape.len(),
+                axis_ids.len()
+            )
+        }
+        let axes = axis_ids
+            .iter()
+            .copied()
+            .map(ExpandedAxis::Ellipsis)
+            .collect::<Vec<_>>();
+        validate_repeated_extents(input_shape, &axes, 0)?;
+        if !(0..axis_ids.len()).any(|position| axis_ids[..position].contains(&axis_ids[position])) {
+            candle_core::bail!("prepared diagonal plan requires at least one repeated axis id")
+        }
+        let Some((output_shape, offsets)) = original_flat_gather_offsets(input_shape, &axes, 0)?
+        else {
+            candle_core::bail!("prepared diagonal offsets exceed the supported u32 index range")
+        };
+        let index_count = offsets.len();
+        let indices = Tensor::from_vec(offsets, index_count, device)
+            .map_err(|error| error.context("prepared diagonal device-local indices"))?;
+        Ok(Self {
+            input_shape: input_shape.to_vec(),
+            axis_ids: axis_ids.to_vec(),
+            output_shape,
+            indices,
+        })
+    }
+
+    /// Convenience constructor for `i i ... -> i` extraction.
+    pub fn repeated(extent: usize, multiplicity: usize, device: &Device) -> Result<Self> {
+        if multiplicity < 2 {
+            candle_core::bail!("prepared repeated diagonal requires multiplicity of at least two")
+        }
+        Self::new(&vec![extent; multiplicity], &vec![0; multiplicity], device)
+    }
+
+    /// Convenience constructor for `i j i j -> i j` extraction.
+    pub fn interleaved(first_extent: usize, second_extent: usize, device: &Device) -> Result<Self> {
+        Self::new(
+            &[first_extent, second_extent, first_extent, second_extent],
+            &[0, 1, 0, 1],
+            device,
+        )
+    }
+
+    /// Extracts the prepared diagonal from one contiguous tensor.
+    pub fn execute(&self, input: &Tensor) -> Result<Tensor> {
+        if input.dims() != self.input_shape {
+            candle_core::bail!(
+                "prepared diagonal plan expects shape {:?}, received {:?}",
+                self.input_shape,
+                input.dims()
+            )
+        }
+        if !input.is_contiguous() {
+            candle_core::bail!("prepared diagonal plan requires contiguous input")
+        }
+        if !input.device().same_device(self.indices.device()) {
+            candle_core::bail!("prepared diagonal plan and input are on different devices")
+        }
+        input
+            .flatten_all()
+            .and_then(|flat| flat.index_select(&self.indices, 0))
+            .and_then(|selected| selected.reshape(self.output_shape.as_slice()))
+            .map_err(|error| error.context("prepared diagonal extraction"))
+    }
+
+    /// Exact input shape captured by this plan.
+    #[must_use]
+    pub fn input_shape(&self) -> &[usize] {
+        &self.input_shape
+    }
+
+    /// Axis ids captured from the input-side equation.
+    #[must_use]
+    pub fn axis_ids(&self) -> &[usize] {
+        &self.axis_ids
+    }
+
+    /// Unique-axis output shape in first-occurrence order.
+    #[must_use]
+    pub fn output_shape(&self) -> &[usize] {
+        &self.output_shape
+    }
+
+    /// Device index representation used by the prepared gather.
+    #[must_use]
+    pub const fn index_dtype(&self) -> DType {
+        DType::U32
+    }
+
+    /// Prepared device-local indices, exposed for diagnostics and benchmarking.
+    #[must_use]
+    pub fn indices(&self) -> &Tensor {
+        &self.indices
+    }
 }
 
 fn validate_repeated_extents(

@@ -110,6 +110,26 @@ Scalars and zero-sized axes are supported. Einsum never casts or moves tensors:
 multi-operand inputs must have the same dtype and device, and unsupported
 Candle operations return contextual errors.
 
+For a repeated diagonal with a stable shape, `PreparedDiagonalPlan` keeps the
+`u32` gather indices on the target device instead of rebuilding and uploading
+them on every call. Axis ids correspond to input labels; repeated ids select a
+diagonal and unique axes are returned in first-occurrence order.
+
+```rust
+use candle_core::{Device, Result, Tensor};
+use candle_einops::PreparedDiagonalPlan;
+
+fn prepared(input: &Tensor) -> Result<Tensor> {
+    let plan = PreparedDiagonalPlan::new(&[4, 3, 4, 3], &[0, 1, 0, 1], input.device())?;
+    plan.execute(input) // equivalent to `i j i j -> i j`
+}
+```
+
+Plans require the exact prepared shape, contiguous input, and same device.
+They are caller-owned and bounded; the crate does not maintain a global tensor
+or index cache. Use `einsum!` for one-shot calls and equations that continue
+with permutation, reduction, or contraction.
+
 Axes introduced by `einops!` repeat patterns are returned as broadcast views.
 These tensors can be non-contiguous and share storage with the input; operations
 that require contiguous storage may materialize them when consumed.

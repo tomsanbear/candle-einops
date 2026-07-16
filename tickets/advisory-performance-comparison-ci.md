@@ -4,7 +4,7 @@ title: Add reproducible advisory performance comparisons
 status: done
 priority: p2
 dependencies: [performance-harness-foundation, repeat-broadcast-view-lowering, homogeneous-reduction-fusion, einsum-binary-fastpaths]
-related: [gpu-performance-observability]
+related: [benchmark-device-support]
 scopes: [tooling]
 shared_scopes: [benchmarks, docs, ticketing]
 tags: [performance-0.2]

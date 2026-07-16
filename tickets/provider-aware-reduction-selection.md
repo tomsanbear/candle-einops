@@ -1,7 +1,7 @@
 ---
 id: provider-aware-reduction-selection
-title: Calibrate Metal contiguous reduction fusion
-status: in-progress
+title: Preserve physical fused-reduction axis order
+status: done
 priority: p1
 dependencies: [optimized-provider-performance-protocol]
 related: [homogeneous-reduction-fusion]
@@ -9,22 +9,16 @@ scopes: [runtime, benchmarks]
 shared_scopes: []
 paths: []
 tags: [performance-gap, reductions]
-claimed_from: todo
-assignee: codex-root
-lease_expires_at: 1784223076
 ---
-## Evidence
+## Resolution
 
-Five optimized 25-sample processes cleared CPU baseline, Accelerate, and CUDA. Metal contiguous trailing sum remained 16% / 30.2 microseconds behind its sequential direct Candle reference; mean remained 17% / 30.1 microseconds behind. Strided non-adjacent cases were not material gaps.
+The fused planner emitted dimensions in descending logical order. Candle Metal uses the supplied order when constructing its physical reduction layout, so contiguous trailing dimensions arrived as 3,2 and missed the contiguous fast-reduce kernel reached by direct Candle with 2,3.
 
-## Work
+Sum and mean runs now preserve ascending physical stride order while extrema keeps descending execution order where dimension removal requires it.
 
-- Freeze route tests for contiguous trailing and strided non-adjacent sum/mean on Metal versus other providers.
-- Attribute the Metal gap to collapsed extent, dispatch cost, or layout preparation using the existing high-signal matrix.
-- Select fusion only for provider/layout combinations that clear the materiality threshold.
+## Acceptance evidence
 
-## Acceptance
-
-- Red-first route tests cover provider and layout without changing values, gradients, dtype errors, or mixed-operation ordering.
-- Metal contiguous trailing sum and mean are no longer materially slower than direct Candle.
-- CPU and CUDA retain their optimized behavior and eligible cases retain the minimum reduction count.
+- Red-first planner assertions freeze ascending fused sum/mean axes and mixed-run ordering.
+- Values, gradients, ellipsis, boundary shapes, dtype behavior, mixed operations, and extrema fallback tests pass.
+- Five optimized 25-sample processes report all four reduction cells as parity on CPU baseline, Accelerate, Metal, and CUDA.
+- Metal contiguous trailing moved from roughly +16% / +30 microseconds to 0% / below 1 microsecond.

@@ -1,7 +1,7 @@
 ---
 id: cpu-layout-consumption-overhead
 title: Avoid CPU consumed-layout regressions
-status: todo
+status: in-progress
 priority: p0
 dependencies: [optimized-provider-performance-protocol]
 related: [fused-permute-compose-layout, identity-reshape-elision]
@@ -9,6 +9,9 @@ scopes: [runtime, benchmarks]
 shared_scopes: []
 paths: []
 tags: [performance-gap, cpu]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784223288
 ---
 ## Evidence
 

@@ -339,15 +339,15 @@ fn assert_values_equal(left: &Tensor, right: &Tensor) -> Result<()> {
 }
 
 #[test]
-fn tensor_selected_views_preserve_values_storage_offsets_and_gradients() -> Result<()> {
+fn tensor_selection_materializes_cpu_rank_two_and_preserves_other_views() -> Result<()> {
     let device = Device::Cpu;
     let input = Var::from_vec((0..24).map(|v| v as f32).collect(), (2, 3, 4), &device)?;
     let old_permuted = input.permute([2, 0, 1])?;
     let old = Tensor::reshape(&old_permuted, (4, 6))?;
     let selected = einops!("a b c -> c (a b)", input.as_tensor())?;
     assert_values_equal(&selected, &old)?;
-    assert_eq!(selected.stride(), [1, 4]);
-    assert_eq!(
+    assert_eq!(selected.layout(), old.layout());
+    assert_ne!(
         storage_address(&selected),
         storage_address(input.as_tensor())
     );
@@ -364,11 +364,9 @@ fn tensor_selected_views_preserve_values_storage_offsets_and_gradients() -> Resu
     let storage = Tensor::reshape(&Tensor::arange(0f32, 48., &device)?, (4, 3, 4))?;
     let offset = storage.narrow(0, 1, 2)?;
     let offset_output = einops!("a b c -> c (a b)", &offset)?;
-    assert_eq!(storage_address(&offset_output), storage_address(&offset));
-    assert_eq!(
-        offset_output.layout().start_offset(),
-        offset.layout().start_offset()
-    );
+    let offset_old = offset.permute([2, 0, 1])?.reshape(&[4, 6])?;
+    assert_eq!(offset_output.layout(), offset_old.layout());
+    assert_ne!(storage_address(&offset_output), storage_address(&offset));
 
     let nchw = Tensor::reshape(&Tensor::arange(0f32, 210., &device)?, (2, 3, 5, 7))?;
     let nhwc = einops!("n c h w -> n (h w) c", &nchw)?;
@@ -433,7 +431,8 @@ fn tensor_noncontiguous_zero_singleton_identity_and_fallback_boundaries() -> Res
         <&Tensor as Backend>::permute_and_compose(&source, &[0, 1, 2], &[4, 6], &[1, 2])?;
     let eligible_old = Tensor::reshape(&source, (4, 6))?;
     assert_values_equal(&eligible, &eligible_old)?;
-    assert_eq!(storage_address(&eligible), storage_address(&source));
+    assert_eq!(eligible.layout(), eligible_old.layout());
+    assert_ne!(storage_address(&eligible), storage_address(&source));
     assert_ne!(storage_address(&eligible_old), storage_address(&source));
 
     let fallback =

@@ -234,7 +234,12 @@ pub fn broadcast_scenarios() -> &'static [BroadcastScenario] {
 impl BroadcastScenario {
     #[must_use]
     pub const fn library_strategy(self) -> LibraryStrategy {
-        LibraryStrategy::Eager
+        match self.case {
+            BroadcastCase::LayoutHostile => LibraryStrategy::Direct,
+            BroadcastCase::Left | BroadcastCase::Right | BroadcastCase::Both => {
+                LibraryStrategy::Eager
+            }
+        }
     }
 
     #[must_use]
@@ -332,7 +337,10 @@ impl Scenario for BroadcastScenario {
     }
 
     fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        Ok(eager_expansion_probe(&inputs[0], &inputs[1])?.output)
+        match self.library_strategy() {
+            LibraryStrategy::Eager => Ok(eager_expansion_probe(&inputs[0], &inputs[1])?.output),
+            LibraryStrategy::Direct => direct_broadcast_gemm(&inputs[0], &inputs[1]),
+        }
     }
 
     fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {

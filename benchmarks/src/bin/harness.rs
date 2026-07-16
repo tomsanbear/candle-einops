@@ -3,8 +3,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use candle_einops_benchmarks::{
-    Backend, BenchmarkRecord, CompiledFeatures, CpuImplementation, DeviceSynchronizer,
-    ExecutionProfile, Fingerprint, MonotonicClock, PlumbingScenario, Scenario,
+    Backend, BenchmarkDocument, BenchmarkRecord, CompiledFeatures, CpuImplementation,
+    DeviceSynchronizer, ExecutionProfile, MonotonicClock, PlumbingScenario, RunMetadata, Scenario,
     binary_fast_path_scenarios, binary_operand_packing, broadcast_gemm_spike, diagonal_spike,
     extended_compose, extrema_spike, identity_reshape_scenarios, measure_pair,
     nary_cost_model_spike, permute_compose_layout_spike, prepare, product_scenarios,
@@ -139,20 +139,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     let device = profile.create_device(CompiledFeatures::CURRENT)?;
     let synchronizer = DeviceSynchronizer(&device);
     let clock = MonotonicClock;
-    let fingerprint = Fingerprint::collect_for(profile)?;
+    let run = RunMetadata::collect(profile, CompiledFeatures::CURRENT)?;
     let records = selected
         .into_iter()
         .map(|scenario| {
             let prepared = prepare(scenario, &device)?;
             let measurement = measure_pair(&prepared, &synchronizer, &clock, samples)?;
-            Ok(BenchmarkRecord::from_measurement(
-                &prepared,
-                &measurement,
-                fingerprint.clone(),
-            )?)
+            Ok(BenchmarkRecord::from_measurement(&prepared, &measurement)?)
         })
         .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
-    let document = serde_json::to_string_pretty(&records)?;
+    let document = BenchmarkDocument::new(run, records, Vec::new())?;
+    let document = serde_json::to_string_pretty(&document)?;
     println!("{document}");
     if let Some(path) = output {
         if let Some(parent) = path.parent() {

@@ -82,6 +82,66 @@ class AdvisoryComparisonTests(unittest.TestCase):
             paths.append(path)
         return paths
 
+    def write_v2_runs(
+        self,
+        root: Path,
+        side: str,
+        sha: str,
+        medians: list[float],
+    ) -> list[Path]:
+        paths = []
+        for index, median in enumerate(medians, 1):
+            path = root / f"{side}-v2-{index}.json"
+            item = record(sha, median)
+            item.pop("schema_version")
+            fingerprint = item.pop("fingerprint")
+            run = {
+                **fingerprint,
+                "cpu_implementation": "baseline",
+                "device_index": None,
+                "device_name": "CPU (baseline)",
+                "device_identity": {
+                    "value": None,
+                    "source": None,
+                    "reason": "not exposed",
+                },
+                "driver_version": {
+                    "value": None,
+                    "source": None,
+                    "reason": "not applicable",
+                },
+                "runtime_version": {
+                    "value": None,
+                    "source": None,
+                    "reason": "not applicable",
+                },
+                "feature_set": ["baseline"],
+                "synchronization": "candle_device_synchronize",
+            }
+            run.pop("device")
+            run.pop("driver")
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 2,
+                        "run": run,
+                        "records": [item],
+                        "skipped": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            paths.append(path)
+        return paths
+
+    def test_schema_v2_documents_compare_on_run_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = self.write_v2_runs(root, "base", BASE_SHA, [10_000] * 5)
+            head = self.write_v2_runs(root, "head", HEAD_SHA, [12_000] * 5)
+            report = compare_benchmarks.compare_files(base, head, BASE_SHA, HEAD_SHA)
+        self.assertEqual(report["scenarios"][0]["status"], "advisory_regression")
+
     def test_report_marks_only_large_confident_movement_advisory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -109,7 +169,7 @@ class AdvisoryComparisonTests(unittest.TestCase):
     def test_workload_schema_and_environment_mismatches_are_incomparable(self) -> None:
         cases = [
             ({"elements": 65}, "workload_mismatch"),
-            ({"schema_version": 2}, "schema_mismatch"),
+            ({"schema_version": 3}, "schema_mismatch"),
             ({"rust_version": "rustc 1.95.0"}, "fingerprint_mismatch"),
         ]
         for changes, reason in cases:
@@ -125,10 +185,10 @@ class AdvisoryComparisonTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             base = self.write_runs(
-                root, "base", BASE_SHA, [10_000] * 5, schema_version=2
+                root, "base", BASE_SHA, [10_000] * 5, schema_version=3
             )
             head = self.write_runs(
-                root, "head", HEAD_SHA, [12_000] * 5, schema_version=2
+                root, "head", HEAD_SHA, [12_000] * 5, schema_version=3
             )
             report = compare_benchmarks.compare_files(base, head, BASE_SHA, HEAD_SHA)
         self.assertEqual(report["scenarios"][0]["status"], "incomparable")

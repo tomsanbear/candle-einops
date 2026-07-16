@@ -45,10 +45,26 @@ def _load_document(path: Path, expected_sha: str, side: str) -> dict[str, dict[s
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ComparisonInputError(f"could not read {path}: {error}") from error
-    if not isinstance(document, list):
-        raise ComparisonInputError(f"{path} must contain a JSON array of benchmark records")
+    run_identity: dict[str, Any] | None = None
+    if isinstance(document, list):
+        document_schema = None
+        document_records = document
+    elif isinstance(document, dict) and document.get("schema_version") == 2:
+        document_schema = 2
+        document_records = document.get("records")
+        run_identity = document.get("run")
+        skipped = document.get("skipped")
+        if not isinstance(document_records, list) or not isinstance(run_identity, dict):
+            raise ComparisonInputError(f"{path} has an invalid schema v2 document envelope")
+        if not isinstance(skipped, list):
+            raise ComparisonInputError(f"{path} has no schema v2 skipped-scenario list")
+    else:
+        raise ComparisonInputError(
+            f"{path} must contain a v1 record array or schema v2 document"
+        )
     records: dict[str, dict[str, Any]] = {}
-    for index, record in enumerate(document):
+    for index, raw_record in enumerate(document_records):
+        record = dict(raw_record) if isinstance(raw_record, dict) else raw_record
         if not isinstance(record, dict):
             raise ComparisonInputError(f"{path} record {index} must be an object")
         scenario_id = record.get("scenario_id")
@@ -56,19 +72,19 @@ def _load_document(path: Path, expected_sha: str, side: str) -> dict[str, dict[s
             raise ComparisonInputError(f"{path} record {index} has no scenario_id")
         if scenario_id in records:
             raise ComparisonInputError(f"{path} repeats scenario_id {scenario_id}")
-        schema_version = record.get("schema_version")
+        schema_version = document_schema or record.get("schema_version")
         if not isinstance(schema_version, int) or isinstance(schema_version, bool):
             raise ComparisonInputError(f"{path} {scenario_id} has an invalid schema version")
         sample_count = record.get("sample_count")
-        if schema_version == 1 and (
+        if schema_version in (1, 2) and (
             not isinstance(sample_count, int)
             or isinstance(sample_count, bool)
             or sample_count <= 0
         ):
             raise ComparisonInputError(f"{path} {scenario_id} has an invalid sample count")
-        fingerprint = record.get("fingerprint")
+        fingerprint = run_identity if schema_version == 2 else record.get("fingerprint")
         if not isinstance(fingerprint, dict):
-            raise ComparisonInputError(f"{path} {scenario_id} has no fingerprint object")
+            raise ComparisonInputError(f"{path} {scenario_id} has no run identity object")
         actual_sha = fingerprint.get("git_sha")
         if actual_sha != expected_sha:
             raise ComparisonInputError(
@@ -86,6 +102,8 @@ def _load_document(path: Path, expected_sha: str, side: str) -> dict[str, dict[s
             or float(median_ns) <= 0
         ):
             raise ComparisonInputError(f"{path} {scenario_id} has an invalid library median")
+        record["schema_version"] = schema_version
+        record["_run_identity"] = fingerprint
         records[scenario_id] = record
     return records
 
@@ -100,15 +118,42 @@ def _constant(records: list[dict[str, Any]], key: str) -> Any | None:
 
 
 def _fingerprint_key(record: dict[str, Any]) -> tuple[Any, ...] | None:
-    fingerprint = record.get("fingerprint")
-    if not isinstance(fingerprint, dict) or any(field not in fingerprint for field in FINGERPRINT_FIELDS):
+    fingerprint = record.get("_run_identity")
+    if not isinstance(fingerprint, dict):
         return None
-    values = tuple(fingerprint[field] for field in FINGERPRINT_FIELDS)
-    if any(not isinstance(value, str) or not value for value in values[:-1]):
+    if record.get("schema_version") == 1:
+        if any(field not in fingerprint for field in FINGERPRINT_FIELDS):
+            return None
+        values = tuple(fingerprint[field] for field in FINGERPRINT_FIELDS)
+        if any(not isinstance(value, str) or not value for value in values[:-1]):
+            return None
+        if values[-1] is not None and (not isinstance(values[-1], str) or not values[-1]):
+            return None
+        return values
+    fields = (
+        "rust_version",
+        "candle_version",
+        "os",
+        "architecture",
+        "backend",
+        "cpu_implementation",
+        "device_index",
+        "device_name",
+        "device_identity",
+        "driver_version",
+        "runtime_version",
+        "feature_set",
+        "synchronization",
+    )
+    if any(field not in fingerprint for field in fields):
         return None
-    if values[-1] is not None and (not isinstance(values[-1], str) or not values[-1]):
-        return None
-    return values
+    for field in ("rust_version", "candle_version", "os", "architecture", "backend", "device_name", "synchronization"):
+        if not isinstance(fingerprint[field], str) or not fingerprint[field]:
+            return None
+    return tuple(
+        json.dumps(fingerprint[field], sort_keys=True, separators=(",", ":"))
+        for field in fields
+    )
 
 
 def _median(values: list[float]) -> float:
@@ -172,7 +217,7 @@ def _compare_scenario(
     head_schema = _constant(head, "schema_version")
     if base_schema is None or head_schema is None or base_schema != head_schema:
         return _incomparable(scenario_id, "schema_mismatch")
-    if base_schema != 1:
+    if base_schema not in (1, 2):
         return _incomparable(scenario_id, "unsupported_schema")
 
     base_workload = _constant(base, "workload")

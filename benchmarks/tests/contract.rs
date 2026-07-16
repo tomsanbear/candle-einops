@@ -437,30 +437,16 @@ fn setup_and_correctness_are_outside_the_timed_sample() -> Result<()> {
         SamplingOrderPolicy::AlternatingLibraryThenReference
     );
 
-    let fingerprint = Fingerprint {
-        git_sha: "a".repeat(40),
-        rust_version: "rustc test".to_owned(),
-        candle_version: "0.11.0".to_owned(),
-        os: "test-os".to_owned(),
-        architecture: "test-arch".to_owned(),
-        backend: Backend::Cpu,
-        device: "test-cpu".to_owned(),
-        driver: None,
-    };
-    let record = BenchmarkRecord::from_measurement(&prepared, &result, fingerprint)
-        .expect("valid benchmark record");
+    let record =
+        BenchmarkRecord::from_measurement(&prepared, &result).expect("valid benchmark record");
     let mut serialized = serde_json::to_value(&record).expect("serialize benchmark record");
     assert_eq!(
         serialized["sampling_order_policy"],
         "alternating_library_then_reference"
     );
-    serialized
-        .as_object_mut()
-        .unwrap()
-        .remove("sampling_order_policy");
+    serialized.as_object_mut().unwrap().remove("sampling_order_policy");
     let legacy: BenchmarkRecord =
-        serde_json::from_value(serialized).expect("deserialize legacy v1 record");
-    assert_eq!(legacy.schema_version, 1);
+        serde_json::from_value(serialized).expect("deserialize record without sampling policy");
     assert_eq!(
         legacy.sampling_order_policy,
         SamplingOrderPolicy::FixedLibraryThenReference
@@ -487,7 +473,7 @@ fn criterion_sample_uses_no_json_clock_and_synchronizes_after_execution() -> Res
 
 #[test]
 fn incomplete_or_invalid_metadata_is_rejected() {
-    let incomplete = serde_json::from_str::<BenchmarkRecord>(r#"{"schema_version":1}"#);
+    let incomplete = serde_json::from_str::<BenchmarkRecord>(r#"{}"#);
     assert!(incomplete.is_err());
 
     let invalid = Fingerprint {

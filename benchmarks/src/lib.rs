@@ -31,6 +31,7 @@ pub mod permute_compose_layout_spike;
 compile_error!("benchmark acceleration features are mutually exclusive");
 
 pub const RESULT_SCHEMA_VERSION: u32 = 1;
+pub const BENCHMARK_DOCUMENT_SCHEMA_VERSION: u32 = 2;
 pub const CANDLE_VERSION: &str = "0.11.0";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -352,6 +353,178 @@ pub struct ExecutionProfile {
     pub device_index: usize,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Availability<T> {
+    pub value: Option<T>,
+    pub source: Option<String>,
+    pub reason: Option<String>,
+}
+
+impl<T> Availability<T> {
+    pub fn available(value: T, source: impl Into<String>) -> Self {
+        Self {
+            value: Some(value),
+            source: Some(source.into()),
+            reason: None,
+        }
+    }
+
+    pub fn unavailable(reason: impl Into<String>) -> Self {
+        Self {
+            value: None,
+            source: None,
+            reason: Some(reason.into()),
+        }
+    }
+
+    pub fn validate(&self) -> std::result::Result<(), ValidationError> {
+        match (&self.value, self.source.as_deref(), self.reason.as_deref()) {
+            (Some(_), Some(source), None) if !source.trim().is_empty() => Ok(()),
+            (None, None, Some(reason)) if !reason.trim().is_empty() => Ok(()),
+            _ => Err(ValidationError::new(
+                "availability must contain either a value and source or an unavailable reason",
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RunMetadata {
+    pub git_sha: String,
+    pub rust_version: String,
+    pub candle_version: String,
+    pub os: String,
+    pub architecture: String,
+    pub backend: Backend,
+    pub cpu_implementation: Option<CpuImplementation>,
+    pub device_index: Option<usize>,
+    pub device_name: String,
+    pub device_identity: Availability<String>,
+    pub driver_version: Availability<String>,
+    pub runtime_version: Availability<String>,
+    pub feature_set: Vec<String>,
+    pub synchronization: String,
+}
+
+impl RunMetadata {
+    pub fn collect(
+        profile: ExecutionProfile,
+        compiled: CompiledFeatures,
+    ) -> std::result::Result<Self, ValidationError> {
+        profile.validate(compiled)?;
+        let (cpu_implementation, device_index, device_name, feature) = match profile.backend {
+            Backend::Cpu => {
+                let name = match profile.cpu_implementation {
+                    CpuImplementation::Baseline => "CPU (baseline)",
+                    CpuImplementation::Accelerate => "CPU (Accelerate)",
+                    CpuImplementation::Mkl => "CPU (MKL)",
+                };
+                (
+                    Some(profile.cpu_implementation),
+                    None,
+                    name.to_owned(),
+                    match profile.cpu_implementation {
+                        CpuImplementation::Baseline => "baseline",
+                        CpuImplementation::Accelerate => "accelerate",
+                        CpuImplementation::Mkl => "mkl",
+                    },
+                )
+            }
+            Backend::Metal => (
+                None,
+                Some(profile.device_index),
+                format!("Metal device {}", profile.device_index),
+                "metal",
+            ),
+            Backend::Cuda => (
+                None,
+                Some(profile.device_index),
+                format!("CUDA device {}", profile.device_index),
+                "cuda",
+            ),
+        };
+        let metadata = Self {
+            git_sha: command_output("git", &["rev-parse", "HEAD"] )?,
+            rust_version: command_output(
+                std::env::var("RUSTC").as_deref().unwrap_or("rustc"),
+                &["--version"],
+            )?,
+            candle_version: CANDLE_VERSION.to_owned(),
+            os: std::env::consts::OS.to_owned(),
+            architecture: std::env::consts::ARCH.to_owned(),
+            backend: profile.backend,
+            cpu_implementation,
+            device_index,
+            device_name,
+            device_identity: Availability::unavailable(
+                "physical device identity is added by device diagnostics",
+            ),
+            driver_version: Availability::unavailable(
+                "driver version is added by device diagnostics when available",
+            ),
+            runtime_version: Availability::unavailable(
+                "runtime version is added by device diagnostics when available",
+            ),
+            feature_set: vec![feature.to_owned()],
+            synchronization: "candle_device_synchronize".to_owned(),
+        };
+        metadata.validate()?;
+        Ok(metadata)
+    }
+
+    pub fn validate(&self) -> std::result::Result<(), ValidationError> {
+        if self.git_sha.len() != 40
+            || !self.git_sha.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || self.rust_version.trim().is_empty()
+            || self.candle_version.trim().is_empty()
+            || self.os.trim().is_empty()
+            || self.architecture.trim().is_empty()
+            || self.device_name.trim().is_empty()
+            || self.feature_set.len() != 1
+            || self.feature_set[0].trim().is_empty()
+            || self.synchronization != "candle_device_synchronize"
+        {
+            return Err(ValidationError::new("run metadata is incomplete or invalid"));
+        }
+        match self.backend {
+            Backend::Cpu if self.cpu_implementation.is_none() || self.device_index.is_some() => {
+                return Err(ValidationError::new("CPU run identity is inconsistent"));
+            }
+            Backend::Metal | Backend::Cuda
+                if self.cpu_implementation.is_some() || self.device_index.is_none() =>
+            {
+                return Err(ValidationError::new("GPU run identity is inconsistent"));
+            }
+            _ => {}
+        }
+        self.device_identity.validate()?;
+        self.driver_version.validate()?;
+        self.runtime_version.validate()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SkippedScenario {
+    pub scenario_id: String,
+    pub reason: String,
+}
+
+impl SkippedScenario {
+    pub fn new(scenario_id: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            scenario_id: scenario_id.into(),
+            reason: reason.into(),
+        }
+    }
+
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        if self.scenario_id.trim().is_empty() || self.reason.trim().is_empty() {
+            return Err(ValidationError::new("skipped scenarios require an id and reason"));
+        }
+        Ok(())
+    }
+}
+
 impl ExecutionProfile {
     #[must_use]
     pub const fn new(
@@ -529,7 +702,6 @@ impl Fingerprint {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BenchmarkRecord {
-    pub schema_version: u32,
     pub scenario_id: String,
     pub tracked: bool,
     pub workload: WorkUnits,
@@ -539,17 +711,14 @@ pub struct BenchmarkRecord {
     pub library_to_reference_ratio: f64,
     #[serde(default)]
     pub sampling_order_policy: SamplingOrderPolicy,
-    pub fingerprint: Fingerprint,
 }
 
 impl BenchmarkRecord {
     pub fn from_measurement(
         prepared: &PreparedScenario<'_>,
         measurement: &PairMeasurement,
-        fingerprint: Fingerprint,
     ) -> std::result::Result<Self, ValidationError> {
         let record = Self {
-            schema_version: RESULT_SCHEMA_VERSION,
             scenario_id: prepared.id().as_str().to_owned(),
             tracked: prepared.tracked(),
             workload: prepared.work(),
@@ -558,29 +727,63 @@ impl BenchmarkRecord {
             reference: measurement.reference.estimate.clone(),
             library_to_reference_ratio: measurement.library_to_reference_ratio,
             sampling_order_policy: measurement.order_policy,
-            fingerprint,
         };
         record.validate()?;
         Ok(record)
     }
 
     pub fn validate(&self) -> std::result::Result<(), ValidationError> {
-        if self.schema_version != RESULT_SCHEMA_VERSION {
-            return Err(ValidationError::new("unsupported benchmark result schema"));
-        }
         if self.scenario_id.trim().is_empty() || self.sample_count == 0 {
             return Err(ValidationError::new(
                 "scenario_id and sample_count must be non-empty",
             ));
         }
         self.workload.validate()?;
-        self.fingerprint.validate()?;
         validate_estimate("library", &self.library)?;
         validate_estimate("reference", &self.reference)?;
         if !self.library_to_reference_ratio.is_finite() || self.library_to_reference_ratio <= 0.0 {
             return Err(ValidationError::new(
                 "library_to_reference_ratio must be finite and positive",
             ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BenchmarkDocument {
+    pub schema_version: u32,
+    pub run: RunMetadata,
+    pub records: Vec<BenchmarkRecord>,
+    pub skipped: Vec<SkippedScenario>,
+}
+
+impl BenchmarkDocument {
+    pub fn new(
+        run: RunMetadata,
+        records: Vec<BenchmarkRecord>,
+        skipped: Vec<SkippedScenario>,
+    ) -> std::result::Result<Self, ValidationError> {
+        let document = Self {
+            schema_version: BENCHMARK_DOCUMENT_SCHEMA_VERSION,
+            run,
+            records,
+            skipped,
+        };
+        document.validate()?;
+        Ok(document)
+    }
+
+    pub fn validate(&self) -> std::result::Result<(), ValidationError> {
+        if self.schema_version != BENCHMARK_DOCUMENT_SCHEMA_VERSION {
+            return Err(ValidationError::new("unsupported benchmark document schema"));
+        }
+        self.run.validate()?;
+        for record in &self.records {
+            record.validate()?;
+        }
+        for skipped in &self.skipped {
+            skipped.validate()?;
         }
         Ok(())
     }

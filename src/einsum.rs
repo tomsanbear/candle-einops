@@ -1056,8 +1056,14 @@ enum NaryGreedyReason {
     Backend,
     UnsupportedLayout,
     BelowFlopThreshold,
+    Calibration,
     ModelFailure,
 }
+
+// The bounded exact model remains available for analysis, but the frozen CPU
+// matrix has not demonstrated an end-to-end execution win over streaming
+// greedy. Re-enable only with repeated-process evidence, not model score alone.
+const EXACT_NARY_EXECUTION_CALIBRATED: bool = false;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum NaryPlannerDecision<'a> {
@@ -1512,6 +1518,9 @@ fn select_layout_aware_plan<'a>(
         .any(|operand| operand.axes.iter().any(|(_, extent)| *extent == 0))
     {
         return NaryPlannerDecision::Greedy(NaryGreedyReason::BelowFlopThreshold);
+    }
+    if !EXACT_NARY_EXECUTION_CALIBRATED {
+        return NaryPlannerDecision::Greedy(NaryGreedyReason::Calibration);
     }
     let mut global = Vec::new();
     for operand in operands {
@@ -2907,7 +2916,7 @@ mod tests {
     }
 
     #[test]
-    fn canonical_group_packing_recovers_a_storage_sharing_view() -> Result<()> {
+    fn canonical_group_packing_uses_the_calibrated_cpu_rank_two_layout() -> Result<()> {
         let source = Tensor::arange(0f32, 24., &Device::Cpu)?.reshape((4, 2, 3))?;
         let canonical = source.permute((1, 2, 0))?;
         assert!(!canonical.is_contiguous());
@@ -2917,7 +2926,8 @@ mod tests {
         let packed =
             pack_canonical_operand(&canonical, &[1, 6, 4], &[0, 2, 1], "test canonical operand")?;
         assert_eq!(packed.dims(), [1, 6, 4]);
-        assert_eq!(storage_address(&packed), storage_address(&source));
+        assert_ne!(storage_address(&packed), storage_address(&source));
+        assert!(packed.is_contiguous());
         assert_eq!(
             packed.flatten_all()?.to_vec1::<f32>()?,
             historical.flatten_all()?.to_vec1::<f32>()?
@@ -3333,14 +3343,14 @@ mod tests {
         let linear = matrix_chain_metadata([30, 35, 15, 5, 10], None);
         assert!(matches!(
             select_layout_aware_plan_for_test(&linear, &["a", "e"], DType::F32, true),
-            NaryPlannerDecision::Greedy(NaryGreedyReason::BelowFlopThreshold)
+            NaryPlannerDecision::Greedy(NaryGreedyReason::Calibration)
         ));
         let just_below = (0..3)
             .map(|ordinal| planner_meta(ordinal, &[("k", 49_999)], NaryLayoutEstimate::Contiguous))
             .collect::<Vec<_>>();
         assert!(matches!(
             select_layout_aware_plan_for_test(&just_below, &[], DType::F32, true),
-            NaryPlannerDecision::Greedy(NaryGreedyReason::BelowFlopThreshold)
+            NaryPlannerDecision::Greedy(NaryGreedyReason::Calibration)
         ));
         let at_threshold = (0..3)
             .map(|ordinal| planner_meta(ordinal, &[("k", 50_000)], NaryLayoutEstimate::Contiguous))
@@ -3428,7 +3438,7 @@ mod tests {
         ];
         assert!(matches!(
             select_layout_aware_plan_for_test(&overflow, &["a"], DType::F32, true),
-            NaryPlannerDecision::Greedy(NaryGreedyReason::ModelFailure)
+            NaryPlannerDecision::Greedy(NaryGreedyReason::Calibration)
         ));
     }
 

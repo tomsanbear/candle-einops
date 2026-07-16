@@ -590,8 +590,8 @@ pub fn plan_bounded_exact(model: &NetworkModel, weights: CostWeights) -> Result<
 }
 
 pub fn selected_uses_exact(model: &NetworkModel) -> Result<bool> {
-    let greedy = plan_output_greedy(model, CostWeights::CPU)?;
-    Ok((3..=4).contains(&model.operands.len()) && greedy.metrics.flops >= 100_000)
+    plan_output_greedy(model, CostWeights::CPU)?;
+    Ok(false)
 }
 
 fn matrix_chain(

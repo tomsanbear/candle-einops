@@ -20,8 +20,15 @@ pub mod extrema_spike;
 pub mod nary_cost_model_spike;
 pub mod permute_compose_layout_spike;
 
-#[cfg(all(feature = "cuda", feature = "metal"))]
-compile_error!("benchmark backends `cuda` and `metal` are mutually exclusive");
+#[cfg(any(
+    all(feature = "accelerate", feature = "mkl"),
+    all(feature = "accelerate", feature = "metal"),
+    all(feature = "accelerate", feature = "cuda"),
+    all(feature = "mkl", feature = "metal"),
+    all(feature = "mkl", feature = "cuda"),
+    all(feature = "metal", feature = "cuda"),
+))]
+compile_error!("benchmark acceleration features are mutually exclusive");
 
 pub const RESULT_SCHEMA_VERSION: u32 = 1;
 pub const CANDLE_VERSION: &str = "0.11.0";
@@ -299,6 +306,141 @@ pub enum Backend {
     Metal,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CpuImplementation {
+    Baseline,
+    Accelerate,
+    Mkl,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CompiledFeatures {
+    pub accelerate: bool,
+    pub mkl: bool,
+    pub metal: bool,
+    pub cuda: bool,
+}
+
+impl CompiledFeatures {
+    pub const NONE: Self = Self {
+        accelerate: false,
+        mkl: false,
+        metal: false,
+        cuda: false,
+    };
+
+    pub const CURRENT: Self = Self {
+        accelerate: cfg!(feature = "accelerate"),
+        mkl: cfg!(feature = "mkl"),
+        metal: cfg!(feature = "metal"),
+        cuda: cfg!(feature = "cuda"),
+    };
+
+    fn enabled_count(self) -> usize {
+        [self.accelerate, self.mkl, self.metal, self.cuda]
+            .into_iter()
+            .filter(|enabled| *enabled)
+            .count()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExecutionProfile {
+    pub backend: Backend,
+    pub cpu_implementation: CpuImplementation,
+    pub device_index: usize,
+}
+
+impl ExecutionProfile {
+    #[must_use]
+    pub const fn new(
+        backend: Backend,
+        cpu_implementation: CpuImplementation,
+        device_index: usize,
+    ) -> Self {
+        Self {
+            backend,
+            cpu_implementation,
+            device_index,
+        }
+    }
+
+    pub fn validate(
+        self,
+        compiled: CompiledFeatures,
+    ) -> std::result::Result<(), ValidationError> {
+        if compiled.enabled_count() > 1 {
+            return Err(ValidationError::new(
+                "benchmark acceleration features are mutually exclusive",
+            ));
+        }
+        if self.backend == Backend::Cpu && self.device_index != 0 {
+            return Err(ValidationError::new(
+                "CPU execution does not accept a nonzero device index",
+            ));
+        }
+        if self.backend != Backend::Cpu && self.cpu_implementation != CpuImplementation::Baseline {
+            return Err(ValidationError::new(
+                "CPU implementations cannot be combined with a GPU backend",
+            ));
+        }
+        let expected = match (self.backend, self.cpu_implementation) {
+            (Backend::Cpu, CpuImplementation::Baseline) => CompiledFeatures::NONE,
+            (Backend::Cpu, CpuImplementation::Accelerate) => CompiledFeatures {
+                accelerate: true,
+                ..CompiledFeatures::NONE
+            },
+            (Backend::Cpu, CpuImplementation::Mkl) => CompiledFeatures {
+                mkl: true,
+                ..CompiledFeatures::NONE
+            },
+            (Backend::Metal, CpuImplementation::Baseline) => CompiledFeatures {
+                metal: true,
+                ..CompiledFeatures::NONE
+            },
+            (Backend::Cuda, CpuImplementation::Baseline) => CompiledFeatures {
+                cuda: true,
+                ..CompiledFeatures::NONE
+            },
+            (Backend::Metal | Backend::Cuda, _) => unreachable!("validated above"),
+        };
+        if compiled != expected {
+            return Err(ValidationError::new(format!(
+                "requested execution profile does not match compiled features: requested {self:?}, compiled {compiled:?}",
+            )));
+        }
+        if self.cpu_implementation == CpuImplementation::Accelerate && !cfg!(target_os = "macos") {
+            return Err(ValidationError::new(
+                "Accelerate execution is supported only on macOS",
+            ));
+        }
+        if self.cpu_implementation == CpuImplementation::Mkl
+            && (!cfg!(target_arch = "x86_64")
+                || !(cfg!(target_os = "linux") || cfg!(target_os = "windows")))
+        {
+            return Err(ValidationError::new(
+                "MKL execution requires x86_64 Linux or Windows",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn create_device(
+        self,
+        compiled: CompiledFeatures,
+    ) -> std::result::Result<Device, ValidationError> {
+        self.validate(compiled)?;
+        match self.backend {
+            Backend::Cpu => Ok(Device::Cpu),
+            Backend::Metal => Device::new_metal(self.device_index)
+                .map_err(|error| ValidationError::new(format!("could not open requested Metal device {}: {error}", self.device_index))),
+            Backend::Cuda => Device::new_cuda(self.device_index)
+                .map_err(|error| ValidationError::new(format!("could not open requested CUDA device {}: {error}", self.device_index))),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Fingerprint {
     pub git_sha: String,
@@ -330,6 +472,37 @@ impl Fingerprint {
         Ok(fingerprint)
     }
 
+    pub fn collect_for(profile: ExecutionProfile) -> std::result::Result<Self, ValidationError> {
+        profile.validate(CompiledFeatures::CURRENT)?;
+        let (backend, device) = match profile.backend {
+            Backend::Cpu => (
+                Backend::Cpu,
+                match profile.cpu_implementation {
+                    CpuImplementation::Baseline => "cpu/baseline".to_owned(),
+                    CpuImplementation::Accelerate => "cpu/accelerate".to_owned(),
+                    CpuImplementation::Mkl => "cpu/mkl".to_owned(),
+                },
+            ),
+            Backend::Metal => (Backend::Metal, format!("metal:{}", profile.device_index)),
+            Backend::Cuda => (Backend::Cuda, format!("cuda:{}", profile.device_index)),
+        };
+        let fingerprint = Self {
+            git_sha: command_output("git", &["rev-parse", "HEAD"] )?,
+            rust_version: command_output(
+                std::env::var("RUSTC").as_deref().unwrap_or("rustc"),
+                &["--version"],
+            )?,
+            candle_version: CANDLE_VERSION.to_owned(),
+            os: std::env::consts::OS.to_owned(),
+            architecture: std::env::consts::ARCH.to_owned(),
+            backend,
+            device,
+            driver: None,
+        };
+        fingerprint.validate()?;
+        Ok(fingerprint)
+    }
+
     pub fn validate(&self) -> std::result::Result<(), ValidationError> {
         if self.git_sha.len() != 40 || !self.git_sha.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(ValidationError::new(
@@ -347,10 +520,8 @@ impl Fingerprint {
                 return Err(ValidationError::new(format!("{name} must not be empty")));
             }
         }
-        if self.backend != Backend::Cpu && self.driver.as_deref().is_none_or(str::is_empty) {
-            return Err(ValidationError::new(
-                "accelerator fingerprints require a driver identity",
-            ));
+        if self.driver.as_ref().is_some_and(|driver| driver.trim().is_empty()) {
+            return Err(ValidationError::new("driver identity cannot be empty"));
         }
         Ok(())
     }
@@ -484,16 +655,18 @@ impl Scenario for PlumbingScenario {
     }
 
     fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        inputs[0].reshape((2, 2))
+        inputs[0].sqr()
     }
 
     fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        inputs[0].reshape((2, 2))
+        inputs[0].mul(&inputs[0])
     }
 
     fn check(&self, library: &Tensor, reference: &Tensor) -> Result<()> {
-        if library.dims() != reference.dims() {
-            candle_core::bail!("plumbing outputs have different shapes")
+        if library.dims() != reference.dims()
+            || library.to_vec1::<f32>()? != reference.to_vec1::<f32>()?
+        {
+            candle_core::bail!("plumbing outputs differ")
         }
         Ok(())
     }

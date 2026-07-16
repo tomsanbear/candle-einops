@@ -10,8 +10,10 @@ resolver = "3"
 
 [features]
 default = []
+accelerate = ["candle-core/accelerate"]
 cuda = ["candle-core/cuda"]
 metal = ["candle-core/metal"]
+mkl = ["candle-core/mkl"]
 
 [dependencies]
 candle-core = { version = "=0.11.0" }

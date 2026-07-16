@@ -2,13 +2,13 @@ use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
-use candle_core::Device;
 use candle_einops_benchmarks::{
-    BenchmarkRecord, DeviceSynchronizer, Fingerprint, MonotonicClock, PlumbingScenario, Scenario,
+    Backend, BenchmarkRecord, CompiledFeatures, CpuImplementation, DeviceSynchronizer,
+    ExecutionProfile, Fingerprint, MonotonicClock, PlumbingScenario, Scenario,
     binary_fast_path_scenarios, binary_operand_packing, broadcast_gemm_spike, diagonal_spike,
-    extended_compose, extrema_spike, identity_reshape_scenarios, measure_pair, nary_cost_model_spike,
-    permute_compose_layout_spike, prepare, product_scenarios, reduction_fusion_scenarios,
-    repeat_broadcast_scenarios, zero_k_scenarios,
+    extended_compose, extrema_spike, identity_reshape_scenarios, measure_pair,
+    nary_cost_model_spike, permute_compose_layout_spike, prepare, product_scenarios,
+    reduction_fusion_scenarios, repeat_broadcast_scenarios, zero_k_scenarios,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -16,6 +16,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut output: Option<PathBuf> = None;
     let mut samples = 5;
     let mut include_plumbing = false;
+    let mut backend = Backend::Cpu;
+    let mut cpu_implementation = CpuImplementation::Baseline;
+    let mut device_index = 0;
     let mut arguments = std::env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -32,6 +35,32 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .parse()?;
             }
             "--include-plumbing" => include_plumbing = true,
+            "--backend" => {
+                backend = match arguments.next().as_deref() {
+                    Some("cpu") => Backend::Cpu,
+                    Some("metal") => Backend::Metal,
+                    Some("cuda") => Backend::Cuda,
+                    _ => return Err("--backend requires cpu, metal, or cuda".into()),
+                };
+            }
+            "--cpu-implementation" => {
+                cpu_implementation = match arguments.next().as_deref() {
+                    Some("baseline") => CpuImplementation::Baseline,
+                    Some("accelerate") => CpuImplementation::Accelerate,
+                    Some("mkl") => CpuImplementation::Mkl,
+                    _ => {
+                        return Err(
+                            "--cpu-implementation requires baseline, accelerate, or mkl".into(),
+                        );
+                    }
+                };
+            }
+            "--device-index" => {
+                device_index = arguments
+                    .next()
+                    .ok_or("--device-index requires a value")?
+                    .parse()?;
+            }
             _ => return Err(format!("unknown benchmark argument: {argument}").into()),
         }
     }
@@ -106,10 +135,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err("no benchmark scenarios matched".into());
     }
 
-    let device = Device::Cpu;
+    let profile = ExecutionProfile::new(backend, cpu_implementation, device_index);
+    let device = profile.create_device(CompiledFeatures::CURRENT)?;
     let synchronizer = DeviceSynchronizer(&device);
     let clock = MonotonicClock;
-    let fingerprint = Fingerprint::collect_cpu()?;
+    let fingerprint = Fingerprint::collect_for(profile)?;
     let records = selected
         .into_iter()
         .map(|scenario| {

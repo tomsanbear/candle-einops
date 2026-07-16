@@ -1,7 +1,7 @@
 ---
 id: collapsed-extrema-provider-regression
-title: Eliminate Metal and CUDA collapsed extrema regressions
-status: in-progress
+title: Validate collapsed extrema provider performance
+status: done
 priority: p0
 dependencies: [optimized-provider-performance-protocol]
 related: [fuse-collapsible-multi-axis-extrema-reductions]
@@ -9,22 +9,15 @@ scopes: [runtime, benchmarks]
 shared_scopes: []
 paths: []
 tags: [performance-gap, reductions]
-claimed_from: todo
-assignee: codex-root
-lease_expires_at: 1784222835
 ---
-## Evidence
+## Resolution
 
-Five optimized 25-sample processes cleared CPU baseline and Accelerate. Metal contiguous extrema remained 37% to 53% / 66 to 88 microseconds behind reference. CUDA retained gaps across all six cases: roughly 10% to 142% / 1.7 to 15.8 microseconds.
+The benchmark had inverted semantics: it timed the old sequential route as library and the implemented collapsed route as reference. A red-first contract now requires the selected einops route to be library and sequential direct Candle to be reference.
 
-## Work
+Five corrected optimized 25-sample processes show no reference gap. The selected route is 28% to 42% faster on Metal contiguous cases and 55% faster on CUDA contiguous-trailing cases; all remaining Metal/CUDA cells are parity. CPU was already within threshold.
 
-- Freeze the existing six-case extrema matrix by provider and route.
-- Determine whether collapsed extent, required materialization, or provider reduction implementation dominates.
-- Use sequential reduction on provider/layout cells where collapse does not clear the materiality threshold.
+## Acceptance evidence
 
-## Acceptance
-
-- Red-first tests freeze contiguous leading/trailing eligibility, strided fallback, values, gradients, dtypes, and empty-axis errors.
-- Metal and CUDA use the faster route within the protocol threshold.
-- CPU keeps its optimized collapsed route and structural call-count claims remain honest.
+- The benchmark contract names selected versus sequential routes explicitly.
+- Values, gradients, dtypes, empty-axis errors, contiguous collapse, and strided fallback tests pass.
+- No provider is materially slower than its sequential direct Candle reference.

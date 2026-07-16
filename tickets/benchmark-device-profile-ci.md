@@ -1,7 +1,7 @@
 ---
 id: benchmark-device-profile-ci
 title: Validate CPU providers and accelerator builds in CI
-status: closed
+status: done
 priority: p1
 dependencies: [benchmark-device-diagnostics]
 related: []

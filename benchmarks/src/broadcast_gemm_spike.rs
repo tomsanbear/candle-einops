@@ -3,7 +3,7 @@
 use candle_core::{Device, Result, Tensor};
 use criterion::Criterion;
 
-use crate::diagonal_spike::cpu_storage_id;
+use crate::diagonal_spike::shares_storage;
 use crate::{
     DeviceSynchronizer, Operation, Scenario, ScenarioId, WorkUnits, criterion_operation,
     deterministic_f32_values, prepare,
@@ -122,12 +122,12 @@ pub fn eager_expansion_probe(left: &Tensor, right: &Tensor) -> Result<EagerExpan
     let right_expanded = right.broadcast_as(shapes.right.as_slice())?;
     let left_materialized = left_expanded.reshape((shapes.matrices, shapes.m, shapes.k))?;
     let right_materialized = right_expanded.reshape((shapes.matrices, shapes.k, shapes.n))?;
-    let left_copy_elements = if cpu_storage_id(left)? == cpu_storage_id(&left_materialized)? {
+    let left_copy_elements = if shares_storage(left, &left_materialized) {
         0
     } else {
         left_materialized.elem_count()
     };
-    let right_copy_elements = if cpu_storage_id(right)? == cpu_storage_id(&right_materialized)? {
+    let right_copy_elements = if shares_storage(right, &right_materialized) {
         0
     } else {
         right_materialized.elem_count()

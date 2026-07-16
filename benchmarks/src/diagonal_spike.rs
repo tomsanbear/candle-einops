@@ -28,6 +28,12 @@ pub fn cpu_storage_id(tensor: &Tensor) -> Result<usize> {
     }
 }
 
+pub fn shares_storage(left: &Tensor, right: &Tensor) -> bool {
+    let (left_storage, _) = left.storage_and_layout();
+    let (right_storage, _) = right.storage_and_layout();
+    std::ptr::eq::<Storage>(&*left_storage, &*right_storage)
+}
+
 pub fn probe_current_interleaved_lowering(
     input: &Tensor,
     first_extent: usize,
@@ -44,7 +50,7 @@ pub fn probe_current_interleaved_lowering(
         second_extent,
         second_extent,
     ))?;
-    let copied_elements = if cpu_storage_id(input)? == cpu_storage_id(&flattened)? {
+    let copied_elements = if shares_storage(input, &flattened) {
         0
     } else {
         input.elem_count()

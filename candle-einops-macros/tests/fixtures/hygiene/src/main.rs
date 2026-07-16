@@ -8,6 +8,7 @@ mod std {
 }
 
 fn main() -> Result<()> {
+    let _shadowed_vec = Vec;
     let tensor = Tensor::arange(0f32, 6f32, &Device::Cpu)?.reshape((2, 3))?;
 
     let input = 2usize;

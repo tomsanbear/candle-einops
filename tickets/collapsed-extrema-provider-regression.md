@@ -1,7 +1,7 @@
 ---
 id: collapsed-extrema-provider-regression
 title: Eliminate Metal and CUDA collapsed extrema regressions
-status: todo
+status: in-progress
 priority: p0
 dependencies: [optimized-provider-performance-protocol]
 related: [fuse-collapsible-multi-axis-extrema-reductions]
@@ -9,6 +9,9 @@ scopes: [runtime, benchmarks]
 shared_scopes: []
 paths: []
 tags: [performance-gap, reductions]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784222835
 ---
 ## Evidence
 

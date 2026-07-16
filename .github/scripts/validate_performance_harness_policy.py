@@ -60,12 +60,21 @@ def main() -> int:
     for required_command in [
         "python3 .github/scripts/run_benchmarks.py compile",
         "python3 .github/scripts/run_benchmarks.py smoke",
+        "python3 .github/scripts/run_benchmarks.py compile --cpu-implementation mkl",
+        "python3 .github/scripts/run_benchmarks.py smoke --cpu-implementation mkl",
+        "python3 .github/scripts/run_benchmarks.py compile --cpu-implementation accelerate",
+        "python3 .github/scripts/run_benchmarks.py smoke --cpu-implementation accelerate",
+        "python3 .github/scripts/run_benchmarks.py compile --backend metal",
+        "python3 .github/scripts/run_benchmarks.py compile --backend cuda",
+        "python3 .github/scripts/test_run_benchmarks.py",
         "python3 .github/scripts/test_compare_benchmarks.py",
     ]:
         if required_command not in required_workflow:
             failures.append(f"required CI must run `{required_command}`")
     if "python3 .github/scripts/compare_benchmarks.py" in required_workflow:
         failures.append("required CI must not compare benchmark timings")
+    if "nvidia/cuda:" not in required_workflow or "devel-ubuntu24.04" not in required_workflow:
+        failures.append("required CUDA compile coverage must use a CUDA devel container")
 
     if not comparison_script.is_file():
         failures.append("advisory benchmark comparison script is missing")

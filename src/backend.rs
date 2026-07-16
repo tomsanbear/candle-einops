@@ -214,20 +214,7 @@ impl<T: AsRef<Tensor>> Backend for T {
                 }
                 Operation::Prod => {
                     record_backend_reduction_call();
-                    let axis = run.axes[0];
-                    let axis_len = output.dim(axis)?;
-                    if axis_len == 0 {
-                        let mut shape = output.dims().to_vec();
-                        shape.remove(axis);
-                        Tensor::ones(Shape::from_dims(&shape), output.dtype(), output.device())?
-                    } else {
-                        let mut product = output.narrow(axis, 0, 1)?.squeeze(axis)?;
-                        for index in 1..axis_len {
-                            let factor = output.narrow(axis, index, 1)?.squeeze(axis)?;
-                            product = product.mul(&factor)?;
-                        }
-                        product
-                    }
+                    reduce_product_axis(&output, run.axes[0])?
                 }
             };
         }
@@ -291,6 +278,31 @@ impl<T: AsRef<Tensor>> Backend for T {
 
         expanded.broadcast_as(Shape::from_dims(&final_shape))
     }
+}
+
+fn reduce_product_axis(input: &Tensor, axis: usize) -> Result<Tensor> {
+    let axis_len = input.dim(axis)?;
+    if axis_len == 0 {
+        let mut shape = input.dims().to_vec();
+        shape.remove(axis);
+        return Tensor::ones(Shape::from_dims(&shape), input.dtype(), input.device());
+    }
+
+    let mut factors = (0..axis_len)
+        .map(|index| input.narrow(axis, index, 1)?.squeeze(axis))
+        .collect::<Result<Vec<_>>>()?;
+    while factors.len() > 1 {
+        let mut products = Vec::with_capacity(factors.len().div_ceil(2));
+        let mut factor_iter = factors.into_iter();
+        while let Some(left) = factor_iter.next() {
+            products.push(match factor_iter.next() {
+                Some(right) => left.mul(&right)?,
+                None => left,
+            });
+        }
+        factors = products;
+    }
+    Ok(factors.pop().expect("non-empty product factors"))
 }
 
 fn collapse_extrema_run(

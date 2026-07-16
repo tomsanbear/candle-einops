@@ -1,7 +1,7 @@
 ---
 id: device-calibrated-nary-planner
 title: Calibrate n-ary planning for CPU providers
-status: todo
+status: in-progress
 priority: p1
 dependencies: [optimized-provider-performance-protocol]
 related: [einsum-nary-layout-aware-planner]
@@ -9,6 +9,9 @@ scopes: [runtime, benchmarks]
 shared_scopes: []
 paths: []
 tags: [performance-gap, einsum]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784223603
 ---
 ## Evidence
 

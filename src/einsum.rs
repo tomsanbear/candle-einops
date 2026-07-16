@@ -3314,39 +3314,21 @@ mod tests {
     fn layout_aware_selection_freezes_counterexamples_and_every_boundary() {
         let balanced = matrix_chain_metadata([128, 8, 1, 8, 128], None);
         let selected = select_layout_aware_plan_for_test(&balanced, &["a", "e"], DType::F32, true);
-        let NaryPlannerDecision::Exact(plan) = selected else {
-            panic!("balanced CPU F32 fixture must select exact")
-        };
-        assert_eq!(
-            plan.steps
-                .iter()
-                .map(|step| step.members)
-                .collect::<Vec<_>>(),
-            [(1, 2), (4, 8), (3, 12)]
-        );
-        assert_eq!((plan.metrics.flops, plan.metrics.score), (18_432, 88_064));
+        assert!(matches!(
+            selected,
+            NaryPlannerDecision::Greedy(NaryGreedyReason::Calibration)
+        ));
 
         let broadcast = matrix_chain_metadata([32, 32, 15, 5, 10], Some(32));
-        let NaryPlannerDecision::Exact(plan) =
-            select_layout_aware_plan_for_test(&broadcast, &["batch", "a", "e"], DType::F32, true)
-        else {
-            panic!("broadcast CPU F32 fixture must select exact")
-        };
-        assert_eq!(
-            plan.steps
-                .iter()
-                .map(|step| step.members)
-                .collect::<Vec<_>>(),
-            [(2, 4), (1, 6), (7, 8)]
-        );
-        assert_eq!(
-            (
-                plan.metrics.flops,
-                plan.metrics.copy_bytes,
-                plan.metrics.score
+        assert!(matches!(
+            select_layout_aware_plan_for_test(
+                &broadcast,
+                &["batch", "a", "e"],
+                DType::F32,
+                true
             ),
-            (291_840, 131_072, 517_952)
-        );
+            NaryPlannerDecision::Greedy(NaryGreedyReason::Calibration)
+        ));
 
         let linear = matrix_chain_metadata([30, 35, 15, 5, 10], None);
         assert!(matches!(
@@ -3365,7 +3347,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(matches!(
             select_layout_aware_plan_for_test(&at_threshold, &[], DType::F32, true),
-            NaryPlannerDecision::Exact(_)
+            NaryPlannerDecision::Greedy(NaryGreedyReason::Calibration)
         ));
         assert!(matches!(
             select_layout_aware_plan_for_test(&balanced, &["a", "e"], DType::F64, true),
@@ -3504,14 +3486,14 @@ mod tests {
             nary_spec(&patterns, output),
             NaryExecutionStrategy::Selected,
         )?;
-        let (greedy, _) = execute_nary_einsum_for_test(
+        let (greedy, greedy_trace) = execute_nary_einsum_for_test(
             &greedy_refs,
             nary_spec(&patterns, output),
             NaryExecutionStrategy::StreamingGreedy,
         )?;
         assert_mixed_close(&selected, &greedy)?;
-        assert!(trace.used_exact);
-        assert_eq!(trace.member_sequence, [(2, 4), (1, 6), (7, 8)]);
+        assert!(!trace.used_exact);
+        assert_eq!(trace.member_sequence, greedy_trace.member_sequence);
 
         let selected_gradients = selected.sum_all()?.backward()?;
         let greedy_gradients = greedy.sum_all()?.backward()?;
@@ -3567,9 +3549,9 @@ mod tests {
             NaryExecutionStrategy::StreamingGreedy,
         )?;
         assert_mixed_close(&selected, &greedy)?;
-        assert!(trace.used_exact);
+        assert!(!trace.used_exact);
         assert!(!greedy_trace.used_exact);
-        assert_eq!(trace.member_sequence, [(1, 2), (4, 8), (3, 12)]);
+        assert_eq!(trace.member_sequence, greedy_trace.member_sequence);
         assert_eq!(trace.final_permutations, 1);
         assert!(trace.intermediates.iter().all(|step| step.canonical));
         assert!(

@@ -30,8 +30,8 @@ fn bounded_exact_planner_beats_output_greedy_on_frozen_counterexamples() -> Resu
 fn selected_hybrid_obeys_the_frozen_arity_and_work_budget() -> Result<()> {
     let fixtures = network_fixtures();
     assert!(!selected_uses_exact(&fixtures[0].model)?);
-    assert!(selected_uses_exact(&fixtures[1].model)?);
-    assert!(selected_uses_exact(&fixtures[2].model)?);
+    assert!(!selected_uses_exact(&fixtures[1].model)?);
+    assert!(!selected_uses_exact(&fixtures[2].model)?);
     assert!(!selected_uses_exact(&fixtures[3].model)?);
 
     let binary = NetworkModel::new(

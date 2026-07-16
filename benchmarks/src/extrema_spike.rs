@@ -3,6 +3,7 @@
 use std::mem::size_of;
 
 use candle_core::{Device, Result, Tensor};
+use candle_einops::einops;
 use criterion::Criterion;
 
 use crate::{
@@ -26,6 +27,12 @@ pub enum ExtremaLayout {
     ContiguousTrailing,
     ContiguousLeading,
     StridedTrailing,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExtremaRoute {
+    Selected,
+    Sequential,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -80,6 +87,18 @@ pub fn scenarios() -> &'static [ExtremaScenario] {
     &SCENARIOS
 }
 
+impl ExtremaScenario {
+    #[must_use]
+    pub const fn library_route(&self) -> ExtremaRoute {
+        ExtremaRoute::Selected
+    }
+
+    #[must_use]
+    pub const fn reference_route(&self) -> ExtremaRoute {
+        ExtremaRoute::Sequential
+    }
+}
+
 pub fn structural_metrics(layout: ExtremaLayout) -> ExtremaStructuralMetrics {
     ExtremaStructuralMetrics {
         current_submissions: 2,
@@ -118,6 +137,25 @@ pub fn sequential(input: &Tensor, layout: ExtremaLayout, kind: ExtremaKind) -> R
         ExtremaLayout::ContiguousTrailing | ExtremaLayout::StridedTrailing => {
             reduce_once(&reduce_once(input, 3, kind)?, 2, kind)
         }
+    }
+}
+
+pub fn selected(input: &Tensor, layout: ExtremaLayout, kind: ExtremaKind) -> Result<Tensor> {
+    match (layout, kind) {
+        (ExtremaLayout::ContiguousLeading, ExtremaKind::Min) => {
+            einops!("min(a b) c d -> c d", input)
+        }
+        (ExtremaLayout::ContiguousLeading, ExtremaKind::Max) => {
+            einops!("max(a b) c d -> c d", input)
+        }
+        (
+            ExtremaLayout::ContiguousTrailing | ExtremaLayout::StridedTrailing,
+            ExtremaKind::Min,
+        ) => einops!("a b min(c d) -> a b", input),
+        (
+            ExtremaLayout::ContiguousTrailing | ExtremaLayout::StridedTrailing,
+            ExtremaKind::Max,
+        ) => einops!("a b max(c d) -> a b", input),
     }
 }
 
@@ -160,11 +198,11 @@ impl Scenario for ExtremaScenario {
     }
 
     fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        sequential(&inputs[0], self.layout, self.kind)
+        selected(&inputs[0], self.layout, self.kind)
     }
 
     fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
-        collapsed_candidate(&inputs[0], self.layout, self.kind)
+        sequential(&inputs[0], self.layout, self.kind)
     }
 
     fn check(&self, library: &Tensor, reference: &Tensor) -> Result<()> {
@@ -188,8 +226,8 @@ pub fn criterion_benchmarks(criterion: &mut Criterion) {
                 "{}/{}",
                 scenario.id().as_str(),
                 match operation {
-                    Operation::Library => "sequential",
-                    Operation::Reference => "collapsed",
+                    Operation::Library => "selected",
+                    Operation::Reference => "sequential",
                 }
             );
             criterion_operation(

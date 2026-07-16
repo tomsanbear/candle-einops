@@ -555,7 +555,11 @@ mod tests {
         ];
         let runs = plan_reduction_runs(&mut sums);
         assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].axes, [2, 1, 0]);
+        assert_eq!(
+            runs[0].axes,
+            [0, 1, 2],
+            "fused dimensions must preserve physical stride order for GPU fast-reduce kernels"
+        );
         assert!(matches!(runs[0].operation, Operation::Sum));
 
         let mut mixed = [
@@ -566,7 +570,7 @@ mod tests {
         ];
         let runs = plan_reduction_runs(&mut mixed);
         assert_eq!(runs.len(), 3);
-        assert_eq!(runs[0].axes, [3, 2]);
+        assert_eq!(runs[0].axes, [2, 3]);
         assert!(matches!(runs[0].operation, Operation::Sum));
         assert_eq!(runs[1].axes, [1]);
         assert!(matches!(runs[1].operation, Operation::Max));

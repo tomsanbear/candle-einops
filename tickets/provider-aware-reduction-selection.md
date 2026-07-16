@@ -1,7 +1,7 @@
 ---
 id: provider-aware-reduction-selection
 title: Calibrate Metal contiguous reduction fusion
-status: todo
+status: in-progress
 priority: p1
 dependencies: [optimized-provider-performance-protocol]
 related: [homogeneous-reduction-fusion]
@@ -9,6 +9,9 @@ scopes: [runtime, benchmarks]
 shared_scopes: []
 paths: []
 tags: [performance-gap, reductions]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784223076
 ---
 ## Evidence
 

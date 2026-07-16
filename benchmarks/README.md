@@ -45,6 +45,32 @@ root ignored `target/benchmarks` directory. Select `--backend cpu|metal|cuda`,
 when the defaults are not appropriate. `run` selects tracked scenarios by
 substring. `smoke` additionally opts into the untracked plumbing fixture.
 
+The supported execution profiles are deliberately explicit:
+
+| Profile | Host requirement | Required CI | Hardware validation |
+| --- | --- | --- | --- |
+| CPU baseline | Any supported Candle host | Linux compile and smoke | Linux and macOS |
+| CPU Accelerate | macOS with Accelerate | macOS compile and smoke | Apple M4 Max |
+| CPU MKL | Linux with current oneMKL | Linux compile and smoke | Ubuntu 24.04 container |
+| Metal | macOS with a Metal device | macOS compile | Apple M4 Max runtime and capture |
+| CUDA | Linux with a CUDA toolkit and device | CUDA devel-container compile | RTX 4070 runtime and capture |
+
+GPU timing remains hardware-local and advisory; hosted CI proves that Metal and
+CUDA continue to compile but does not pretend to provide a GPU runtime. A full
+accelerator `run` executes every supported scenario and records each view-only
+construction scenario it skips because that operation would enqueue no device
+work.
+
+Candle 0.11's bundled Linux `intel-mkl-src` fallback is too old for the half
+precision GEMM symbols Candle links. Install the current `intel-oneapi-mkl-core-devel`
+and `intel-oneapi-openmp` packages and initialize the environment before an MKL
+command:
+
+```console
+source /opt/intel/oneapi/setvars.sh
+python3 .github/scripts/run_benchmarks.py smoke --cpu-implementation mkl
+```
+
 `capture` requires a GPU backend, a filter that resolves to exactly one
 supported scenario, and `--operation library|reference`. It performs three
 synchronized warmups by default (`--warmups` changes this), then captures one

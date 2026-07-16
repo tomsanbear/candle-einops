@@ -72,7 +72,6 @@ jobs:
           -A dead-code
           -A clippy::excessive-precision
           -A clippy::identity-op
-          -A clippy::map-flatten
       - name: Build documentation
         env:
           RUSTDOCFLAGS: -D warnings

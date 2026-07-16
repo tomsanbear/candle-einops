@@ -178,7 +178,8 @@ python3 .github/scripts/run_benchmarks.py capture --backend metal --filter resha
 
 Timing results are advisory rather than a CI gate. See
 [benchmarks/README.md](benchmarks/README.md) for device profiles, filtering,
-schema v2 diagnostics, exact-operation Metal/CUDA capture, and
-measurement boundaries.
+schema v2 diagnostics, the CPU/Accelerate/MKL and Metal/CUDA support matrix,
+exact-operation GPU capture, required host libraries, and measurement
+boundaries.
 
 Licensed under either Apache-2.0 or MIT, at your option.

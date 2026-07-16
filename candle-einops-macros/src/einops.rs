@@ -175,7 +175,7 @@ impl quote::ToTokens for ParsedExpression {
         };
         let last_unknown_index = decomposition
             .last()
-            .map(|expression| match expression {
+            .and_then(|expression| match expression {
                 Decomposition::Named {
                     index: Index::Unknown(i),
                     ..
@@ -189,8 +189,7 @@ impl quote::ToTokens for ParsedExpression {
                     ..
                 } => Some(*i),
                 _ => None,
-            })
-            .flatten();
+            });
         let decomposition_ignored_len =
             !decomposition_tokens.is_empty() && last_unknown_index.is_some();
 

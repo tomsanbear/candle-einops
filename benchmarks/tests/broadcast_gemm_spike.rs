@@ -97,16 +97,26 @@ fn direct_and_slice_candidates_cover_their_structural_boundaries() -> Result<()>
 }
 
 #[test]
-fn stride_zero_batch_matmul_is_not_a_valid_cpu_candidate() -> Result<()> {
+fn stride_zero_backend_behavior_does_not_change_the_portable_candidate() -> Result<()> {
     let left = Tensor::ones((1, 32, 32), DType::F32, &Device::Cpu)?;
     let right = Tensor::ones((32, 32, 32), DType::F32, &Device::Cpu)?;
-    let stride_zero = left.broadcast_as((32, 32, 32))?.matmul(&right)?;
+    let _stride_zero = left.broadcast_as((32, 32, 32))?.matmul(&right)?;
     let eager = eager_expansion_probe(&left, &right)?.output;
-    assert_ne!(
-        flat(&stride_zero)?,
+    let selected = selected_broadcast_gemm(&left, &right)?;
+
+    #[cfg(feature = "accelerate")]
+    assert_eq!(
+        flat(&_stride_zero)?,
         flat(&eager)?,
-        "Candle 0.11 CPU unexpectedly made stride-zero batched matmul value-safe; see https://github.com/huggingface/candle/issues/3744"
+        "Accelerate should preserve stride-zero batched matmul values"
     );
+    #[cfg(not(any(feature = "accelerate", feature = "mkl")))]
+    assert_ne!(
+        flat(&_stride_zero)?,
+        flat(&eager)?,
+        "the baseline Candle 0.11 CPU backend should expose the known stride-zero boundary"
+    );
+    assert_eq!(flat(&selected)?, flat(&eager)?);
     Ok(())
 }
 

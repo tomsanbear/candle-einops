@@ -129,7 +129,7 @@ jobs:
   performance-harness:
     name: Performance harness structural smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -142,10 +142,27 @@ jobs:
         run: python3 .github/scripts/run_benchmarks.py compile
       - name: Run correctness and structural smoke contracts
         run: python3 .github/scripts/run_benchmarks.py smoke
+      - name: Configure Intel oneAPI package repository
+        run: |
+          curl --fail --silent --show-error --location \
+            --output /tmp/intel-oneapi-key.pub \
+            https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
+          gpg --dearmor --output /tmp/intel-oneapi-key.gpg /tmp/intel-oneapi-key.pub
+          sudo install -m 0644 /tmp/intel-oneapi-key.gpg /usr/share/keyrings/oneapi-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" | sudo tee /etc/apt/sources.list.d/oneAPI.list
+          sudo apt-get update
+      - name: Install current Intel oneMKL development libraries
+        run: >-
+          sudo apt-get install --yes --no-install-recommends
+          intel-oneapi-mkl-core-devel intel-oneapi-openmp
       - name: Compile locked MKL performance harness
-        run: python3 .github/scripts/run_benchmarks.py compile --cpu-implementation mkl
+        run: |
+          source /opt/intel/oneapi/setvars.sh
+          python3 .github/scripts/run_benchmarks.py compile --cpu-implementation mkl
       - name: Run MKL correctness and structural smoke contracts
-        run: python3 .github/scripts/run_benchmarks.py smoke --cpu-implementation mkl
+        run: |
+          source /opt/intel/oneapi/setvars.sh
+          python3 .github/scripts/run_benchmarks.py smoke --cpu-implementation mkl
 
   performance-cuda-build:
     name: Performance harness CUDA compile
@@ -197,15 +214,7 @@ jobs:
           toolchain: "1.94"
       - name: Compile locked Accelerate performance harness
         run: python3 .github/scripts/run_benchmarks.py compile --cpu-implementation accelerate
-      - name: Run Accelerate smoke (known Candle stride-zero failure)
-        id: accelerate-smoke
-        continue-on-error: true
+      - name: Run Accelerate correctness and structural smoke contracts
         run: python3 .github/scripts/run_benchmarks.py smoke --cpu-implementation accelerate
-      - name: Surface known upstream Accelerate smoke issue
-        if: steps.accelerate-smoke.outcome == 'failure'
-        run: >-
-          echo "::warning title=Known Candle stride-zero matmul issue::
-          Accelerate differs from the baseline CPU provider;
-          see https://github.com/huggingface/candle/issues/3744"
       - name: Compile locked Metal performance harness without runtime claims
         run: python3 .github/scripts/run_benchmarks.py compile --backend metal

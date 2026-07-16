@@ -75,8 +75,11 @@ def main() -> int:
         failures.append("required CI must not compare benchmark timings")
     if "nvidia/cuda:" not in required_workflow or "devel-ubuntu24.04" not in required_workflow:
         failures.append("required CUDA compile coverage must use a CUDA devel container")
-    if "intel-oneapi-mkl-devel" not in required_workflow:
-        failures.append("MKL smoke must install a current system oneMKL")
+    for package in ["intel-oneapi-mkl-core-devel", "intel-oneapi-openmp"]:
+        if package not in required_workflow:
+            failures.append(f"MKL smoke must install `{package}` from current oneAPI")
+    if required_workflow.count("source /opt/intel/oneapi/setvars.sh") != 2:
+        failures.append("MKL compile and smoke must initialize the oneAPI environment")
     if "continue-on-error: true" in required_workflow:
         failures.append("device profile smoke coverage must be blocking")
 

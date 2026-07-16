@@ -1,7 +1,7 @@
 ---
 id: prepared-diagonal-index-plans
 title: Add reusable CPU and CUDA diagonal index plans
-status: todo
+status: in-progress
 priority: p1
 dependencies: [optimized-provider-performance-protocol]
 related: [einsum-diagonal-fastpath, spike-reusable-diagonal-index-plans]
@@ -9,6 +9,9 @@ scopes: [runtime, benchmarks]
 shared_scopes: []
 paths: []
 tags: [performance-gap, einsum]
+claimed_from: todo
+assignee: codex-root
+lease_expires_at: 1784223951
 ---
 ## Evidence
 

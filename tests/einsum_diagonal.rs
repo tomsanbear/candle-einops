@@ -1,5 +1,5 @@
 use candle_core::{DType, Device, Result, Tensor, Var};
-use candle_einops::einsum;
+use candle_einops::{PreparedDiagonalPlan, einsum};
 
 fn flat_f32(tensor: &Tensor) -> Result<Vec<f32>> {
     tensor.to_dtype(DType::F32)?.flatten_all()?.to_vec1::<f32>()
@@ -17,6 +17,66 @@ fn assert_close(actual: &Tensor, expected: &Tensor, context: &str) -> Result<()>
             "{context}[{index}]: actual={actual}, expected={expected}"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn prepared_diagonal_plan_reuses_device_indices_with_strict_boundaries() -> Result<()> {
+    let device = Device::Cpu;
+    let plan = PreparedDiagonalPlan::new(&[4, 3, 4, 3], &[0, 1, 0, 1], &device)?;
+    for start in [0f32, 1.] {
+        let input = Tensor::arange(start, start + 144., &device)?.reshape((4, 3, 4, 3))?;
+        assert_close(
+            &plan.execute(&input)?,
+            &einsum!("i j i j -> i j", &input)?,
+            "prepared interleaved diagonal",
+        )?;
+    }
+    assert_eq!(plan.input_shape(), &[4, 3, 4, 3]);
+    assert_eq!(plan.output_shape(), &[4, 3]);
+    assert_eq!(plan.index_dtype(), DType::U32);
+
+    assert!(plan.execute(&Tensor::zeros((4, 4), DType::F32, &device)?).is_err());
+    let noncontiguous = Tensor::zeros((3, 4, 3, 4), DType::F32, &device)?
+        .permute((1, 0, 3, 2))?;
+    assert!(plan.execute(&noncontiguous).is_err());
+    assert!(PreparedDiagonalPlan::new(&[2, 3], &[0, 0], &device).is_err());
+    assert!(PreparedDiagonalPlan::new(&[2, 3], &[0, 1], &device).is_err());
+    assert!(
+        PreparedDiagonalPlan::new(&[usize::MAX, usize::MAX], &[0, 0], &device).is_err()
+    );
+    Ok(())
+}
+
+#[test]
+fn prepared_diagonal_plan_preserves_zero_extents_and_gradients() -> Result<()> {
+    let device = Device::Cpu;
+    let empty_plan = PreparedDiagonalPlan::new(&[2, 0, 0], &[0, 1, 1], &device)?;
+    let empty = Var::from_vec(Vec::<f32>::new(), (2, 0, 0), &device)?;
+    let empty_output = empty_plan.execute(empty.as_tensor())?;
+    assert_eq!(empty_output.dims(), &[2, 0]);
+    assert_eq!(
+        empty_output
+            .sum_all()?
+            .backward()?
+            .get(empty.as_tensor())
+            .expect("prepared empty gather keeps the input edge")
+            .dims(),
+        &[2, 0, 0]
+    );
+
+    let plan = PreparedDiagonalPlan::new(&[3, 3], &[0, 0], &device)?;
+    let input = Var::from_vec((0..9).map(|value| value as f32).collect(), (3, 3), &device)?;
+    let output = plan.execute(input.as_tensor())?;
+    let gradients = output.sum_all()?.backward()?;
+    assert_eq!(
+        flat_f32(
+            gradients
+                .get(input.as_tensor())
+                .expect("prepared diagonal keeps the input edge")
+        )?,
+        vec![1., 0., 0., 0., 1., 0., 0., 0., 1.]
+    );
     Ok(())
 }
 

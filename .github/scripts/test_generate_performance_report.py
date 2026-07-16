@@ -101,6 +101,8 @@ class PerformanceReportGeneratorTests(unittest.TestCase):
             self.assertIn(label, outcomes + heatmap)
         for scenario in ["family/loss", "family/tie", "family/win"]:
             self.assertIn(scenario, heatmap)
+        self.assertIn("+20.0%", heatmap)
+        self.assertIn("+0.20 us", heatmap)
         self.assertIn("role=\"img\"", outcomes)
         self.assertIn("role=\"img\"", heatmap)
 

@@ -12,6 +12,11 @@ Run these commands from a clean checkout before publishing:
 - `python3 .github/scripts/validate_artifact_policy.py`
 - `python3 .github/scripts/validate_einsum_release.py`
 - `python3 .github/scripts/validate_python_parity_policy.py`
+- `python3 .github/scripts/validate_performance_harness_policy.py`
+- `python3 .github/scripts/test_validate_performance_harness_policy.py`
+- `uv sync --frozen --project benchmarks/reporting`
+- `uv run --frozen --project benchmarks/reporting python .github/scripts/test_generate_performance_report.py`
+- `uv run --frozen --project benchmarks/reporting python .github/scripts/generate_performance_report.py --check`
 - `actionlint .github/workflows/ci.yml`
 - `cargo deny --all-features check`
 - `python3 .github/scripts/test_python_parity.py`

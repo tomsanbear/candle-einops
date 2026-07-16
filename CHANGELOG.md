@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-07-16
 
 ### Changed
 
@@ -30,6 +30,8 @@ All notable changes to this project are documented here. The format follows
   isolation.
 - Added an isolated, locked performance-measurement harness with paired direct
   Candle references and a versioned machine-readable result contract.
+- Added a reproducible cross-provider performance report with normalized source
+  data and generated CPU, Accelerate, Metal, and CUDA figures.
 - Added product reductions with `prod(...)`.
 - Added compile-time diagnostics for malformed expressions and invalid axis
   relationships.
@@ -81,6 +83,13 @@ python3 .github/scripts/validate_ci_policy.py
 python3 .github/scripts/validate_artifact_policy.py
 python3 .github/scripts/validate_einsum_release.py
 python3 .github/scripts/validate_python_parity_policy.py
+python3 .github/scripts/validate_performance_harness_policy.py
+python3 .github/scripts/test_validate_performance_harness_policy.py
+uv sync --frozen --project benchmarks/reporting
+uv run --frozen --project benchmarks/reporting \
+  python .github/scripts/test_generate_performance_report.py
+uv run --frozen --project benchmarks/reporting \
+  python .github/scripts/generate_performance_report.py --check
 actionlint .github/workflows/ci.yml
 cargo deny --all-features check
 python3 .github/scripts/test_python_parity.py

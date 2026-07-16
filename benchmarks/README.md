@@ -97,6 +97,27 @@ when the repeated-process median exceeds both 10% and 1 microsecond and its
 deterministic 95% interval lies beyond 5%. This report is the high-signal input
 for provider optimization work; sub-microsecond controls remain parity.
 
+## Published performance report
+
+The frozen CPU baseline, Accelerate, Metal, and CUDA snapshot is published in
+[`docs/performance.md`](../docs/performance.md). Its exhaustive matrix and two
+SVG figures are generated from the normalized, versioned source data in
+[`benchmarks/data/performance-2026-07-16.json`](data/performance-2026-07-16.json).
+
+Reporting dependencies are isolated in a dedicated locked `uv` project:
+
+```console
+uv sync --frozen --project benchmarks/reporting
+uv run --frozen --project benchmarks/reporting \
+  python .github/scripts/test_generate_performance_report.py
+uv run --frozen --project benchmarks/reporting \
+  python .github/scripts/generate_performance_report.py --check
+```
+
+The required CI job runs both commands. Updating the normalized snapshot and
+regenerating the Markdown/SVG outputs must happen in one change so the drift
+check remains meaningful.
+
 Each scenario has an immutable id, deterministic setup, a library operation, a
 direct Candle reference, an untimed correctness check, and elements/bytes with
 optional FLOPs. A sample synchronizes immediately before the clock starts and

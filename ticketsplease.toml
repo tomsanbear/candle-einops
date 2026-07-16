@@ -15,7 +15,7 @@ macros = ["candle-einops-macros/**"]
 tests = ["tests/**"]
 parity = ["parity/**"]
 benchmarks = ["benchmarks/**"]
-docs = ["README.md", "CHANGELOG.md", "LICENSE*"]
+docs = ["README.md", "CHANGELOG.md", "LICENSE*", "docs/**"]
 tooling = [
     "Cargo.toml",
     ".github/**",

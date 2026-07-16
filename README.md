@@ -4,111 +4,210 @@
 
 # candle-einops
 
-This library is a fork of [einops](https://github.com/VasanthakumarV/einops) intended to bring support for einops to [Candle](https://github.com/huggingface/candle). Thank you @VasanthakumarV for such a fantastic macro based library to build off. The original library was implemented with TCH as the backing library and was based on the [einops](https://github.com/arogozhnikov/einops) python library.
+`candle-einops` provides compile-time tensor rearrange, reduce, repeat, and
+Einstein summation expressions for
+[Candle](https://github.com/huggingface/candle). It is based on
+the original Rust [einops](https://github.com/VasanthakumarV/einops) macro and
+the Python [einops](https://github.com/arogozhnikov/einops) notation.
 
-For the most part everything from the original library has remained and only the device/dtype bindings have been altered. I do have plans to port `einsum` functionality to this library in the future.
+Version 0.2 targets Candle 0.11, uses Rust 2024, and requires Rust 1.94 or newer.
 
-Difference from the python version:
-
-- All code generated at compile time, avoiding the need for caching
-- One common api for rearrange, reduce and repeat operations
-- Shape and reduction operations can be directly specified in the expression
-
-## Getting Started
-
-__Transpose__
-
-Permute/Transpose dimensions, left side of `->` is the original state, right of `->` describes the end state
-
-```rust
-// (28, 28, 3) becomes (3, 28, 28)
-let output = einops!("h w c -> c h w", &input);
+```toml
+[dependencies]
+candle-core = "0.11"
+candle-einops = "0.2"
 ```
 
-__Composition__
+## Example
 
-Combine dimensions by putting them inside a parenthesis on the right of `->`
-
-```rust
-// (10, 28, 28, 3) becomes (280, 28, 3)
-let output = einops!("b h w c -> (b h) w c", &input);
-```
-
-__Transpose + Composition__
-
-Transpose a tensor, followed by a composing two dimensions into one, in one single expression
+`einops!` returns `candle_core::Result<Tensor>`, so callers can propagate Candle
+shape, axis, dtype, and device errors with `?`.
 
 ```rust
-// (10, 28, 28, 3) becomes (28, 280, 3)
-let output = einops!("b h w c -> h (b w) c", &input);
+use candle_core::{Device, Result, Tensor};
+use candle_einops::einops;
+
+fn main() -> Result<()> {
+    let input = Tensor::arange(0f32, 24f32, &Device::Cpu)?.reshape((2, 3, 4))?;
+    let output = einops!("batch height width -> width batch height", &input)?;
+
+    assert_eq!(output.dims(), &[4, 2, 3]);
+    Ok(())
+}
 ```
 
-__Decomposition__
+## Expression guide
 
-Split a dimension into two, by specifying the details inside parenthesis on the left,
-specify the shape of the new dimensions like so `b1:2`, `b1` is a new dimension with shape 2
+The left side of `->` describes the input axes and the right side describes the
+output axes. Transformations can be combined in one expression.
+
+| Operation | Example | Shape change |
+| --- | --- | --- |
+| Transpose | `h w c -> c h w` | `(28, 28, 3)` to `(3, 28, 28)` |
+| Compose | `b h w c -> (b h) w c` | `(10, 28, 28, 3)` to `(280, 28, 3)` |
+| Decompose | `(b1:2 b2) h w c -> b1 b2 h w c` | `(10, 28, 28, 3)` to `(2, 5, 28, 28, 3)` |
+| Reduce | `mean(b) h w c -> h w c` | `(10, 28, 28, 3)` to `(28, 28, 3)` |
+| Repeat | `h w c -> h copy:5 w c` | `(28, 28, 3)` to `(28, 5, 28, 3)` |
+| Squeeze | `1 h w c -> h w c` | `(1, 28, 28, 3)` to `(28, 28, 3)` |
+
+Supported reductions are `min`, `max`, `sum`, `mean`, and `prod`. A reduction
+can cover consecutive axes, as in `batch sum(row column) -> batch`. Use `..` to
+preserve or reduce a runtime number of axes.
+
+Axis sizes may be literals (`copy:5`) or Rust expressions in braces. For
+example, with `let copies = 5`, `h w -> h {copies} w` inserts an axis of that
+length. New named axes and decomposed groups require an explicit size whenever
+it cannot be inferred.
+
+Invalid expressions are reported by the procedural macro at compile time.
+Tensor-dependent failures are returned as Candle errors at runtime.
+
+## Einsum guide
+
+`einsum!` accepts an explicit-output equation followed by one tensor expression
+per comma-separated input list. It returns `candle_core::Result<Tensor>` and
+evaluates every operand once, from left to right. Labels are
+whitespace-delimited, exactly one `->` is required, and labels omitted from the
+output are summed.
+
+The supported contract includes:
+
+- Unary permutation and reduction: `"rows columns -> columns rows"`.
+- Binary broadcasting, outer products, and GEMM-lowered contraction:
+  `"row inner, inner column -> row column"`.
+- A single ellipsis (`..`) per axis list for right-aligned variable-rank
+  broadcasting or reduction: `".. feature -> feature"`.
+- Repeated labels within an operand for diagonal extraction and traces:
+  `"index index -> index"` and `"index index ->"`.
+- Arbitrary n-ary equations with deterministic, shape-aware greedy planning:
+  `"row inner, inner column, column -> row"`.
 
 ```rust
-// (10, 28, 28, 3) becomes (2, 5, 28, 28, 3)
-let output = einops!("(b1:2 b2) h w c -> b1 b2 h w c", &input);
+use candle_core::{Device, Result, Tensor};
+use candle_einops::einsum;
+
+fn main() -> Result<()> {
+    let left = Tensor::new(&[[1f32, 2., 3.], [4., 5., 6.]], &Device::Cpu)?;
+    let right = Tensor::new(&[[1f32, 2.], [3., 4.], [5., 6.]], &Device::Cpu)?;
+    let product = einsum!("row inner, inner column -> row column", &left, &right)?;
+    assert_eq!(product.to_vec2::<f32>()?, [[22., 28.], [49., 64.]]);
+
+    let weights = Tensor::new(&[1f32, 1.], &Device::Cpu)?;
+    let projected = einsum!(
+        "row inner, inner column, column -> row",
+        &left,
+        &right,
+        &weights,
+    )?;
+    assert_eq!(projected.to_vec1::<f32>()?, [50., 113.]);
+    Ok(())
+}
 ```
 
-New axis can also be specified from variables or fields (struct and enum) using curly braces
+Retained labels shared by operands broadcast when their extents are equal or
+one. Repeated occurrences of a label in one operand must have equal extents.
+Scalars and zero-sized axes are supported. Einsum never casts or moves tensors:
+multi-operand inputs must have the same dtype and device, and unsupported
+Candle operations return contextual errors.
+
+For a repeated diagonal with a stable shape, `PreparedDiagonalPlan` keeps the
+`u32` gather indices on the target device instead of rebuilding and uploading
+them on every call. Axis ids correspond to input labels; repeated ids select a
+diagonal and unique axes are returned in first-occurrence order.
 
 ```rust
-let b1 = 2;
-let output = einops!("({b1} b2) h w c -> {b1} b2 h w c", &input);
+use candle_core::{Device, Result, Tensor};
+use candle_einops::PreparedDiagonalPlan;
+
+fn prepared(input: &Tensor) -> Result<Tensor> {
+    let plan = PreparedDiagonalPlan::new(&[4, 3, 4, 3], &[0, 1, 0, 1], input.device())?;
+    plan.execute(input) // equivalent to `i j i j -> i j`
+}
 ```
 
-__Decomposition + Transpose + Composition__
+Plans require the exact prepared shape, contiguous input, and same device.
+They are caller-owned and bounded; the crate does not maintain a global tensor
+or index cache. Use `einsum!` for one-shot calls and equations that continue
+with permutation, reduction, or contraction.
 
-We can perform all operations discussed so far in a single expression
+Axes introduced by `einops!` repeat patterns are returned as broadcast views.
+These tensors can be non-contiguous and share storage with the input; operations
+that require contiguous storage may materialize them when consumed.
+If a repeated result must be contiguous immediately, benchmark that complete
+consumer path on the target backend. Candle's eager `Tensor::repeat` can copy a
+single leading repeat faster on baseline CPU and Metal, while the view avoids
+the copy entirely for stride-aware consumers and is faster for the measured
+two-axis and CUDA paths. The library therefore preserves the view contract
+rather than predicting a later consumer and materializing eagerly.
 
-```rust
-// (10, 28, 28, 3) becomes (56, 140 3)
-let output = einops!("b h (w w2:2) c -> (h w2) (b w) c", &input);
+## Migrating from 0.1
+
+Version 0.2 contains four compatibility changes:
+
+- Candle is upgraded from 0.6 to 0.11.
+- `einops!` now returns `candle_core::Result<Tensor>` instead of panicking on a
+  backend error. Add `?` or handle the result explicitly.
+- Custom `Backend` implementations must return `candle_core::Result` from
+  `reshape`, `transpose`, `reduce_axes`, and `add_axes`. `shape` remains
+  infallible.
+- `einsum!` is now a supported public API for unary, binary, ellipsis,
+  diagonal, and arbitrary n-ary equations.
+
+Dependency renaming is supported. For example,
+`tensor-ops = { package = "candle-einops", version = "0.2" }` can be imported
+with `use tensor_ops::{einops, einsum};`.
+
+Because generated expansions call a private runtime ABI, direct users of the
+implementation crate must keep `candle-einops-macros` at exactly the same
+version as `candle-einops`. Applications should normally depend only on
+`candle-einops`, which enforces this pairing.
+
+See [CHANGELOG.md](CHANGELOG.md) for the complete release notes and publish
+order.
+
+## Scope
+
+The crate implements rearrange, reduce, and repeat operations plus
+arbitrary-arity explicit-label `einsum!`. Einsum supports permutation,
+reduction, outer products, elementwise broadcasting, and GEMM-lowered
+contractions.
+Ellipses provide right-aligned variable-rank broadcasting and optional
+reduction. Repeated labels within an input extract a diagonal before the
+remaining contraction, including batched diagonals and traces. Multi-operand
+equations use deterministic, shape-aware greedy contraction planning.
+
+## Development parity
+
+Contributors can run the locked Python einops semantic oracle and bounded Rust
+property suite with one command:
+
+```console
+python3 .github/scripts/test_python_parity.py
 ```
 
-__Reduce__
+This check is mandatory in CI but opt-in locally; ordinary Rust tests do not
+install or invoke Python. See [parity/README.md](parity/README.md) for supported
+operations, syntax translations, tolerances, deterministic replay, and the
+deliberate dependency-update process.
 
-We can reduce axes using operations like, `sum`, `min`, `max`, and `mean`.
-if the same operations has to be performed on multiple continuous axes we can do `sum(a b c)`
+## Development performance measurements
 
-```rust
-// (10, 28, 28, 3) becomes (28, 28, 3)
-let output = einops!("mean(b) h w c -> h w c", &input);
+The locked, unpublished performance harness is isolated from the normal Cargo
+workspace and published crates. Compile it or run its correctness-only plumbing
+smoke with the supported wrapper:
+
+```console
+python3 .github/scripts/run_benchmarks.py compile
+python3 .github/scripts/run_benchmarks.py smoke
+python3 .github/scripts/run_benchmarks.py capture --backend metal --filter reshape/identity/non-contiguous/consume --operation library
 ```
 
-__Decomposition + Reduce + Transpose + Composition__
+Timing results are advisory rather than a CI gate. See
+[benchmarks/README.md](benchmarks/README.md) for device profiles, filtering,
+schema v2 diagnostics, the CPU/Accelerate/MKL and Metal/CUDA support matrix,
+exact-operation GPU capture, required host libraries, and measurement
+boundaries. The frozen cross-provider results, figures, complete scenario
+matrix, and reproducible source data are published in
+[docs/performance.md](docs/performance.md).
 
-Single expression for combining all functionalities discussed
-
-```rust
-// (10, 28, 28, 3) becomes (14, 140, 3)
-let output = einops!("b (h max(h2:2)) (w max(w2:2)) c -> h (b w) c", &input);
-```
-
-__Repeat__
-
-We can repeat axes by specify it on the right side of `->`, it can named, or it can simply be a number
-
-```rust
-// (28, 28, 3) becomes (28, 5, 28, 3)
-let output = einops!("h w c -> h repeat:5 w c", &input);
-```
-
-Repeating axis's shape can be from a variables or a field (struct, enum)
-
-```rust
-let repeat = 5;
-let output = einops!("h w c -> h {repeat} w c", &input);
-```
-
-__Squeeze__
-
-Squeeze axes of shape 1
-
-```rust
-// (1, 28, 28, 3) becomes (28, 28, 3)
-let output = einops!("1 h w c -> h w c")
-```
+Licensed under either Apache-2.0 or MIT, at your option.

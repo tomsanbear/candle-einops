@@ -1,2 +1,4 @@
 /target
 Cargo.lock
+.claude/skills/ticketsplease
+**/__pycache__/

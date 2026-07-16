@@ -1,42 +1,263 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
 
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+
 jobs:
   test:
-    name: Test
+    name: Test (Rust ${{ matrix.rust }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: ["1.94", stable]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          toolchain: stable
-          profile: minimal
-          override: true
-      - uses: actions-rs/cargo@v1
+          persist-credentials: false
+      - name: Install Rust ${{ matrix.rust }}
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
-          command: test
-          args: --all-features
+          toolchain: ${{ matrix.rust }}
+      - name: Test workspace
+        run: cargo test --workspace --all-targets --all-features
 
   quality:
-    name: CodeQuality
+    name: Quality
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Install stable Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: stable
-          components: rustfmt, clippy
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
-      - uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-features -- -D warnings
+          components: clippy, rustfmt
+      - name: Validate CI policy
+        run: python3 .github/scripts/validate_ci_policy.py
+      - name: Validate artifact policy
+        run: python3 .github/scripts/validate_artifact_policy.py
+      - name: Validate einsum release completeness
+        run: python3 .github/scripts/validate_einsum_release.py
+      - name: Validate Python parity policy
+        run: python3 .github/scripts/validate_python_parity_policy.py
+      - name: Validate performance harness policy
+        run: python3 .github/scripts/validate_performance_harness_policy.py
+      - name: Test performance harness policy filtering
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 .github/scripts/test_validate_performance_harness_policy.py
+      - name: Test advisory benchmark comparison contract
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 .github/scripts/test_compare_benchmarks.py
+      - name: Test benchmark execution and capture contract
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 .github/scripts/test_run_benchmarks.py
+      - name: Test repeated reference-gap summary contract
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 .github/scripts/test_summarize_reference_gaps.py
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        # These existing source/test warnings are outside this tooling ticket.
+        # Keep every other warning CI-fatal while follow-up work removes them.
+        run: >-
+          cargo clippy --workspace --all-targets --all-features --
+          -D warnings
+          -A dead-code
+          -A clippy::excessive-precision
+          -A clippy::identity-op
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --all-features --no-deps
+      - name: Test documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo test --doc --workspace --all-features
 
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Install stable Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: stable
+      - name: Package, unpack, and test workspace crates
+        run: python3 .github/scripts/test_published_artifacts.py
+
+  python-parity:
+    name: Python einops parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CANDLE_EINOPS_PARITY_CASES: "64"
+      CANDLE_EINOPS_PARITY_SEED: "6840158760032202765"
+      CANDLE_EINOPS_PARITY_MAX_ELEMENTS: "512"
+      UV_MANAGED_PYTHON: "1"
+      UV_NO_BUILD: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Install stable Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: stable
+      - name: Install pinned uv and Python
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.11.28"
+          python-version: "3.12.10"
+          enable-cache: true
+          cache-dependency-glob: parity/uv.lock
+          cache-python: true
+      - name: Run locked Python einops parity
+        run: python3 .github/scripts/test_python_parity.py
+
+  performance-report:
+    name: Performance report reproducibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      UV_MANAGED_PYTHON: "1"
+      UV_NO_BUILD: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Install pinned uv and Python
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.11.28"
+          python-version: "3.12.10"
+          enable-cache: true
+          cache-dependency-glob: benchmarks/reporting/uv.lock
+          cache-python: true
+      - name: Test report generator
+        run: >-
+          uv run --frozen --project benchmarks/reporting
+          python .github/scripts/test_generate_performance_report.py
+      - name: Check committed report, data, and figures
+        run: >-
+          uv run --frozen --project benchmarks/reporting
+          python .github/scripts/generate_performance_report.py --check
+
+  performance-harness:
+    name: Performance harness structural smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.94
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: "1.94"
+      - name: Compile locked standalone performance harness
+        run: python3 .github/scripts/run_benchmarks.py compile
+      - name: Run correctness and structural smoke contracts
+        run: python3 .github/scripts/run_benchmarks.py smoke
+      - name: Configure Intel oneAPI package repository
+        run: |
+          curl --fail --silent --show-error --location \
+            --output /tmp/intel-oneapi-key.pub \
+            https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
+          gpg --dearmor --output /tmp/intel-oneapi-key.gpg /tmp/intel-oneapi-key.pub
+          sudo install -m 0644 /tmp/intel-oneapi-key.gpg /usr/share/keyrings/oneapi-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" | sudo tee /etc/apt/sources.list.d/oneAPI.list
+          sudo apt-get update
+      - name: Install current Intel oneMKL development libraries
+        run: >-
+          sudo apt-get install --yes --no-install-recommends
+          intel-oneapi-mkl-core-devel intel-oneapi-openmp
+      - name: Compile locked MKL performance harness
+        run: |
+          source /opt/intel/oneapi/setvars.sh
+          python3 .github/scripts/run_benchmarks.py compile --cpu-implementation mkl
+      - name: Run MKL correctness and structural smoke contracts
+        run: |
+          source /opt/intel/oneapi/setvars.sh
+          python3 .github/scripts/run_benchmarks.py smoke --cpu-implementation mkl
+
+  performance-cuda-build:
+    name: Performance harness CUDA compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container: nvidia/cuda:12.8.1-devel-ubuntu24.04
+    env:
+      # Hosted container builds have no GPU discovery; target validated RTX 4070 hardware.
+      CUDA_COMPUTE_CAP: "89"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Install CUDA container build prerequisites
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends ca-certificates curl python3
+      - name: Install Rust 1.94
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: "1.94"
+      - name: Compile locked CUDA performance harness without runtime claims
+        run: python3 .github/scripts/run_benchmarks.py compile --backend cuda
+
+  dependency-policy:
+    name: Dependency policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Run cargo deny check
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+          arguments: --all-features
+
+  macos:
+    name: Representative macOS tests
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Install stable Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: stable
+      - name: Test representative runtime behavior
+        run: cargo test -p candle-einops --lib --test behavior --test errors
+      - name: Install Rust 1.94 for the locked performance harness
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: "1.94"
+      - name: Compile locked Accelerate performance harness
+        run: python3 .github/scripts/run_benchmarks.py compile --cpu-implementation accelerate
+      - name: Run Accelerate correctness and structural smoke contracts
+        run: python3 .github/scripts/run_benchmarks.py smoke --cpu-implementation accelerate
+      - name: Compile locked Metal performance harness without runtime claims
+        run: python3 .github/scripts/run_benchmarks.py compile --backend metal

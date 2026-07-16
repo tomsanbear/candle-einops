@@ -1,0 +1,5 @@
+error: Axis `axis` appears more than once on the left
+ --> tests/ui/fail/duplicate-reduced-axis.rs:4:21
+  |
+4 |     let _ = einops!("sum(axis axis) ->", ());
+  |                     ^^^^^^^^^^^^^^^^^^^

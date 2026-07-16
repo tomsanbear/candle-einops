@@ -1,5 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 use quote::ToTokens;
@@ -95,20 +95,15 @@ pub enum Operation {
     Prod,
 }
 
-pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition>, bool)> {
+pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition>, bool, usize)> {
     // Length of dimensions inside parenthesis,
     // we need it to account for the dimensions skipped during the iteration
     let mut parenthesized_len = 0;
+    let mut minimum_rank = 0;
     let (decomposition, requires_decomposition, _) = (0..)
-        .into_iter()
-        .take_while(|_| {
-            // We parse till we reach '->'
-            if input.peek(syn::Token![->]) {
-                input.parse::<syn::Token![->]>().unwrap();
-                return false;
-            }
-            true
-        })
+        // We parse till we reach '->'. The token is consumed after the fold so
+        // parsing failures can be propagated instead of panicking here.
+        .take_while(|_| !input.peek(syn::Token![->]))
         .try_fold(
             (
                 Vec::new(),
@@ -128,8 +123,17 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
                     let content_expression = parse_left_parenthesized(input, index_fn(i))?;
                     decomposition.extend(content_expression);
                     requires_decomposition = true;
+                    minimum_rank += 1;
                 } else if peek_reduce_kw(input) {
+                    let span = input.span();
                     let identifiers = parse_reduce_fn(input)?;
+                    if identifiers.iter().any(|(_, shape, _)| shape.is_some()) {
+                        return Err(syn::Error::new(
+                            span,
+                            "Axis sizes are not allowed in top-level reductions",
+                        ));
+                    }
+                    minimum_rank += identifiers.iter().filter(|(name, ..)| name != "..").count();
                     // We account for dimensions skipped during reduction operations
                     // like `sum(a b c)`, where three dimensions are reduced
                     parenthesized_len += identifiers.len().saturating_sub(1);
@@ -155,13 +159,21 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
                         },
                     );
                 } else if input.peek(syn::Ident) {
+                    let span = input.span();
                     let (name, shape) = parse_identifier(input)?;
+                    if shape.is_some() {
+                        return Err(syn::Error::new(
+                            span,
+                            "Axis sizes are only allowed inside a decomposition group on the left",
+                        ));
+                    }
                     decomposition.push(Decomposition::Named {
                         name,
                         shape,
                         index: index_fn(i),
                         operation: None,
                     });
+                    minimum_rank += 1;
                 } else if input.peek(syn::LitInt) {
                     let lit_int = input.parse::<syn::LitInt>()?;
                     if lit_int.base10_parse::<usize>()? != 1 {
@@ -174,6 +186,7 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
                     }
                     // We have to reshape to squeeze the 1 sized dimension
                     requires_decomposition = true;
+                    minimum_rank += 1;
                 } else if input.peek(syn::Token![..]) {
                     input.parse::<syn::Token![..]>()?;
                     decomposition.push(Decomposition::Named {
@@ -192,28 +205,52 @@ pub fn parse_decomposition(input: ParseStream) -> syn::Result<(Vec<Decomposition
             },
         )?;
 
-    Ok((decomposition, requires_decomposition))
+    input.parse::<syn::Token![->]>()?;
+
+    Ok((decomposition, requires_decomposition, minimum_rank))
 }
 
 fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec<Decomposition>> {
+    let span = input.span();
     let content;
     syn::parenthesized!(content in input);
 
+    if content.is_empty() {
+        return Err(syn::Error::new(
+            span,
+            "Decomposition groups cannot be empty",
+        ));
+    }
+
     let mut content_expression = Vec::new();
 
-    let (derived_name, derived_index, running_mul, shape_expr) = (0..)
-        .into_iter()
+    let (derived_name, derived_index, derived_operation, running_mul, shape_expr) = (0..)
         // We continue till we parse everything inside the parenthesis
         .take_while(|_| !content.is_empty())
         .try_fold(
-            (None, None, 1, Vec::new()),
-            |(mut derived_name, mut derived_index, mut running_mul, mut shape_expr), i| {
+            (None, None, None, 1usize, Vec::new()),
+            |(
+                mut derived_name,
+                mut derived_index,
+                mut derived_operation,
+                mut running_mul,
+                mut shape_expr,
+            ),
+             i| {
                 // Closure to keep a running multiple of the shapes,
                 // and updating the list with new dimensions with known shape
                 let mut update_values = |name, shape, operation| {
                     if let Some(size) = shape {
                         match size {
-                            Shape::Lit(lit_size) => running_mul *= lit_size,
+                            Shape::Lit(lit_size) => {
+                                running_mul =
+                                    running_mul.checked_mul(lit_size).ok_or_else(|| {
+                                        syn::Error::new(
+                                            span,
+                                            "Decomposition size product overflows usize",
+                                        )
+                                    })?;
+                            }
                             Shape::Expr(ref expression) => shape_expr.push(expression.clone()),
                         }
                         content_expression.push(Decomposition::Named {
@@ -230,6 +267,7 @@ fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec
                         }
                         derived_name = Some(name);
                         derived_index = Some(i);
+                        derived_operation = operation;
                     }
                     Ok(())
                 };
@@ -265,7 +303,13 @@ fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec
                         "Unknown character found inside the brackets of the left expression",
                     ));
                 };
-                Ok((derived_name, derived_index, running_mul, shape_expr))
+                Ok((
+                    derived_name,
+                    derived_index,
+                    derived_operation,
+                    running_mul,
+                    shape_expr,
+                ))
             },
         )?;
 
@@ -273,15 +317,27 @@ fn parse_left_parenthesized(input: ParseStream, index: Index) -> syn::Result<Vec
     // once we have the running multiple of all the other shapes
     // inside the parenthesis
     if let Some(derived_index) = derived_index {
+        let derived_name = derived_name.ok_or_else(|| {
+            syn::Error::new(
+                content.span(),
+                "Internal error while deriving the decomposed axis name",
+            )
+        })?;
         content_expression.insert(
             derived_index,
             Decomposition::Derived {
-                name: derived_name.unwrap(),
+                name: derived_name,
                 index,
-                operation: None,
-                shape_calc: quote::quote!(
-                    (#running_mul * [#(#shape_expr),*].iter().product::<usize>())
-                ),
+                operation: derived_operation,
+                shape_calc: if shape_expr.is_empty() {
+                    quote::quote!(::core::option::Option::Some(#running_mul))
+                } else {
+                    quote::quote!(
+                        [#(#shape_expr),*]
+                            .into_iter()
+                            .try_fold(#running_mul, |product, factor| product.checked_mul(factor))
+                    )
+                },
             },
         );
     }
@@ -336,8 +392,18 @@ pub fn parse_reduce(decomposition: &[Decomposition]) -> Vec<(Index, Operation)> 
                 index: Index::Known(_),
                 operation: Some(operation),
                 ..
+            }
+            | Decomposition::Derived {
+                index: Index::Known(_),
+                operation: Some(operation),
+                ..
             } => Some((Index::Known(i), operation)),
             Decomposition::Named {
+                index: Index::Unknown(_),
+                operation: Some(operation),
+                ..
+            }
+            | Decomposition::Derived {
                 index: Index::Unknown(_),
                 operation: Some(operation),
                 ..
@@ -359,6 +425,31 @@ pub fn parse_composition_permute_repeat(
 ) -> syn::Result<(Vec<Composition>, Vec<Index>, Vec<(Index, Shape)>)> {
     // We calculate the span to report errors later
     let input_span = input.span();
+    let mut left_names = HashSet::new();
+    for expression in decomposition {
+        let (name, is_anonymous_literal) = match expression {
+            Decomposition::Named {
+                name,
+                shape: Some(Shape::Lit(size)),
+                ..
+            } => (name, name == &size.to_string()),
+            Decomposition::Named { name, .. } | Decomposition::Derived { name, .. } => {
+                (name, false)
+            }
+        };
+        // Literal axes such as `max(2)` are anonymous and may be reused.
+        if is_anonymous_literal {
+            continue;
+        }
+        if !left_names.insert(name) {
+            let message = if name == ".." {
+                "Ellipsis `..` appears more than once on the left".to_string()
+            } else {
+                format!("Axis `{name}` appears more than once on the left")
+            };
+            return Err(syn::Error::new(input_span, message));
+        }
+    }
     // We check if ignored dimensions are reduced
     let is_ignore_reduced = decomposition.iter().any(|expression| {
         matches!(expression, Decomposition::Named {name, operation: Some(_), ..} if name.as_str() == "..")
@@ -382,12 +473,15 @@ pub fn parse_composition_permute_repeat(
                 Decomposition::Named {
                     operation: Some(_),
                     ..
+                } | Decomposition::Derived {
+                    operation: Some(_),
+                    ..
                 }
             )
         })
         .enumerate()
         .try_fold(HashMap::new(), |mut map, (i, expression)| {
-            let old_value = match expression {
+            let (name, index) = match expression {
                 Decomposition::Named {
                     name,
                     index: Index::Known(_),
@@ -397,7 +491,7 @@ pub fn parse_composition_permute_repeat(
                     name,
                     index: Index::Known(_),
                     ..
-                } => map.insert(name.clone(), Index::Known(i)),
+                } => (name, Index::Known(i)),
                 Decomposition::Named {
                     name,
                     index: Index::Unknown(_),
@@ -407,94 +501,139 @@ pub fn parse_composition_permute_repeat(
                     name,
                     index: Index::Unknown(_),
                     ..
-                } => map.insert(name.clone(), unknown_index_fn(i)),
+                } => (name, unknown_index_fn(i)),
                 Decomposition::Named {
                     name,
                     index: Index::Range(_),
                     ..
-                } => map.insert(name.clone(), Index::Range(i)),
+                } => (name, Index::Range(i)),
                 _ => unreachable!(),
             };
-            if old_value.is_some() {
-                return Err(input.error("Names are not unique in the left expression"));
+            if map.insert(name.clone(), index).is_some() {
+                return Err(syn::Error::new(
+                    input_span,
+                    format!("Axis `{name}` appears more than once on the left"),
+                ));
             }
             Ok(map)
         })?;
 
+    let mut consumed = HashSet::new();
+
     // To keep track of the dimensions skipped inside parenthesis
     let mut parenthesized_len: usize = 0;
     let (composition, permute, repeat, _) = (0..)
-        .into_iter()
         .take_while(|_| !input.is_empty())
         .try_fold::<_, _, syn::Result<(_, _, _, _)>>(
-        (
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            // Closure to construct `Index`, once we encounter '..',
-            // `Known` index becomes `Unknown`
-            Box::new(Index::Known) as Box<dyn Fn(usize) -> Index>,
-        ),
-        |(mut composition, mut permute, mut repeat, mut index_fn), mut i| {
-            // We update the iterator's index to account for dimensions skipped
-            // inside parenthesis
-            i += parenthesized_len;
-            if input.peek(token::Paren) {
-                let (combined, combined_permute, combined_repeat, combined_len) =
-                    parse_right_parenthesized(input, i, &mut index_fn, &positions)?;
-                parenthesized_len += combined_len.saturating_sub(1);
-                permute.extend(combined_permute);
-                repeat.extend(combined_repeat);
-                composition.push(combined);
-            } else if input.peek(syn::Ident) {
-                let (name, shape) = parse_identifier(input)?;
-                if let Some(index) = positions.get(&name) {
+            (
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                // Closure to construct `Index`, once we encounter '..',
+                // `Known` index becomes `Unknown`
+                Box::new(Index::Known) as Box<dyn Fn(usize) -> Index>,
+            ),
+            |(mut composition, mut permute, mut repeat, mut index_fn), mut i| {
+                // We update the iterator's index to account for dimensions skipped
+                // inside parenthesis
+                i += parenthesized_len;
+                if input.peek(token::Paren) {
+                    let (combined, combined_permute, combined_repeat, combined_len) =
+                        parse_right_parenthesized(
+                            input,
+                            i,
+                            &mut index_fn,
+                            &positions,
+                            &mut consumed,
+                        )?;
+                    parenthesized_len += combined_len.saturating_sub(1);
+                    permute.extend(combined_permute);
+                    repeat.extend(combined_repeat);
+                    composition.push(combined);
+                } else if input.peek(syn::Ident) {
+                    let (name, shape) = parse_identifier(input)?;
+                    if let Some(index) = positions.get(&name) {
+                        if shape.is_some() {
+                            return Err(syn::Error::new(
+                                input_span,
+                                format!("Axis `{name}` cannot be assigned a size on the right"),
+                            ));
+                        }
+                        permute.push(index.clone());
+                    } else {
+                        // New identifiers represents repetition
+                        let shape = shape.ok_or_else(|| {
+                            syn::Error::new(
+                                input.span(),
+                                format!("New axis `{name}` requires an explicit size"),
+                            )
+                        })?;
+                        repeat.push((index_fn(i), shape));
+                    }
+                    if !consumed.insert(name.clone()) {
+                        return Err(syn::Error::new(
+                            input_span,
+                            format!("Axis `{name}` appears more than once on the right"),
+                        ));
+                    }
+                    composition.push(Composition::Individual(index_fn(i)))
+                } else if input.peek(syn::LitInt) {
+                    // Literal ints represent repetition
+                    repeat.push((index_fn(i), Shape::Lit(parse_usize(input)?)));
+                    composition.push(Composition::Individual(index_fn(i)));
+                } else if input.peek(syn::Token![..]) {
+                    input.parse::<syn::Token![..]>()?;
+                    if !consumed.insert("..".to_string()) {
+                        return Err(syn::Error::new(
+                            input_span,
+                            "Ellipsis `..` appears more than once on the right",
+                        ));
+                    }
+                    composition.push(Composition::Individual(Index::Range(i)));
+                    let index = positions.get("..").ok_or_else(|| {
+                        syn::Error::new(
+                            input.span(),
+                            "Ellipsis `..` must appear on both sides of the expression",
+                        )
+                    })?;
                     permute.push(index.clone());
+                    // We update the closure
+                    index_fn = Box::new(Index::Unknown);
+                } else if input.peek(syn::token::Brace) {
+                    let (name, shape) = parse_braced_expression(input)?;
+                    if !consumed.insert(name.clone()) {
+                        return Err(syn::Error::new(
+                            input_span,
+                            format!("Axis `{name}` appears more than once on the right"),
+                        ));
+                    }
+                    if let Some(index) = positions.get(&name) {
+                        permute.push(index.clone());
+                    } else {
+                        repeat.push((index_fn(i), shape));
+                    }
+                    composition.push(Composition::Individual(index_fn(i)));
                 } else {
-                    // New identifiers represents repetition
-                    repeat.push((
-                        index_fn(i),
-                        shape.expect("New identifier on the right should have a shape"),
-                    ));
+                    return Err(
+                        input.error("Unrecognized character on the right side of the expression")
+                    );
                 }
-                composition.push(Composition::Individual(index_fn(i)))
-            } else if input.peek(syn::LitInt) {
-                // Literal ints represent repetition
-                repeat.push((index_fn(i), Shape::Lit(parse_usize(input)?)));
-                composition.push(Composition::Individual(index_fn(i)));
-            } else if input.peek(syn::Token![..]) {
-                input.parse::<syn::Token![..]>()?;
-                composition.push(Composition::Individual(Index::Range(i)));
-                permute.push(
-                    positions
-                        .get("..")
-                        .expect("Ignore should be on both sides of the expression")
-                        .clone(),
-                );
-                // We update the closure
-                index_fn = Box::new(Index::Unknown);
-            } else if input.peek(syn::token::Brace) {
-                let (name, shape) = parse_braced_expression(input)?;
-                if let Some(index) = positions.get(&name) {
-                    permute.push(index.clone());
-                } else {
-                    repeat.push((index_fn(i), shape));
-                }
-            } else {
-                return Err(
-                    input.error("Unrecognized character on the right side of the expression")
-                );
-            }
-            Ok((composition, permute, repeat, index_fn))
-        },
-    )?;
+                Ok((composition, permute, repeat, index_fn))
+            },
+        )?;
 
     // We raise an error if the right side of the expression
     // misses a indicator from the left side
-    if positions.len() != permute.len() {
+    let mut missing = positions
+        .keys()
+        .filter(|name| !consumed.contains(*name))
+        .cloned()
+        .collect::<Vec<_>>();
+    missing.sort();
+    if !missing.is_empty() {
         return Err(syn::Error::new(
             input_span,
-            "Identifiers missing on the right side of the expression",
+            format!("Axes missing on the right: {}", missing.join(", ")),
         ));
     }
 
@@ -507,9 +646,15 @@ fn parse_right_parenthesized(
     start_index: usize,
     index_fn: &mut Box<dyn Fn(usize) -> Index>,
     positions: &HashMap<String, Index>,
+    consumed: &mut HashSet<String>,
 ) -> syn::Result<(Composition, Vec<Index>, Vec<(Index, Shape)>, usize)> {
+    let span = input.span();
     let content;
     syn::parenthesized!(content in input);
+
+    if content.is_empty() {
+        return Err(syn::Error::new(span, "Composition groups cannot be empty"));
+    }
 
     let mut permute = Vec::new();
     let mut repeat = Vec::new();
@@ -519,22 +664,44 @@ fn parse_right_parenthesized(
     let mut parse_content = |content: ParseStream, index: usize| -> syn::Result<Index> {
         if content.peek(syn::Token![..]) {
             content.parse::<syn::Token![..]>()?;
-            permute.push(
-                positions
-                    .get("..")
-                    .expect("Ignore should be on both sides of the expressions")
-                    .clone(),
-            );
+            if !consumed.insert("..".to_string()) {
+                return Err(syn::Error::new(
+                    span,
+                    "Ellipsis `..` appears more than once on the right",
+                ));
+            }
+            let ignored_index = positions.get("..").ok_or_else(|| {
+                syn::Error::new(
+                    content.span(),
+                    "Ellipsis `..` must appear on both sides of the expression",
+                )
+            })?;
+            permute.push(ignored_index.clone());
             *index_fn = Box::new(Index::Unknown);
             Ok(Index::Range(index))
         } else if content.peek(syn::Ident) {
             let (name, shape) = parse_identifier(content)?;
             if let Some(index) = positions.get(&name) {
+                if shape.is_some() {
+                    return Err(syn::Error::new(
+                        span,
+                        format!("Axis `{name}` cannot be assigned a size on the right"),
+                    ));
+                }
                 permute.push(index.clone());
             } else {
-                repeat.push((
-                    index_fn(index),
-                    shape.expect("New identifier with no shape specified on the right side"),
+                let shape = shape.ok_or_else(|| {
+                    syn::Error::new(
+                        content.span(),
+                        format!("New axis `{name}` requires an explicit size"),
+                    )
+                })?;
+                repeat.push((index_fn(index), shape));
+            }
+            if !consumed.insert(name.clone()) {
+                return Err(syn::Error::new(
+                    span,
+                    format!("Axis `{name}` appears more than once on the right"),
                 ));
             }
             Ok(index_fn(index))
@@ -543,6 +710,12 @@ fn parse_right_parenthesized(
             Ok(index_fn(index))
         } else if content.peek(syn::token::Brace) {
             let (name, shape) = parse_braced_expression(content)?;
+            if !consumed.insert(name.clone()) {
+                return Err(syn::Error::new(
+                    span,
+                    format!("Axis `{name}` appears more than once on the right"),
+                ));
+            }
             if let Some(index) = positions.get(&name) {
                 permute.push(index.clone());
             } else {
@@ -559,11 +732,13 @@ fn parse_right_parenthesized(
 
     // The ending index of the combined dimension,
     // we iterate through the entire expression to update relevant lists
-    let to = ((start_index + 1)..)
-        .into_iter()
-        .take_while(|_| !content.is_empty())
-        .fold(None, |_, i| Some(parse_content(&content, i)))
-        .transpose()?;
+    let mut to = None;
+    for i in (start_index + 1).. {
+        if content.is_empty() {
+            break;
+        }
+        to = Some(parse_content(&content, i)?);
+    }
 
     // We calculate the length of dimesions inside this parenthesis,
     // this helps the main loop keep track of skipped dimensions
@@ -588,6 +763,7 @@ fn peek_reduce_kw(input: ParseStream) -> bool {
 }
 
 fn parse_reduce_fn(input: ParseStream) -> syn::Result<Vec<(String, Option<Shape>, Operation)>> {
+    let span = input.span();
     let operation = if input.peek(kw::min) {
         input.parse::<kw::min>()?;
         Operation::Min
@@ -604,11 +780,15 @@ fn parse_reduce_fn(input: ParseStream) -> syn::Result<Vec<(String, Option<Shape>
         input.parse::<kw::prod>()?;
         Operation::Prod
     } else {
-        unreachable!();
+        return Err(input.error("Expected a reduction operation"));
     };
 
     let content;
     syn::parenthesized!(content in input);
+
+    if content.is_empty() {
+        return Err(syn::Error::new(span, "Reduction groups cannot be empty"));
+    }
 
     Ok(content
         // A single operation call can have multiple dimensions,

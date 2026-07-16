@@ -1,0 +1,5 @@
+error: Decomposition size product overflows usize
+ --> tests/ui/fail/decomposition-literal-overflow.rs:5:9
+  |
+5 |         "(axis huge:18446744073709551615 two:2) -> axis huge two",
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

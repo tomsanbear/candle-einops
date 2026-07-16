@@ -1,0 +1,5 @@
+error: New axis `b` requires an explicit size
+ --> tests/ui/fail/grouped-middle-missing-axis-size.rs:4:21
+  |
+4 |     let _ = einops!("a -> (a b 1)", ());
+  |                     ^^^^^^^^^^^^^^

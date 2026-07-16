@@ -1,0 +1,22 @@
+# Example recipe showing the one data-flow primitive ({{steps.<id>.<path>}}).
+# Run with:  tkt run split --arg id=<ticket> --arg title="New piece"
+description = "Create a successor ticket and make an existing ticket depend on it."
+
+inputs.id = { type = "ticket", required = true, description = "The ticket that will depend on the new one." }
+inputs.title = { type = "string", required = true, description = "Title of the successor ticket." }
+
+# 1. Create the successor. Give the step an `id` so a later step can read its JSON output.
+[[steps]]
+id = "piece"
+command = "create"
+title = "{{inputs.title}}"
+
+# 2. The existing ticket now depends on the freshly-created one. `create` emits its id at
+#    results[0].id — hard-fails (exit 3) if that path is ever absent, never a silent blank.
+[[steps]]
+command = "link"
+args = ["{{inputs.id}}"]
+depends-on = "{{steps.piece.results.0.id}}"
+
+[outputs]
+new_id = "{{steps.piece.results.0.id}}"

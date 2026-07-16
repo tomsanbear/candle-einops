@@ -1,0 +1,28 @@
+# Example recipe. Run with:  tkt run supersede --arg id=<old> --arg with=<a>,<b>
+# Edit or delete freely; discovered from .ticketsplease/recipes/. `tkt run --list`.
+description = "Re-point a ticket's dependents onto replacements, then close it superseded."
+
+inputs.id = { type = "ticket", required = true, description = "The ticket being replaced." }
+inputs.with = { type = "ticket", required = true, multiple = true, description = "Successor ticket id(s)." }
+
+# 1. Every ticket that depends on <id> now depends on the successors instead. The
+#    `--where dep:<id>` selector fans out over all of them in one call.
+[[steps]]
+command = "set"
+where = "dep:{{inputs.id}}"
+add-dependency = "{{inputs.with}}"
+remove-dependency = "{{inputs.id}}"
+
+# 2. Keep a trail from the original to its successors.
+[[steps]]
+command = "set"
+args = ["{{inputs.id}}"]
+add-related = "{{inputs.with}}"
+
+# 3. Close the original as superseded (must come after the re-point, or its live
+#    dependents would be orphaned by a closed-without-completing dependency).
+[[steps]]
+command = "close"
+args = ["{{inputs.id}}"]
+reason = "superseded"
+note = "superseded by {{inputs.with}}"

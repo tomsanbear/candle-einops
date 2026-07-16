@@ -1,0 +1,5 @@
+error: einsum output `..` requires an input `..`
+ --> tests/ui/fail/einsum-output-ellipsis-without-input.rs:4:21
+  |
+4 |     let _ = einsum!("row -> .. row", ());
+  |                     ^^^^^^^^^^^^^^^

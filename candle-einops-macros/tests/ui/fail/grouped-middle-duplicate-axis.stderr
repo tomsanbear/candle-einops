@@ -1,0 +1,5 @@
+error: Axis `a` appears more than once on the right
+ --> tests/ui/fail/grouped-middle-duplicate-axis.rs:4:21
+  |
+4 |     let _ = einops!("a -> (a a 1)", ());
+  |                     ^^^^^^^^^^^^^^

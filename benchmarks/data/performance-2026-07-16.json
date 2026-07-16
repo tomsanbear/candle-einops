@@ -1,0 +1,3675 @@
+{
+  "schema_version": 1,
+  "snapshot": {
+    "date": "2026-07-16",
+    "processes": 5,
+    "samples_per_process": 25,
+    "thresholds": {
+      "confidence_excludes_percent": 5.0,
+      "median_absolute_ns": 1000.0,
+      "median_percent": 10.0
+    }
+  },
+  "providers": [
+    {
+      "id": "cpu-baseline",
+      "label": "CPU baseline",
+      "device": "CPU (baseline)",
+      "backend": "cpu",
+      "cpu_implementation": "baseline",
+      "os": "macos",
+      "architecture": "aarch64",
+      "candle_version": "0.11.0",
+      "rust_version": "rustc 1.94.1 (e408947bf 2026-03-25)",
+      "source_summary": "target/benchmarks/final-complete-2/cpu-baseline/summary.json",
+      "scenarios": {
+        "einsum/binary-packing/recovered-view/construct": {
+          "status": "parity",
+          "library_process_median_ns": 91792.0,
+          "reference_process_median_ns": 91458.0,
+          "median_delta_ns": 541.0,
+          "median_percent": 0.5825033647375505,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.27649667650994836,
+            "upper_bound_percent": 3.3796474153754215
+          },
+          "workload": {
+            "bytes": 411648,
+            "elements": 49152,
+            "flops": null
+          }
+        },
+        "einsum/binary-packing/recovered-view/consume": {
+          "status": "parity",
+          "library_process_median_ns": 243459.0,
+          "reference_process_median_ns": 263083.0,
+          "median_delta_ns": -10957.0,
+          "median_percent": -4.30672599207597,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -11.229657089898053,
+            "upper_bound_percent": 13.082183189335685
+          },
+          "workload": {
+            "bytes": 436224,
+            "elements": 55296,
+            "flops": 7077888
+          }
+        },
+        "einsum/binary/hadamard-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 250.0,
+          "reference_process_median_ns": 83.0,
+          "median_delta_ns": 167.0,
+          "median_percent": 201.20481927710844,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 197.61904761904762,
+            "upper_bound_percent": 201.20481927710844
+          },
+          "workload": {
+            "bytes": 384,
+            "elements": 32,
+            "flops": 32
+          }
+        },
+        "einsum/binary/hadamard-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 27167.0,
+          "reference_process_median_ns": 27042.0,
+          "median_delta_ns": 167.0,
+          "median_percent": 0.6252808147371574,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.462243916870054,
+            "upper_bound_percent": 1.099814807815866
+          },
+          "workload": {
+            "bytes": 3145728,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "einsum/binary/outer-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 583.0,
+          "reference_process_median_ns": 416.0,
+          "median_delta_ns": 167.0,
+          "median_percent": 40.14423076923077,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 39.80815347721823,
+            "upper_bound_percent": 44.53333333333333
+          },
+          "workload": {
+            "bytes": 316,
+            "elements": 63,
+            "flops": 63
+          }
+        },
+        "einsum/binary/outer-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 11792.0,
+          "reference_process_median_ns": 11625.0,
+          "median_delta_ns": 208.0,
+          "median_percent": 1.7639077340569878,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 1.4365591397849462,
+            "upper_bound_percent": 4.4685233276618606
+          },
+          "workload": {
+            "bytes": 1048576,
+            "elements": 261120,
+            "flops": 261120
+          }
+        },
+        "einsum/binary/rank2-matmul-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 1292.0,
+          "reference_process_median_ns": 1084.0,
+          "median_delta_ns": 208.0,
+          "median_percent": 18.488888888888887,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 14.844444444444445,
+            "upper_bound_percent": 19.29824561403509
+          },
+          "workload": {
+            "bytes": 764,
+            "elements": 63,
+            "flops": 1008
+          }
+        },
+        "einsum/binary/rank2-matmul-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 68166.0,
+          "reference_process_median_ns": 68583.0,
+          "median_delta_ns": 1375.0,
+          "median_percent": 1.8911001389099011,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -3.2791555869105116,
+            "upper_bound_percent": 4.996262148018938
+          },
+          "workload": {
+            "bytes": 196352,
+            "elements": 16320,
+            "flops": 4177920
+          }
+        },
+        "einsum/binary/rank3-matmul-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 1833.0,
+          "reference_process_median_ns": 1542.0,
+          "median_delta_ns": 291.0,
+          "median_percent": 18.8715953307393,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 15.384615384615385,
+            "upper_bound_percent": 20.5363443895554
+          },
+          "workload": {
+            "bytes": 1528,
+            "elements": 126,
+            "flops": 2016
+          }
+        },
+        "einsum/binary/rank3-matmul-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 48542.0,
+          "reference_process_median_ns": 48209.0,
+          "median_delta_ns": 333.0,
+          "median_percent": 0.6907423924993259,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.34612898517483687,
+            "upper_bound_percent": 0.8614263232005301
+          },
+          "workload": {
+            "bytes": 391168,
+            "elements": 32256,
+            "flops": 4128768
+          }
+        },
+        "einsum/zero-k/output-1x1": {
+          "status": "parity",
+          "library_process_median_ns": 583.0,
+          "reference_process_median_ns": 375.0,
+          "median_delta_ns": 208.0,
+          "median_percent": 55.46666666666667,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 55.46666666666667,
+            "upper_bound_percent": 59.71223021582734
+          },
+          "workload": {
+            "bytes": 4,
+            "elements": 1,
+            "flops": 0
+          }
+        },
+        "einsum/zero-k/output-512x512": {
+          "status": "parity",
+          "library_process_median_ns": 583.0,
+          "reference_process_median_ns": 375.0,
+          "median_delta_ns": 208.0,
+          "median_percent": 55.46666666666667,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 40.14423076923077,
+            "upper_bound_percent": 55.46666666666667
+          },
+          "workload": {
+            "bytes": 1048576,
+            "elements": 262144,
+            "flops": 0
+          }
+        },
+        "einsum/zero-k/output-64x64": {
+          "status": "parity",
+          "library_process_median_ns": 583.0,
+          "reference_process_median_ns": 375.0,
+          "median_delta_ns": 208.0,
+          "median_percent": 55.46666666666667,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 55.46666666666667,
+            "upper_bound_percent": 55.46666666666667
+          },
+          "workload": {
+            "bytes": 16384,
+            "elements": 4096,
+            "flops": 0
+          }
+        },
+        "layout/extended-compose/post-reduction/construct": {
+          "status": "parity",
+          "library_process_median_ns": 40166.0,
+          "reference_process_median_ns": 40000.0,
+          "median_delta_ns": 208.0,
+          "median_percent": 0.5114712174490373,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.415,
+            "upper_bound_percent": 2.3238704112438797
+          },
+          "workload": {
+            "bytes": 147456,
+            "elements": 12288,
+            "flops": 24576
+          }
+        },
+        "layout/extended-compose/post-reduction/consume": {
+          "status": "parity",
+          "library_process_median_ns": 40500.0,
+          "reference_process_median_ns": 39750.0,
+          "median_delta_ns": 291.0,
+          "median_percent": 0.7185185185185186,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.5214050493962679,
+            "upper_bound_percent": 2.7475454753025343
+          },
+          "workload": {
+            "bytes": 196608,
+            "elements": 12288,
+            "flops": 24576
+          }
+        },
+        "layout/extended-compose/runtime-ellipsis/construct": {
+          "status": "library_faster",
+          "library_process_median_ns": 625.0,
+          "reference_process_median_ns": 112292.0,
+          "median_delta_ns": -111667.0,
+          "median_percent": -99.44506104328524,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -99.47623318385651,
+            "upper_bound_percent": -99.44175992997437
+          },
+          "workload": {
+            "bytes": 786432,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/extended-compose/runtime-ellipsis/consume": {
+          "status": "parity",
+          "library_process_median_ns": 112084.0,
+          "reference_process_median_ns": 112333.0,
+          "median_delta_ns": -417.0,
+          "median_percent": -0.375394974928657,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.48124306326304106,
+            "upper_bound_percent": 0.672392462032239
+          },
+          "workload": {
+            "bytes": 1179648,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/permute-compose/c-ab/construct": {
+          "status": "parity",
+          "library_process_median_ns": 123833.0,
+          "reference_process_median_ns": 123791.0,
+          "median_delta_ns": 167.0,
+          "median_percent": 0.13508594539939334,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.5361003721356407,
+            "upper_bound_percent": 1.0436946143096024
+          },
+          "workload": {
+            "bytes": 393216,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/permute-compose/c-ab/consume": {
+          "status": "parity",
+          "library_process_median_ns": 123667.0,
+          "reference_process_median_ns": 123500.0,
+          "median_delta_ns": 916.0,
+          "median_percent": 0.7417004048582996,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.9087824738270648,
+            "upper_bound_percent": 0.8474438426129247
+          },
+          "workload": {
+            "bytes": 786432,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/permute-compose/n-hw-c/construct": {
+          "status": "library_faster",
+          "library_process_median_ns": 375.0,
+          "reference_process_median_ns": 106125.0,
+          "median_delta_ns": -105750.0,
+          "median_percent": -99.64622641509433,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -99.65344521661984,
+            "upper_bound_percent": -99.61043328786832
+          },
+          "workload": {
+            "bytes": 393216,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/permute-compose/n-hw-c/consume": {
+          "status": "parity",
+          "library_process_median_ns": 106458.0,
+          "reference_process_median_ns": 106959.0,
+          "median_delta_ns": -417.0,
+          "median_percent": -0.3927774167114075,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.5373271889400921,
+            "upper_bound_percent": -0.1180637544273908
+          },
+          "workload": {
+            "bytes": 786432,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "product/sequential-vs-balanced/k-512": {
+          "status": "parity",
+          "library_process_median_ns": 168917.0,
+          "reference_process_median_ns": 170750.0,
+          "median_delta_ns": -125.0,
+          "median_percent": -0.07309941520467836,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.2188133140376265,
+            "upper_bound_percent": 1.610541727672035
+          },
+          "workload": {
+            "bytes": 524288,
+            "elements": 131072,
+            "flops": 130816
+          }
+        },
+        "product/sequential-vs-balanced/k-64": {
+          "status": "parity",
+          "library_process_median_ns": 17250.0,
+          "reference_process_median_ns": 17166.0,
+          "median_delta_ns": 42.0,
+          "median_percent": 0.24290093112023597,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.23941605839416058,
+            "upper_bound_percent": 0.49171691154949365
+          },
+          "workload": {
+            "bytes": 65536,
+            "elements": 16384,
+            "flops": 16128
+          }
+        },
+        "product/sequential-vs-balanced/k-8": {
+          "status": "parity",
+          "library_process_median_ns": 2167.0,
+          "reference_process_median_ns": 2084.0,
+          "median_delta_ns": 83.0,
+          "median_percent": 4.06464250734574,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 1.9021739130434783,
+            "upper_bound_percent": 6.072477962781587
+          },
+          "workload": {
+            "bytes": 8192,
+            "elements": 2048,
+            "flops": 1792
+          }
+        },
+        "product/sequential-vs-balanced/two-axis-8x8": {
+          "status": "library_faster",
+          "library_process_median_ns": 7708.0,
+          "reference_process_median_ns": 17459.0,
+          "median_delta_ns": -9751.0,
+          "median_percent": -55.850850564178934,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -56.0856864654333,
+            "upper_bound_percent": -55.63741007194245
+          },
+          "workload": {
+            "bytes": 65536,
+            "elements": 16384,
+            "flops": 16128
+          }
+        },
+        "reduce/fusion/contiguous-trailing/mean": {
+          "status": "parity",
+          "library_process_median_ns": 9916.0,
+          "reference_process_median_ns": 9750.0,
+          "median_delta_ns": 125.0,
+          "median_percent": 1.2712295332045154,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.8330853912526034,
+            "upper_bound_percent": 1.7025641025641025
+          },
+          "workload": {
+            "bytes": 1049600,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "reduce/fusion/contiguous-trailing/sum": {
+          "status": "parity",
+          "library_process_median_ns": 10000.0,
+          "reference_process_median_ns": 10000.0,
+          "median_delta_ns": 83.0,
+          "median_percent": 0.8736842105263158,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.40481927710843374,
+            "upper_bound_percent": 1.7171821661322024
+          },
+          "workload": {
+            "bytes": 1049600,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "reduce/fusion/strided-non-adjacent/mean": {
+          "status": "parity",
+          "library_process_median_ns": 866875.0,
+          "reference_process_median_ns": 865750.0,
+          "median_delta_ns": 1125.0,
+          "median_percent": 0.12994513427663876,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.6372911732144915,
+            "upper_bound_percent": 0.42984080988886036
+          },
+          "workload": {
+            "bytes": 1050624,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "reduce/fusion/strided-non-adjacent/sum": {
+          "status": "parity",
+          "library_process_median_ns": 864042.0,
+          "reference_process_median_ns": 864000.0,
+          "median_delta_ns": -458.0,
+          "median_percent": -0.0529786003470214,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.7043566362715299,
+            "upper_bound_percent": 0.3519675925925926
+          },
+          "workload": {
+            "bytes": 1050624,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "repeat/broadcast/single-axis/construct": {
+          "status": "library_faster",
+          "library_process_median_ns": 417.0,
+          "reference_process_median_ns": 3882125.0,
+          "median_delta_ns": -3881750.0,
+          "median_percent": -99.98908269790883,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -99.99050983446874,
+            "upper_bound_percent": -99.98586471067645
+          },
+          "workload": {
+            "bytes": 8650752,
+            "elements": 2097152,
+            "flops": null
+          }
+        },
+        "repeat/broadcast/single-axis/consume": {
+          "status": "reference_gap",
+          "library_process_median_ns": 4039083.0,
+          "reference_process_median_ns": 3652541.0,
+          "median_delta_ns": 424000.0,
+          "median_percent": 11.608357031447422,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 7.1348021436634,
+            "upper_bound_percent": 18.851894867522144
+          },
+          "workload": {
+            "bytes": 8650752,
+            "elements": 2097152,
+            "flops": null
+          }
+        },
+        "repeat/broadcast/two-axis/construct": {
+          "status": "library_faster",
+          "library_process_median_ns": 1000.0,
+          "reference_process_median_ns": 9007458.0,
+          "median_delta_ns": -9006500.0,
+          "median_percent": -99.98890158054812,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -99.99115017845465,
+            "upper_bound_percent": -99.98244646198627
+          },
+          "workload": {
+            "bytes": 16842752,
+            "elements": 4194304,
+            "flops": null
+          }
+        },
+        "repeat/broadcast/two-axis/consume": {
+          "status": "library_faster",
+          "library_process_median_ns": 4538542.0,
+          "reference_process_median_ns": 17164334.0,
+          "median_delta_ns": -12625792.0,
+          "median_percent": -73.43297859057692,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -73.64929159368229,
+            "upper_bound_percent": -73.09502635215424
+          },
+          "workload": {
+            "bytes": 16842752,
+            "elements": 4194304,
+            "flops": null
+          }
+        },
+        "reshape/identity/contiguous/construct": {
+          "status": "parity",
+          "library_process_median_ns": 42.0,
+          "reference_process_median_ns": 41.0,
+          "median_delta_ns": 1.0,
+          "median_percent": 2.4390243902439024,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.0,
+            "upper_bound_percent": 2.4390243902439024
+          },
+          "workload": {
+            "bytes": 1048576,
+            "elements": 262144,
+            "flops": null
+          }
+        },
+        "reshape/identity/contiguous/consume": {
+          "status": "parity",
+          "library_process_median_ns": 41.0,
+          "reference_process_median_ns": 41.0,
+          "median_delta_ns": 0.0,
+          "median_percent": 0.0,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.0,
+            "upper_bound_percent": 2.4390243902439024
+          },
+          "workload": {
+            "bytes": 2097152,
+            "elements": 262144,
+            "flops": null
+          }
+        },
+        "reshape/identity/non-contiguous/construct": {
+          "status": "parity",
+          "library_process_median_ns": 41.0,
+          "reference_process_median_ns": 41.0,
+          "median_delta_ns": 0.0,
+          "median_percent": 0.0,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.380952380952381,
+            "upper_bound_percent": 4100.0
+          },
+          "workload": {
+            "bytes": 1048576,
+            "elements": 262144,
+            "flops": null
+          }
+        },
+        "reshape/identity/non-contiguous/consume": {
+          "status": "parity",
+          "library_process_median_ns": 476083.0,
+          "reference_process_median_ns": 476417.0,
+          "median_delta_ns": -208.0,
+          "median_percent": -0.0446871683374225,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.11371623393653292,
+            "upper_bound_percent": 9.147270205932118
+          },
+          "workload": {
+            "bytes": 2097152,
+            "elements": 262144,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/both-broadcast": {
+          "status": "library_faster",
+          "library_process_median_ns": 54625.0,
+          "reference_process_median_ns": 139208.0,
+          "median_delta_ns": -84583.0,
+          "median_percent": -60.76015746221481,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -61.44765389033054,
+            "upper_bound_percent": -59.987557182067704
+          },
+          "workload": {
+            "bytes": 327680,
+            "elements": 65536,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/layout-hostile": {
+          "status": "parity",
+          "library_process_median_ns": 12708.0,
+          "reference_process_median_ns": 12667.0,
+          "median_delta_ns": 41.0,
+          "median_percent": 0.32367569274492775,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.6467700459752201,
+            "upper_bound_percent": 0.3326732673267327
+          },
+          "workload": {
+            "bytes": 196608,
+            "elements": 16384,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/left-broadcast": {
+          "status": "library_faster",
+          "library_process_median_ns": 27042.0,
+          "reference_process_median_ns": 67500.0,
+          "median_delta_ns": -40667.0,
+          "median_percent": -60.03683241252302,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -60.370370370370374,
+            "upper_bound_percent": -59.552452133519935
+          },
+          "workload": {
+            "bytes": 266240,
+            "elements": 32768,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/right-broadcast": {
+          "status": "library_faster",
+          "library_process_median_ns": 27000.0,
+          "reference_process_median_ns": 68041.0,
+          "median_delta_ns": -41042.0,
+          "median_percent": -60.30749689844627,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -60.623741567584254,
+            "upper_bound_percent": -59.68874379500022
+          },
+          "workload": {
+            "bytes": 266240,
+            "elements": 32768,
+            "flops": null
+          }
+        },
+        "spike/diagonal/interleaved/n16": {
+          "status": "parity",
+          "library_process_median_ns": 834.0,
+          "reference_process_median_ns": 875.0,
+          "median_delta_ns": 0.0,
+          "median_percent": 0.0,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -4.685714285714286,
+            "upper_bound_percent": 0.0
+          },
+          "workload": {
+            "bytes": 262144,
+            "elements": 65536,
+            "flops": null
+          }
+        },
+        "spike/diagonal/interleaved/n4": {
+          "status": "parity",
+          "library_process_median_ns": 209.0,
+          "reference_process_median_ns": 250.0,
+          "median_delta_ns": -41.0,
+          "median_percent": -16.4,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -16.4,
+            "upper_bound_percent": 0.0
+          },
+          "workload": {
+            "bytes": 1024,
+            "elements": 256,
+            "flops": null
+          }
+        },
+        "spike/diagonal/interleaved/n8": {
+          "status": "parity",
+          "library_process_median_ns": 333.0,
+          "reference_process_median_ns": 375.0,
+          "median_delta_ns": -41.0,
+          "median_percent": -10.933333333333334,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -11.2,
+            "upper_bound_percent": -0.2994011976047904
+          },
+          "workload": {
+            "bytes": 16384,
+            "elements": 4096,
+            "flops": null
+          }
+        },
+        "spike/diagonal/simple/n16": {
+          "status": "parity",
+          "library_process_median_ns": 209.0,
+          "reference_process_median_ns": 209.0,
+          "median_delta_ns": 0.0,
+          "median_percent": 0.0,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -16.4,
+            "upper_bound_percent": 0.0
+          },
+          "workload": {
+            "bytes": 1024,
+            "elements": 256,
+            "flops": null
+          }
+        },
+        "spike/diagonal/simple/n256": {
+          "status": "parity",
+          "library_process_median_ns": 875.0,
+          "reference_process_median_ns": 875.0,
+          "median_delta_ns": 0.0,
+          "median_percent": 0.0,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -4.685714285714286,
+            "upper_bound_percent": 0.12004801920768307
+          },
+          "workload": {
+            "bytes": 262144,
+            "elements": 65536,
+            "flops": null
+          }
+        },
+        "spike/diagonal/simple/n64": {
+          "status": "parity",
+          "library_process_median_ns": 333.0,
+          "reference_process_median_ns": 375.0,
+          "median_delta_ns": -1.0,
+          "median_percent": -0.2994011976047904,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -11.2,
+            "upper_bound_percent": 0.0
+          },
+          "workload": {
+            "bytes": 16384,
+            "elements": 4096,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-leading/max": {
+          "status": "parity",
+          "library_process_median_ns": 33791.0,
+          "reference_process_median_ns": 33666.0,
+          "median_delta_ns": 84.0,
+          "median_percent": 0.25232044696764894,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.12631578947368421,
+            "upper_bound_percent": 0.3712944810788332
+          },
+          "workload": {
+            "bytes": 393728,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-leading/min": {
+          "status": "parity",
+          "library_process_median_ns": 33708.0,
+          "reference_process_median_ns": 33583.0,
+          "median_delta_ns": 125.0,
+          "median_percent": 0.36231884057971014,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.2447150396556299,
+            "upper_bound_percent": 0.37974298994440564
+          },
+          "workload": {
+            "bytes": 393728,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-trailing/max": {
+          "status": "parity",
+          "library_process_median_ns": 29417.0,
+          "reference_process_median_ns": 29334.0,
+          "median_delta_ns": 83.0,
+          "median_percent": 0.2817475134933297,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.0151398869741157,
+            "upper_bound_percent": 0.28294811481557236
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-trailing/min": {
+          "status": "parity",
+          "library_process_median_ns": 28959.0,
+          "reference_process_median_ns": 28916.0,
+          "median_delta_ns": 83.0,
+          "median_percent": 0.28515174146242106,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -5.542582863073231,
+            "upper_bound_percent": 0.43571453670192206
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/strided-trailing/max": {
+          "status": "parity",
+          "library_process_median_ns": 45208.0,
+          "reference_process_median_ns": 44625.0,
+          "median_delta_ns": 125.0,
+          "median_percent": 0.28064030892885206,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.09664503658704957,
+            "upper_bound_percent": 1.3064425770308123
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/strided-trailing/min": {
+          "status": "parity",
+          "library_process_median_ns": 46000.0,
+          "reference_process_median_ns": 45958.0,
+          "median_delta_ns": 84.0,
+          "median_percent": 0.16153846153846155,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.08848793542538956,
+            "upper_bound_percent": 0.2853263995950206
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/nary-cost/balanced-tree": {
+          "status": "parity",
+          "library_process_median_ns": 15250.0,
+          "reference_process_median_ns": 15458.0,
+          "median_delta_ns": -167.0,
+          "median_percent": -1.0861788617886179,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.3455815758830378,
+            "upper_bound_percent": -0.819672131147541
+          },
+          "workload": {
+            "bytes": 73792,
+            "elements": 16384,
+            "flops": 139328
+          }
+        },
+        "spike/nary-cost/broadcast-heavy": {
+          "status": "parity",
+          "library_process_median_ns": 55250.0,
+          "reference_process_median_ns": 52042.0,
+          "median_delta_ns": 2125.0,
+          "median_percent": 3.9658100516955006,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.2205124199343853,
+            "upper_bound_percent": 7.845586257253757
+          },
+          "workload": {
+            "bytes": 122496,
+            "elements": 10240,
+            "flops": 505280
+          }
+        },
+        "spike/nary-cost/layout-hostile": {
+          "status": "parity",
+          "library_process_median_ns": 12417.0,
+          "reference_process_median_ns": 12625.0,
+          "median_delta_ns": -166.0,
+          "median_percent": -1.3019607843137255,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.6475247524752474,
+            "upper_bound_percent": -0.6880170366123352
+          },
+          "workload": {
+            "bytes": 8000,
+            "elements": 300,
+            "flops": 16500
+          }
+        },
+        "spike/nary-cost/linear-chain": {
+          "status": "parity",
+          "library_process_median_ns": 11958.0,
+          "reference_process_median_ns": 12250.0,
+          "median_delta_ns": -250.0,
+          "median_percent": -2.0618556701030926,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.3836734693877553,
+            "upper_bound_percent": -1.3833333333333333
+          },
+          "workload": {
+            "bytes": 8000,
+            "elements": 300,
+            "flops": 16500
+          }
+        }
+      }
+    },
+    {
+      "id": "cpu-accelerate",
+      "label": "CPU Accelerate",
+      "device": "CPU (Accelerate)",
+      "backend": "cpu",
+      "cpu_implementation": "accelerate",
+      "os": "macos",
+      "architecture": "aarch64",
+      "candle_version": "0.11.0",
+      "rust_version": "rustc 1.94.1 (e408947bf 2026-03-25)",
+      "source_summary": "target/benchmarks/final-complete-2/cpu-accelerate/summary.json",
+      "scenarios": {
+        "einsum/binary-packing/recovered-view/construct": {
+          "status": "parity",
+          "library_process_median_ns": 112250.0,
+          "reference_process_median_ns": 112209.0,
+          "median_delta_ns": 333.0,
+          "median_percent": 0.3350943396226415,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -3.3598112599080063,
+            "upper_bound_percent": 0.9457731506351813
+          },
+          "workload": {
+            "bytes": 411648,
+            "elements": 49152,
+            "flops": null
+          }
+        },
+        "einsum/binary-packing/recovered-view/consume": {
+          "status": "parity",
+          "library_process_median_ns": 122500.0,
+          "reference_process_median_ns": 122458.0,
+          "median_delta_ns": 1209.0,
+          "median_percent": 0.6956631816377142,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.5702431952032634,
+            "upper_bound_percent": 2.5679987843792738
+          },
+          "workload": {
+            "bytes": 436224,
+            "elements": 55296,
+            "flops": 7077888
+          }
+        },
+        "einsum/binary/hadamard-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 333.0,
+          "reference_process_median_ns": 84.0,
+          "median_delta_ns": 209.0,
+          "median_percent": 251.80722891566265,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 166.4,
+            "upper_bound_percent": 296.42857142857144
+          },
+          "workload": {
+            "bytes": 384,
+            "elements": 32,
+            "flops": 32
+          }
+        },
+        "einsum/binary/hadamard-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 34083.0,
+          "reference_process_median_ns": 33792.0,
+          "median_delta_ns": 250.0,
+          "median_percent": 0.7389016965182952,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.5434782608695652,
+            "upper_bound_percent": 1.8820766080462539
+          },
+          "workload": {
+            "bytes": 3145728,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "einsum/binary/outer-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 666.0,
+          "reference_process_median_ns": 458.0,
+          "median_delta_ns": 208.0,
+          "median_percent": 41.6,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 36.46288209606987,
+            "upper_bound_percent": 50.0
+          },
+          "workload": {
+            "bytes": 316,
+            "elements": 63,
+            "flops": 63
+          }
+        },
+        "einsum/binary/outer-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 13792.0,
+          "reference_process_median_ns": 13542.0,
+          "median_delta_ns": 166.0,
+          "median_percent": 1.2976860537836148,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.9230542017427263,
+            "upper_bound_percent": 3.434828258587071
+          },
+          "workload": {
+            "bytes": 1048576,
+            "elements": 261120,
+            "flops": 261120
+          }
+        },
+        "einsum/binary/rank2-matmul-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 500.0,
+          "reference_process_median_ns": 250.0,
+          "median_delta_ns": 250.0,
+          "median_percent": 85.61643835616438,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 83.2,
+            "upper_bound_percent": 100.0
+          },
+          "workload": {
+            "bytes": 764,
+            "elements": 63,
+            "flops": 1008
+          }
+        },
+        "einsum/binary/rank2-matmul-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 5417.0,
+          "reference_process_median_ns": 5250.0,
+          "median_delta_ns": 209.0,
+          "median_percent": 3.285461341727326,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 3.1748442959137173,
+            "upper_bound_percent": 8.482506102522375
+          },
+          "workload": {
+            "bytes": 196352,
+            "elements": 16320,
+            "flops": 4177920
+          }
+        },
+        "einsum/binary/rank3-matmul-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 833.0,
+          "reference_process_median_ns": 500.0,
+          "median_delta_ns": 333.0,
+          "median_percent": 66.8,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 63.75545851528384,
+            "upper_bound_percent": 79.85611510791367
+          },
+          "workload": {
+            "bytes": 1528,
+            "elements": 126,
+            "flops": 2016
+          }
+        },
+        "einsum/binary/rank3-matmul-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 8875.0,
+          "reference_process_median_ns": 8584.0,
+          "median_delta_ns": 374.0,
+          "median_percent": 3.390027958993476,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 2.9127344751252475,
+            "upper_bound_percent": 5.234285714285714
+          },
+          "workload": {
+            "bytes": 391168,
+            "elements": 32256,
+            "flops": 4128768
+          }
+        },
+        "einsum/zero-k/output-1x1": {
+          "status": "parity",
+          "library_process_median_ns": 667.0,
+          "reference_process_median_ns": 417.0,
+          "median_delta_ns": 250.0,
+          "median_percent": 49.88009592326139,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 41.048034934497814,
+            "upper_bound_percent": 59.95203836930455
+          },
+          "workload": {
+            "bytes": 4,
+            "elements": 1,
+            "flops": 0
+          }
+        },
+        "einsum/zero-k/output-512x512": {
+          "status": "parity",
+          "library_process_median_ns": 708.0,
+          "reference_process_median_ns": 459.0,
+          "median_delta_ns": 249.0,
+          "median_percent": 45.633187772925766,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 45.52401746724891,
+            "upper_bound_percent": 54.248366013071895
+          },
+          "workload": {
+            "bytes": 1048576,
+            "elements": 262144,
+            "flops": 0
+          }
+        },
+        "einsum/zero-k/output-64x64": {
+          "status": "parity",
+          "library_process_median_ns": 667.0,
+          "reference_process_median_ns": 458.0,
+          "median_delta_ns": 209.0,
+          "median_percent": 45.633187772925766,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 40.89422028353326,
+            "upper_bound_percent": 58.2
+          },
+          "workload": {
+            "bytes": 16384,
+            "elements": 4096,
+            "flops": 0
+          }
+        },
+        "layout/extended-compose/post-reduction/construct": {
+          "status": "parity",
+          "library_process_median_ns": 50417.0,
+          "reference_process_median_ns": 50167.0,
+          "median_delta_ns": 1208.0,
+          "median_percent": 2.5276196853029798,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.3500461138593108,
+            "upper_bound_percent": 194.06464507462198
+          },
+          "workload": {
+            "bytes": 147456,
+            "elements": 12288,
+            "flops": 24576
+          }
+        },
+        "layout/extended-compose/post-reduction/consume": {
+          "status": "parity",
+          "library_process_median_ns": 52000.0,
+          "reference_process_median_ns": 50708.0,
+          "median_delta_ns": 626.0,
+          "median_percent": 0.7437967352281969,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.08138957816377171,
+            "upper_bound_percent": 2.5479214325155795
+          },
+          "workload": {
+            "bytes": 196608,
+            "elements": 12288,
+            "flops": 24576
+          }
+        },
+        "layout/extended-compose/runtime-ellipsis/construct": {
+          "status": "library_faster",
+          "library_process_median_ns": 792.0,
+          "reference_process_median_ns": 142375.0,
+          "median_delta_ns": -141625.0,
+          "median_percent": -99.44372256365233,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -99.47322212467077,
+            "upper_bound_percent": -99.18073069340133
+          },
+          "workload": {
+            "bytes": 786432,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/extended-compose/runtime-ellipsis/consume": {
+          "status": "parity",
+          "library_process_median_ns": 143125.0,
+          "reference_process_median_ns": 142459.0,
+          "median_delta_ns": 666.0,
+          "median_percent": 0.4675029306677711,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -44.004371584699456,
+            "upper_bound_percent": 2.8890959925442683
+          },
+          "workload": {
+            "bytes": 1179648,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/permute-compose/c-ab/construct": {
+          "status": "parity",
+          "library_process_median_ns": 156708.0,
+          "reference_process_median_ns": 156875.0,
+          "median_delta_ns": 625.0,
+          "median_percent": 0.4222972972972973,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.39724660433602615,
+            "upper_bound_percent": 2.483882149046794
+          },
+          "workload": {
+            "bytes": 393216,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/permute-compose/c-ab/consume": {
+          "status": "parity",
+          "library_process_median_ns": 147916.0,
+          "reference_process_median_ns": 148166.0,
+          "median_delta_ns": 125.0,
+          "median_percent": 0.07980845969672785,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.16872966807499695,
+            "upper_bound_percent": 0.5822222222222222
+          },
+          "workload": {
+            "bytes": 786432,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/permute-compose/n-hw-c/construct": {
+          "status": "library_faster",
+          "library_process_median_ns": 459.0,
+          "reference_process_median_ns": 128250.0,
+          "median_delta_ns": -127791.0,
+          "median_percent": -99.64035259549462,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -99.6421052631579,
+            "upper_bound_percent": -99.63302752293578
+          },
+          "workload": {
+            "bytes": 393216,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/permute-compose/n-hw-c/consume": {
+          "status": "parity",
+          "library_process_median_ns": 135959.0,
+          "reference_process_median_ns": 136125.0,
+          "median_delta_ns": -166.0,
+          "median_percent": -0.12194674012855831,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.24410626319493314,
+            "upper_bound_percent": 2.266802030456853
+          },
+          "workload": {
+            "bytes": 786432,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "product/sequential-vs-balanced/k-512": {
+          "status": "parity",
+          "library_process_median_ns": 215083.0,
+          "reference_process_median_ns": 213667.0,
+          "median_delta_ns": 834.0,
+          "median_percent": 0.3680770402016038,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.4300641901522673,
+            "upper_bound_percent": 4.697965260545906
+          },
+          "workload": {
+            "bytes": 524288,
+            "elements": 131072,
+            "flops": 130816
+          }
+        },
+        "product/sequential-vs-balanced/k-64": {
+          "status": "parity",
+          "library_process_median_ns": 22667.0,
+          "reference_process_median_ns": 22500.0,
+          "median_delta_ns": 124.0,
+          "median_percent": 0.6073370230690112,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.2743169398907104,
+            "upper_bound_percent": 2.9909039518988645
+          },
+          "workload": {
+            "bytes": 65536,
+            "elements": 16384,
+            "flops": 16128
+          }
+        },
+        "product/sequential-vs-balanced/k-8": {
+          "status": "parity",
+          "library_process_median_ns": 2834.0,
+          "reference_process_median_ns": 2791.0,
+          "median_delta_ns": 84.0,
+          "median_percent": 3.1867920906124017,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 1.5406664278036546,
+            "upper_bound_percent": 3.536842105263158
+          },
+          "workload": {
+            "bytes": 8192,
+            "elements": 2048,
+            "flops": 1792
+          }
+        },
+        "product/sequential-vs-balanced/two-axis-8x8": {
+          "status": "library_faster",
+          "library_process_median_ns": 10500.0,
+          "reference_process_median_ns": 21583.0,
+          "median_delta_ns": -11083.0,
+          "median_percent": -51.34973304725313,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -51.53632497179064,
+            "upper_bound_percent": -51.16268210683601
+          },
+          "workload": {
+            "bytes": 65536,
+            "elements": 16384,
+            "flops": 16128
+          }
+        },
+        "reduce/fusion/contiguous-trailing/mean": {
+          "status": "parity",
+          "library_process_median_ns": 12208.0,
+          "reference_process_median_ns": 12083.0,
+          "median_delta_ns": 125.0,
+          "median_percent": 0.8820015461381685,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.0,
+            "upper_bound_percent": 1.0453253052349891
+          },
+          "workload": {
+            "bytes": 1049600,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "reduce/fusion/contiguous-trailing/sum": {
+          "status": "parity",
+          "library_process_median_ns": 12083.0,
+          "reference_process_median_ns": 11959.0,
+          "median_delta_ns": 166.0,
+          "median_percent": 1.4177128704415407,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.6916666666666667,
+            "upper_bound_percent": 2.104106810883894
+          },
+          "workload": {
+            "bytes": 1049600,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "reduce/fusion/strided-non-adjacent/mean": {
+          "status": "parity",
+          "library_process_median_ns": 1010000.0,
+          "reference_process_median_ns": 1010625.0,
+          "median_delta_ns": -625.0,
+          "median_percent": -0.06184291898577613,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.7933716305788776,
+            "upper_bound_percent": 0.8117387900062564
+          },
+          "workload": {
+            "bytes": 1050624,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "reduce/fusion/strided-non-adjacent/sum": {
+          "status": "parity",
+          "library_process_median_ns": 1019542.0,
+          "reference_process_median_ns": 1033917.0,
+          "median_delta_ns": -167.0,
+          "median_percent": -0.016142408911383008,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.4381067339061064,
+            "upper_bound_percent": 2.286631552545774
+          },
+          "workload": {
+            "bytes": 1050624,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "repeat/broadcast/single-axis/construct": {
+          "status": "library_faster",
+          "library_process_median_ns": 875.0,
+          "reference_process_median_ns": 4954708.0,
+          "median_delta_ns": -4953583.0,
+          "median_percent": -99.98147167813659,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -99.98348446463807,
+            "upper_bound_percent": -99.97729432289451
+          },
+          "workload": {
+            "bytes": 8650752,
+            "elements": 2097152,
+            "flops": null
+          }
+        },
+        "repeat/broadcast/single-axis/consume": {
+          "status": "parity",
+          "library_process_median_ns": 5533792.0,
+          "reference_process_median_ns": 5623875.0,
+          "median_delta_ns": 399375.0,
+          "median_percent": 8.189997692958396,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -11.834350474428629,
+            "upper_bound_percent": 17.642052855015447
+          },
+          "workload": {
+            "bytes": 8650752,
+            "elements": 2097152,
+            "flops": null
+          }
+        },
+        "repeat/broadcast/two-axis/construct": {
+          "status": "library_faster",
+          "library_process_median_ns": 2500.0,
+          "reference_process_median_ns": 14000458.0,
+          "median_delta_ns": -13997958.0,
+          "median_percent": -99.98204790644395,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -99.98920411797758,
+            "upper_bound_percent": -99.97892980883476
+          },
+          "workload": {
+            "bytes": 16842752,
+            "elements": 4194304,
+            "flops": null
+          }
+        },
+        "repeat/broadcast/two-axis/consume": {
+          "status": "library_faster",
+          "library_process_median_ns": 6796625.0,
+          "reference_process_median_ns": 38785209.0,
+          "median_delta_ns": -33065501.0,
+          "median_percent": -83.74957509739974,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -85.25286276013107,
+            "upper_bound_percent": -74.59238158524073
+          },
+          "workload": {
+            "bytes": 16842752,
+            "elements": 4194304,
+            "flops": null
+          }
+        },
+        "reshape/identity/contiguous/construct": {
+          "status": "parity",
+          "library_process_median_ns": 42.0,
+          "reference_process_median_ns": 41.0,
+          "median_delta_ns": 0.0,
+          "median_percent": 0.0,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.0,
+            "upper_bound_percent": 2.4390243902439024
+          },
+          "workload": {
+            "bytes": 1048576,
+            "elements": 262144,
+            "flops": null
+          }
+        },
+        "reshape/identity/contiguous/consume": {
+          "status": "parity",
+          "library_process_median_ns": 42.0,
+          "reference_process_median_ns": 42.0,
+          "median_delta_ns": 0.0,
+          "median_percent": 0.0,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.380952380952381,
+            "upper_bound_percent": 2.4390243902439024
+          },
+          "workload": {
+            "bytes": 2097152,
+            "elements": 262144,
+            "flops": null
+          }
+        },
+        "reshape/identity/non-contiguous/construct": {
+          "status": "parity",
+          "library_process_median_ns": 42.0,
+          "reference_process_median_ns": 41.0,
+          "median_delta_ns": 1.0,
+          "median_percent": 2.4390243902439024,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.0,
+            "upper_bound_percent": 97.61904761904762
+          },
+          "workload": {
+            "bytes": 1048576,
+            "elements": 262144,
+            "flops": null
+          }
+        },
+        "reshape/identity/non-contiguous/consume": {
+          "status": "parity",
+          "library_process_median_ns": 568875.0,
+          "reference_process_median_ns": 503541.0,
+          "median_delta_ns": 37083.0,
+          "median_percent": 6.9666649132431075,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.6042218036448026,
+            "upper_bound_percent": 14.73742952411025
+          },
+          "workload": {
+            "bytes": 2097152,
+            "elements": 262144,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/both-broadcast": {
+          "status": "library_faster",
+          "library_process_median_ns": 33042.0,
+          "reference_process_median_ns": 92708.0,
+          "median_delta_ns": -63542.0,
+          "median_percent": -66.36569803401227,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -71.22823930320932,
+            "upper_bound_percent": -43.33793103448276
+          },
+          "workload": {
+            "bytes": 327680,
+            "elements": 65536,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/layout-hostile": {
+          "status": "parity",
+          "library_process_median_ns": 3875.0,
+          "reference_process_median_ns": 3875.0,
+          "median_delta_ns": 0.0,
+          "median_percent": 0.0,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.48695652173913045,
+            "upper_bound_percent": 0.0
+          },
+          "workload": {
+            "bytes": 196608,
+            "elements": 16384,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/left-broadcast": {
+          "status": "library_faster",
+          "library_process_median_ns": 14250.0,
+          "reference_process_median_ns": 44416.0,
+          "median_delta_ns": -29625.0,
+          "median_percent": -67.52136752136752,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -71.29412824207493,
+            "upper_bound_percent": -50.2504207067874
+          },
+          "workload": {
+            "bytes": 266240,
+            "elements": 32768,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/right-broadcast": {
+          "status": "library_faster",
+          "library_process_median_ns": 14208.0,
+          "reference_process_median_ns": 44584.0,
+          "median_delta_ns": -29792.0,
+          "median_percent": -67.7090909090909,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -71.44356135024111,
+            "upper_bound_percent": -64.47224881448004
+          },
+          "workload": {
+            "bytes": 266240,
+            "elements": 32768,
+            "flops": null
+          }
+        },
+        "spike/diagonal/interleaved/n16": {
+          "status": "parity",
+          "library_process_median_ns": 1000.0,
+          "reference_process_median_ns": 1042.0,
+          "median_delta_ns": -41.0,
+          "median_percent": -3.6444444444444444,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -4.030710172744722,
+            "upper_bound_percent": 0.0
+          },
+          "workload": {
+            "bytes": 262144,
+            "elements": 65536,
+            "flops": null
+          }
+        },
+        "spike/diagonal/interleaved/n4": {
+          "status": "parity",
+          "library_process_median_ns": 250.0,
+          "reference_process_median_ns": 250.0,
+          "median_delta_ns": 0.0,
+          "median_percent": 0.0,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.0,
+            "upper_bound_percent": 0.0
+          },
+          "workload": {
+            "bytes": 1024,
+            "elements": 256,
+            "flops": null
+          }
+        },
+        "spike/diagonal/interleaved/n8": {
+          "status": "parity",
+          "library_process_median_ns": 417.0,
+          "reference_process_median_ns": 417.0,
+          "median_delta_ns": 0.0,
+          "median_percent": 0.0,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -8.2,
+            "upper_bound_percent": 0.2403846153846154
+          },
+          "workload": {
+            "bytes": 16384,
+            "elements": 4096,
+            "flops": null
+          }
+        },
+        "spike/diagonal/simple/n16": {
+          "status": "parity",
+          "library_process_median_ns": 291.0,
+          "reference_process_median_ns": 291.0,
+          "median_delta_ns": 0.0,
+          "median_percent": 0.0,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -14.383561643835616,
+            "upper_bound_percent": 0.0
+          },
+          "workload": {
+            "bytes": 1024,
+            "elements": 256,
+            "flops": null
+          }
+        },
+        "spike/diagonal/simple/n256": {
+          "status": "parity",
+          "library_process_median_ns": 1042.0,
+          "reference_process_median_ns": 1042.0,
+          "median_delta_ns": 0.0,
+          "median_percent": 0.0,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -3.6444444444444444,
+            "upper_bound_percent": 0.0
+          },
+          "workload": {
+            "bytes": 262144,
+            "elements": 65536,
+            "flops": null
+          }
+        },
+        "spike/diagonal/simple/n64": {
+          "status": "parity",
+          "library_process_median_ns": 417.0,
+          "reference_process_median_ns": 458.0,
+          "median_delta_ns": -41.0,
+          "median_percent": -4.921968787515006,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -8.951965065502183,
+            "upper_bound_percent": 0.0
+          },
+          "workload": {
+            "bytes": 16384,
+            "elements": 4096,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-leading/max": {
+          "status": "parity",
+          "library_process_median_ns": 40916.0,
+          "reference_process_median_ns": 40708.0,
+          "median_delta_ns": 167.0,
+          "median_percent": 0.3980170646837313,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.08707841304901877,
+            "upper_bound_percent": 0.5109560774294979
+          },
+          "workload": {
+            "bytes": 393728,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-leading/min": {
+          "status": "parity",
+          "library_process_median_ns": 41333.0,
+          "reference_process_median_ns": 41292.0,
+          "median_delta_ns": 84.0,
+          "median_percent": 0.17967914438502675,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.0992928412283251,
+            "upper_bound_percent": 0.40819337546413553
+          },
+          "workload": {
+            "bytes": 393728,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-trailing/max": {
+          "status": "parity",
+          "library_process_median_ns": 43750.0,
+          "reference_process_median_ns": 43625.0,
+          "median_delta_ns": 125.0,
+          "median_percent": 0.28653295128939826,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.2539068403711876,
+            "upper_bound_percent": 0.96
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-trailing/min": {
+          "status": "parity",
+          "library_process_median_ns": 35834.0,
+          "reference_process_median_ns": 39584.0,
+          "median_delta_ns": 125.0,
+          "median_percent": 0.31325788197251414,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -53.93554524302297,
+            "upper_bound_percent": 0.3787878787878788
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/strided-trailing/max": {
+          "status": "parity",
+          "library_process_median_ns": 59834.0,
+          "reference_process_median_ns": 58583.0,
+          "median_delta_ns": 458.0,
+          "median_percent": 0.875850990591295,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.7788278360912928,
+            "upper_bound_percent": 2.1354317805506717
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/strided-trailing/min": {
+          "status": "parity",
+          "library_process_median_ns": 55500.0,
+          "reference_process_median_ns": 54834.0,
+          "median_delta_ns": 125.0,
+          "median_percent": 0.2331002331002331,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.22573363431151242,
+            "upper_bound_percent": 5.038139534883721
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/nary-cost/balanced-tree": {
+          "status": "parity",
+          "library_process_median_ns": 12750.0,
+          "reference_process_median_ns": 12959.0,
+          "median_delta_ns": -167.0,
+          "median_percent": -1.2485981308411216,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.6499565800899976,
+            "upper_bound_percent": -1.0215664018161181
+          },
+          "workload": {
+            "bytes": 73792,
+            "elements": 16384,
+            "flops": 139328
+          }
+        },
+        "spike/nary-cost/broadcast-heavy": {
+          "status": "parity",
+          "library_process_median_ns": 80625.0,
+          "reference_process_median_ns": 80000.0,
+          "median_delta_ns": 167.0,
+          "median_percent": 0.20365853658536584,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.885,
+            "upper_bound_percent": 1.8957345971563981
+          },
+          "workload": {
+            "bytes": 122496,
+            "elements": 10240,
+            "flops": 505280
+          }
+        },
+        "spike/nary-cost/layout-hostile": {
+          "status": "parity",
+          "library_process_median_ns": 12750.0,
+          "reference_process_median_ns": 12875.0,
+          "median_delta_ns": -208.0,
+          "median_percent": -1.4769580345096924,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.6922951753315434,
+            "upper_bound_percent": -0.970873786407767
+          },
+          "workload": {
+            "bytes": 8000,
+            "elements": 300,
+            "flops": 16500
+          }
+        },
+        "spike/nary-cost/linear-chain": {
+          "status": "parity",
+          "library_process_median_ns": 11875.0,
+          "reference_process_median_ns": 12084.0,
+          "median_delta_ns": -209.0,
+          "median_percent": -1.7416666666666667,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.2753837762019793,
+            "upper_bound_percent": 0.0
+          },
+          "workload": {
+            "bytes": 8000,
+            "elements": 300,
+            "flops": 16500
+          }
+        }
+      }
+    },
+    {
+      "id": "metal",
+      "label": "Metal",
+      "device": "Apple M4 Max",
+      "backend": "metal",
+      "cpu_implementation": null,
+      "os": "macos",
+      "architecture": "aarch64",
+      "candle_version": "0.11.0",
+      "rust_version": "rustc 1.94.1 (e408947bf 2026-03-25)",
+      "source_summary": "target/benchmarks/final-complete/metal/summary.json",
+      "scenarios": {
+        "einsum/binary-packing/recovered-view/consume": {
+          "status": "library_faster",
+          "library_process_median_ns": 141375.0,
+          "reference_process_median_ns": 221292.0,
+          "median_delta_ns": -81751.0,
+          "median_percent": -35.99320882852292,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -38.691005811862254,
+            "upper_bound_percent": -35.16813818935822
+          },
+          "workload": {
+            "bytes": 436224,
+            "elements": 55296,
+            "flops": 7077888
+          }
+        },
+        "einsum/binary/hadamard-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 125000.0,
+          "reference_process_median_ns": 125792.0,
+          "median_delta_ns": 1833.0,
+          "median_percent": 1.36230284369826,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -10.43389086746375,
+            "upper_bound_percent": 1.6812396054603238
+          },
+          "workload": {
+            "bytes": 384,
+            "elements": 32,
+            "flops": 32
+          }
+        },
+        "einsum/binary/hadamard-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 155708.0,
+          "reference_process_median_ns": 155625.0,
+          "median_delta_ns": 374.0,
+          "median_percent": 0.25741265864603696,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -5.079827604074591,
+            "upper_bound_percent": 1.478466927673604
+          },
+          "workload": {
+            "bytes": 3145728,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "einsum/binary/outer-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 141458.0,
+          "reference_process_median_ns": 140750.0,
+          "median_delta_ns": 709.0,
+          "median_percent": 0.5459095283926853,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -4.150856461405031,
+            "upper_bound_percent": 1.1545293072824157
+          },
+          "workload": {
+            "bytes": 316,
+            "elements": 63,
+            "flops": 63
+          }
+        },
+        "einsum/binary/outer-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 445666.0,
+          "reference_process_median_ns": 447750.0,
+          "median_delta_ns": 834.0,
+          "median_percent": 0.18626465661641542,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.9448409373284405,
+            "upper_bound_percent": 3.13933054199298
+          },
+          "workload": {
+            "bytes": 1048576,
+            "elements": 261120,
+            "flops": 261120
+          }
+        },
+        "einsum/binary/rank2-matmul-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 131625.0,
+          "reference_process_median_ns": 132167.0,
+          "median_delta_ns": 2041.0,
+          "median_percent": 1.4055602614163034,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.9551022569930467,
+            "upper_bound_percent": 2.6980423978091084
+          },
+          "workload": {
+            "bytes": 764,
+            "elements": 63,
+            "flops": 1008
+          }
+        },
+        "einsum/binary/rank2-matmul-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 149084.0,
+          "reference_process_median_ns": 148792.0,
+          "median_delta_ns": 374.0,
+          "median_percent": 0.2672211147550354,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.0887908208296557,
+            "upper_bound_percent": 1.8720181849419166
+          },
+          "workload": {
+            "bytes": 196352,
+            "elements": 16320,
+            "flops": 4177920
+          }
+        },
+        "einsum/binary/rank3-matmul-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 135042.0,
+          "reference_process_median_ns": 132709.0,
+          "median_delta_ns": -1208.0,
+          "median_percent": -0.8866055045871559,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.772731543834372,
+            "upper_bound_percent": 1.7579817495422314
+          },
+          "workload": {
+            "bytes": 1528,
+            "elements": 126,
+            "flops": 2016
+          }
+        },
+        "einsum/binary/rank3-matmul-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 135000.0,
+          "reference_process_median_ns": 130875.0,
+          "median_delta_ns": 458.0,
+          "median_percent": 0.34041414576860757,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.400666709404449,
+            "upper_bound_percent": 4.48901623686724
+          },
+          "workload": {
+            "bytes": 391168,
+            "elements": 32256,
+            "flops": 4128768
+          }
+        },
+        "einsum/zero-k/output-1x1": {
+          "status": "parity",
+          "library_process_median_ns": 137458.0,
+          "reference_process_median_ns": 136959.0,
+          "median_delta_ns": 499.0,
+          "median_percent": 0.3643426134828671,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.7184884283685466,
+            "upper_bound_percent": 1.4526084634102914
+          },
+          "workload": {
+            "bytes": 4,
+            "elements": 1,
+            "flops": 0
+          }
+        },
+        "einsum/zero-k/output-512x512": {
+          "status": "parity",
+          "library_process_median_ns": 127625.0,
+          "reference_process_median_ns": 125208.0,
+          "median_delta_ns": 542.0,
+          "median_percent": 0.4337457385681589,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.4418529540683322,
+            "upper_bound_percent": 5.528743692337307
+          },
+          "workload": {
+            "bytes": 1048576,
+            "elements": 262144,
+            "flops": 0
+          }
+        },
+        "einsum/zero-k/output-64x64": {
+          "status": "parity",
+          "library_process_median_ns": 124833.0,
+          "reference_process_median_ns": 125667.0,
+          "median_delta_ns": -292.0,
+          "median_percent": -0.22332695984703632,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -3.0853021710831476,
+            "upper_bound_percent": 2.0511288238964416
+          },
+          "workload": {
+            "bytes": 16384,
+            "elements": 4096,
+            "flops": 0
+          }
+        },
+        "layout/extended-compose/post-reduction/construct": {
+          "status": "library_faster",
+          "library_process_median_ns": 157125.0,
+          "reference_process_median_ns": 177459.0,
+          "median_delta_ns": -20293.0,
+          "median_percent": -11.435317453609002,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -14.46207459034626,
+            "upper_bound_percent": -10.310917030567685
+          },
+          "workload": {
+            "bytes": 147456,
+            "elements": 12288,
+            "flops": 24576
+          }
+        },
+        "layout/extended-compose/post-reduction/consume": {
+          "status": "parity",
+          "library_process_median_ns": 172334.0,
+          "reference_process_median_ns": 175708.0,
+          "median_delta_ns": -3250.0,
+          "median_percent": -1.8950437317784257,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -4.994926253687316,
+            "upper_bound_percent": 0.42684453752817175
+          },
+          "workload": {
+            "bytes": 196608,
+            "elements": 12288,
+            "flops": 24576
+          }
+        },
+        "layout/extended-compose/runtime-ellipsis/consume": {
+          "status": "parity",
+          "library_process_median_ns": 148708.0,
+          "reference_process_median_ns": 155042.0,
+          "median_delta_ns": -11334.0,
+          "median_percent": -7.213568521031208,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -7.5785916074354045,
+            "upper_bound_percent": 4.855195911413969
+          },
+          "workload": {
+            "bytes": 1179648,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/permute-compose/c-ab/consume": {
+          "status": "parity",
+          "library_process_median_ns": 161458.0,
+          "reference_process_median_ns": 172041.0,
+          "median_delta_ns": -13167.0,
+          "median_percent": -7.704359861591695,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -9.464887741195037,
+            "upper_bound_percent": -6.151440644962538
+          },
+          "workload": {
+            "bytes": 786432,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/permute-compose/n-hw-c/consume": {
+          "status": "parity",
+          "library_process_median_ns": 160083.0,
+          "reference_process_median_ns": 166875.0,
+          "median_delta_ns": -12500.0,
+          "median_percent": -7.348029392117568,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -8.460236886632826,
+            "upper_bound_percent": -4.070112359550562
+          },
+          "workload": {
+            "bytes": 786432,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "product/sequential-vs-balanced/k-512": {
+          "status": "parity",
+          "library_process_median_ns": 2432625.0,
+          "reference_process_median_ns": 2495708.0,
+          "median_delta_ns": -39000.0,
+          "median_percent": -1.5143666802053637,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.7847408430793985,
+            "upper_bound_percent": 1.060702763038579
+          },
+          "workload": {
+            "bytes": 524288,
+            "elements": 131072,
+            "flops": 130816
+          }
+        },
+        "product/sequential-vs-balanced/k-64": {
+          "status": "parity",
+          "library_process_median_ns": 489167.0,
+          "reference_process_median_ns": 476375.0,
+          "median_delta_ns": 2750.0,
+          "median_percent": 0.5772763054316452,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.5934718100890207,
+            "upper_bound_percent": 5.597999216973281
+          },
+          "workload": {
+            "bytes": 65536,
+            "elements": 16384,
+            "flops": 16128
+          }
+        },
+        "product/sequential-vs-balanced/k-8": {
+          "status": "parity",
+          "library_process_median_ns": 223792.0,
+          "reference_process_median_ns": 231291.0,
+          "median_delta_ns": -1000.0,
+          "median_percent": -0.4767580452920143,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -16.738341858784523,
+            "upper_bound_percent": 4.503032425118768
+          },
+          "workload": {
+            "bytes": 8192,
+            "elements": 2048,
+            "flops": 1792
+          }
+        },
+        "product/sequential-vs-balanced/two-axis-8x8": {
+          "status": "library_faster",
+          "library_process_median_ns": 307167.0,
+          "reference_process_median_ns": 476459.0,
+          "median_delta_ns": -166958.0,
+          "median_percent": -35.2263280712637,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -35.58450261780105,
+            "upper_bound_percent": -33.47762958100773
+          },
+          "workload": {
+            "bytes": 65536,
+            "elements": 16384,
+            "flops": 16128
+          }
+        },
+        "reduce/fusion/contiguous-trailing/mean": {
+          "status": "parity",
+          "library_process_median_ns": 121208.0,
+          "reference_process_median_ns": 114958.0,
+          "median_delta_ns": 2250.0,
+          "median_percent": 2.1052631578947367,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.3073989446517515,
+            "upper_bound_percent": 5.4367682109988
+          },
+          "workload": {
+            "bytes": 1049600,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "reduce/fusion/contiguous-trailing/sum": {
+          "status": "parity",
+          "library_process_median_ns": 109917.0,
+          "reference_process_median_ns": 113875.0,
+          "median_delta_ns": -1292.0,
+          "median_percent": -1.0264150943396226,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -5.540822792236747,
+            "upper_bound_percent": 0.4980437284234753
+          },
+          "workload": {
+            "bytes": 1049600,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "reduce/fusion/strided-non-adjacent/mean": {
+          "status": "parity",
+          "library_process_median_ns": 117459.0,
+          "reference_process_median_ns": 118792.0,
+          "median_delta_ns": 166.0,
+          "median_percent": 0.13200795228628232,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.1221294363256784,
+            "upper_bound_percent": 1.442369020501139
+          },
+          "workload": {
+            "bytes": 1050624,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "reduce/fusion/strided-non-adjacent/sum": {
+          "status": "parity",
+          "library_process_median_ns": 107667.0,
+          "reference_process_median_ns": 107500.0,
+          "median_delta_ns": 1209.0,
+          "median_percent": 0.9460760147428222,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.3869767441860465,
+            "upper_bound_percent": 2.739646201873049
+          },
+          "workload": {
+            "bytes": 1050624,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "repeat/broadcast/single-axis/consume": {
+          "status": "reference_gap",
+          "library_process_median_ns": 733458.0,
+          "reference_process_median_ns": 623833.0,
+          "median_delta_ns": 107500.0,
+          "median_percent": 16.85709955076544,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 15.590125126817721,
+            "upper_bound_percent": 18.08224798814062
+          },
+          "workload": {
+            "bytes": 8650752,
+            "elements": 2097152,
+            "flops": null
+          }
+        },
+        "repeat/broadcast/two-axis/consume": {
+          "status": "library_faster",
+          "library_process_median_ns": 2328083.0,
+          "reference_process_median_ns": 3910375.0,
+          "median_delta_ns": -1520708.0,
+          "median_percent": -38.88905795479973,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -40.74113197711386,
+            "upper_bound_percent": -38.393352296105476
+          },
+          "workload": {
+            "bytes": 16842752,
+            "elements": 4194304,
+            "flops": null
+          }
+        },
+        "reshape/identity/contiguous/consume": {
+          "status": "parity",
+          "library_process_median_ns": 125.0,
+          "reference_process_median_ns": 84.0,
+          "median_delta_ns": 41.0,
+          "median_percent": 48.80952380952381,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.0,
+            "upper_bound_percent": 50.602409638554214
+          },
+          "workload": {
+            "bytes": 2097152,
+            "elements": 262144,
+            "flops": null
+          }
+        },
+        "reshape/identity/non-contiguous/consume": {
+          "status": "parity",
+          "library_process_median_ns": 206291.0,
+          "reference_process_median_ns": 198791.0,
+          "median_delta_ns": -375.0,
+          "median_percent": -0.2304147465437788,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.6504180064308682,
+            "upper_bound_percent": 3.772806615993682
+          },
+          "workload": {
+            "bytes": 2097152,
+            "elements": 262144,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/both-broadcast": {
+          "status": "library_faster",
+          "library_process_median_ns": 185750.0,
+          "reference_process_median_ns": 623875.0,
+          "median_delta_ns": -438125.0,
+          "median_percent": -70.7147897009053,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -71.60994548436085,
+            "upper_bound_percent": -69.73871094898732
+          },
+          "workload": {
+            "bytes": 327680,
+            "elements": 65536,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/layout-hostile": {
+          "status": "parity",
+          "library_process_median_ns": 113083.0,
+          "reference_process_median_ns": 112833.0,
+          "median_delta_ns": -291.0,
+          "median_percent": -0.2987188962798719,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -5.468756530825496,
+            "upper_bound_percent": 1.3666214671239796
+          },
+          "workload": {
+            "bytes": 196608,
+            "elements": 16384,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/left-broadcast": {
+          "status": "library_faster",
+          "library_process_median_ns": 129000.0,
+          "reference_process_median_ns": 357167.0,
+          "median_delta_ns": -227958.0,
+          "median_percent": -64.1594070616508,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -64.36025579861465,
+            "upper_bound_percent": -63.505479749720024
+          },
+          "workload": {
+            "bytes": 266240,
+            "elements": 32768,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/right-broadcast": {
+          "status": "library_faster",
+          "library_process_median_ns": 123167.0,
+          "reference_process_median_ns": 352542.0,
+          "median_delta_ns": -230125.0,
+          "median_percent": -64.6847239327195,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -67.24871242400698,
+            "upper_bound_percent": -62.321085147301595
+          },
+          "workload": {
+            "bytes": 266240,
+            "elements": 32768,
+            "flops": null
+          }
+        },
+        "spike/diagonal/interleaved/n16": {
+          "status": "parity",
+          "library_process_median_ns": 145834.0,
+          "reference_process_median_ns": 148167.0,
+          "median_delta_ns": -1957.0,
+          "median_percent": -1.2766568161209726,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.8620487804878048,
+            "upper_bound_percent": -0.5788520171446246
+          },
+          "workload": {
+            "bytes": 262144,
+            "elements": 65536,
+            "flops": null
+          }
+        },
+        "spike/diagonal/interleaved/n4": {
+          "status": "parity",
+          "library_process_median_ns": 149750.0,
+          "reference_process_median_ns": 152291.0,
+          "median_delta_ns": 167.0,
+          "median_percent": 0.10685196204515934,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.6685161959669317,
+            "upper_bound_percent": 1.4337662337662338
+          },
+          "workload": {
+            "bytes": 1024,
+            "elements": 256,
+            "flops": null
+          }
+        },
+        "spike/diagonal/interleaved/n8": {
+          "status": "parity",
+          "library_process_median_ns": 152250.0,
+          "reference_process_median_ns": 151125.0,
+          "median_delta_ns": 875.0,
+          "median_percent": 0.5780346820809249,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.5043440837076687,
+            "upper_bound_percent": 4.226758724816381
+          },
+          "workload": {
+            "bytes": 16384,
+            "elements": 4096,
+            "flops": null
+          }
+        },
+        "spike/diagonal/simple/n16": {
+          "status": "parity",
+          "library_process_median_ns": 159708.0,
+          "reference_process_median_ns": 157625.0,
+          "median_delta_ns": 3333.0,
+          "median_percent": 2.26734693877551,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 1.3214908802537668,
+            "upper_bound_percent": 3.501945525291829
+          },
+          "workload": {
+            "bytes": 1024,
+            "elements": 256,
+            "flops": null
+          }
+        },
+        "spike/diagonal/simple/n256": {
+          "status": "parity",
+          "library_process_median_ns": 156458.0,
+          "reference_process_median_ns": 153625.0,
+          "median_delta_ns": 458.0,
+          "median_percent": 0.28774808848567857,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.386981285598047,
+            "upper_bound_percent": 2.0660051796909147
+          },
+          "workload": {
+            "bytes": 262144,
+            "elements": 65536,
+            "flops": null
+          }
+        },
+        "spike/diagonal/simple/n64": {
+          "status": "parity",
+          "library_process_median_ns": 157417.0,
+          "reference_process_median_ns": 154500.0,
+          "median_delta_ns": 1667.0,
+          "median_percent": 1.1427592116538132,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.1341824029881717,
+            "upper_bound_percent": 1.8880258899676376
+          },
+          "workload": {
+            "bytes": 16384,
+            "elements": 4096,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-leading/max": {
+          "status": "library_faster",
+          "library_process_median_ns": 114750.0,
+          "reference_process_median_ns": 141916.0,
+          "median_delta_ns": -25875.0,
+          "median_percent": -19.5837275307474,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -20.430803589490463,
+            "upper_bound_percent": -17.60276577355229
+          },
+          "workload": {
+            "bytes": 393728,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-leading/min": {
+          "status": "library_faster",
+          "library_process_median_ns": 110041.0,
+          "reference_process_median_ns": 134583.0,
+          "median_delta_ns": -24542.0,
+          "median_percent": -18.235586961206096,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -19.002987600137484,
+            "upper_bound_percent": -17.662216868572127
+          },
+          "workload": {
+            "bytes": 393728,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-trailing/max": {
+          "status": "library_faster",
+          "library_process_median_ns": 101083.0,
+          "reference_process_median_ns": 135708.0,
+          "median_delta_ns": -37000.0,
+          "median_percent": -25.88836459531579,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -28.902404590929557,
+            "upper_bound_percent": -24.901739083616
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-trailing/min": {
+          "status": "library_faster",
+          "library_process_median_ns": 110625.0,
+          "reference_process_median_ns": 149583.0,
+          "median_delta_ns": -36625.0,
+          "median_percent": -26.51783961708617,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -28.240350318272395,
+            "upper_bound_percent": -24.40050005682464
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/strided-trailing/max": {
+          "status": "parity",
+          "library_process_median_ns": 170125.0,
+          "reference_process_median_ns": 169959.0,
+          "median_delta_ns": 458.0,
+          "median_percent": 0.2699405305687022,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -5.221299475120991,
+            "upper_bound_percent": 2.869849941342298
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/strided-trailing/min": {
+          "status": "parity",
+          "library_process_median_ns": 173416.0,
+          "reference_process_median_ns": 171292.0,
+          "median_delta_ns": 209.0,
+          "median_percent": 0.11832979476291579,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.125002198884726,
+            "upper_bound_percent": 2.3059185242121445
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/nary-cost/balanced-tree": {
+          "status": "parity",
+          "library_process_median_ns": 168750.0,
+          "reference_process_median_ns": 161917.0,
+          "median_delta_ns": 4959.0,
+          "median_percent": 3.484083100897192,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.5177514792899408,
+            "upper_bound_percent": 5.378064069862955
+          },
+          "workload": {
+            "bytes": 73792,
+            "elements": 16384,
+            "flops": 139328
+          }
+        },
+        "spike/nary-cost/broadcast-heavy": {
+          "status": "parity",
+          "library_process_median_ns": 189000.0,
+          "reference_process_median_ns": 185959.0,
+          "median_delta_ns": 1292.0,
+          "median_percent": 0.7251623476850371,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.1713148324480596,
+            "upper_bound_percent": 1.91875808538163
+          },
+          "workload": {
+            "bytes": 122496,
+            "elements": 10240,
+            "flops": 505280
+          }
+        },
+        "spike/nary-cost/layout-hostile": {
+          "status": "parity",
+          "library_process_median_ns": 166875.0,
+          "reference_process_median_ns": 167875.0,
+          "median_delta_ns": -125.0,
+          "median_percent": -0.07390983000739099,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.8652964116651543,
+            "upper_bound_percent": 4.243313681333975
+          },
+          "workload": {
+            "bytes": 8000,
+            "elements": 300,
+            "flops": 16500
+          }
+        },
+        "spike/nary-cost/linear-chain": {
+          "status": "parity",
+          "library_process_median_ns": 149791.0,
+          "reference_process_median_ns": 151042.0,
+          "median_delta_ns": 1791.0,
+          "median_percent": 1.210135135135135,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.5542489519339786,
+            "upper_bound_percent": 7.558162630261782
+          },
+          "workload": {
+            "bytes": 8000,
+            "elements": 300,
+            "flops": 16500
+          }
+        }
+      }
+    },
+    {
+      "id": "cuda",
+      "label": "CUDA",
+      "device": "NVIDIA GeForce RTX 4070",
+      "backend": "cuda",
+      "cpu_implementation": null,
+      "os": "linux",
+      "architecture": "x86_64",
+      "candle_version": "0.11.0",
+      "rust_version": "rustc 1.94.1 (e408947bf 2026-03-25)",
+      "source_summary": "target/benchmarks/final-complete-2/cuda/summary.json",
+      "scenarios": {
+        "einsum/binary-packing/recovered-view/consume": {
+          "status": "library_faster",
+          "library_process_median_ns": 13190.0,
+          "reference_process_median_ns": 19631.0,
+          "median_delta_ns": -6571.0,
+          "median_percent": -33.472568896133666,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -35.60958327797706,
+            "upper_bound_percent": -32.36244295164351
+          },
+          "workload": {
+            "bytes": 436224,
+            "elements": 55296,
+            "flops": 7077888
+          }
+        },
+        "einsum/binary/hadamard-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 6760.0,
+          "reference_process_median_ns": 6350.0,
+          "median_delta_ns": 430.0,
+          "median_percent": 6.771653543307087,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 5.625,
+            "upper_bound_percent": 7.559055118110236
+          },
+          "workload": {
+            "bytes": 384,
+            "elements": 32,
+            "flops": 32
+          }
+        },
+        "einsum/binary/hadamard-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 9660.0,
+          "reference_process_median_ns": 9170.0,
+          "median_delta_ns": 470.0,
+          "median_percent": 5.114254624591948,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 4.182217343578485,
+            "upper_bound_percent": 5.349344978165939
+          },
+          "workload": {
+            "bytes": 3145728,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "einsum/binary/outer-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 9400.0,
+          "reference_process_median_ns": 9011.0,
+          "median_delta_ns": 391.0,
+          "median_percent": 4.368715083798882,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 3.159041394335512,
+            "upper_bound_percent": 5.629139072847682
+          },
+          "workload": {
+            "bytes": 316,
+            "elements": 63,
+            "flops": 63
+          }
+        },
+        "einsum/binary/outer-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 15631.0,
+          "reference_process_median_ns": 15210.0,
+          "median_delta_ns": 411.0,
+          "median_percent": 2.4878934624697338,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 1.643655489809336,
+            "upper_bound_percent": 3.1652490886998783
+          },
+          "workload": {
+            "bytes": 1048576,
+            "elements": 261120,
+            "flops": 261120
+          }
+        },
+        "einsum/binary/rank2-matmul-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 8600.0,
+          "reference_process_median_ns": 8290.0,
+          "median_delta_ns": 310.0,
+          "median_percent": 3.7394451145958985,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 3.125,
+            "upper_bound_percent": 5.4549872433483175
+          },
+          "workload": {
+            "bytes": 764,
+            "elements": 63,
+            "flops": 1008
+          }
+        },
+        "einsum/binary/rank2-matmul-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 11171.0,
+          "reference_process_median_ns": 10720.0,
+          "median_delta_ns": 481.0,
+          "median_percent": 4.542020774315392,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 2.985074626865672,
+            "upper_bound_percent": 4.7837913891755
+          },
+          "workload": {
+            "bytes": 196352,
+            "elements": 16320,
+            "flops": 4177920
+          }
+        },
+        "einsum/binary/rank3-matmul-overhead": {
+          "status": "parity",
+          "library_process_median_ns": 8830.0,
+          "reference_process_median_ns": 8340.0,
+          "median_delta_ns": 450.0,
+          "median_percent": 5.357142857142857,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 4.676258992805756,
+            "upper_bound_percent": 7.03030303030303
+          },
+          "workload": {
+            "bytes": 1528,
+            "elements": 126,
+            "flops": 2016
+          }
+        },
+        "einsum/binary/rank3-matmul-throughput": {
+          "status": "parity",
+          "library_process_median_ns": 15351.0,
+          "reference_process_median_ns": 14861.0,
+          "median_delta_ns": 460.0,
+          "median_percent": 3.0891142300718557,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 2.415718996029877,
+            "upper_bound_percent": 3.722972972972973
+          },
+          "workload": {
+            "bytes": 391168,
+            "elements": 32256,
+            "flops": 4128768
+          }
+        },
+        "einsum/zero-k/output-1x1": {
+          "status": "parity",
+          "library_process_median_ns": 8810.0,
+          "reference_process_median_ns": 8311.0,
+          "median_delta_ns": 630.0,
+          "median_percent": 7.711138310893513,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 4.583835946924005,
+            "upper_bound_percent": 10.80335731414868
+          },
+          "workload": {
+            "bytes": 4,
+            "elements": 1,
+            "flops": 0
+          }
+        },
+        "einsum/zero-k/output-512x512": {
+          "status": "parity",
+          "library_process_median_ns": 8830.0,
+          "reference_process_median_ns": 8340.0,
+          "median_delta_ns": 490.0,
+          "median_percent": 5.875299760191846,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 1.955792153685916,
+            "upper_bound_percent": 10.833333333333334
+          },
+          "workload": {
+            "bytes": 1048576,
+            "elements": 262144,
+            "flops": 0
+          }
+        },
+        "einsum/zero-k/output-64x64": {
+          "status": "parity",
+          "library_process_median_ns": 8721.0,
+          "reference_process_median_ns": 8330.0,
+          "median_delta_ns": 460.0,
+          "median_percent": 5.358224016145308,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 3.721488595438175,
+            "upper_bound_percent": 5.709090909090909
+          },
+          "workload": {
+            "bytes": 16384,
+            "elements": 4096,
+            "flops": 0
+          }
+        },
+        "layout/extended-compose/post-reduction/construct": {
+          "status": "library_faster",
+          "library_process_median_ns": 23031.0,
+          "reference_process_median_ns": 26891.0,
+          "median_delta_ns": -3820.0,
+          "median_percent": -14.25859052157403,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -14.95861326602576,
+            "upper_bound_percent": -13.94518612175077
+          },
+          "workload": {
+            "bytes": 147456,
+            "elements": 12288,
+            "flops": 24576
+          }
+        },
+        "layout/extended-compose/post-reduction/consume": {
+          "status": "parity",
+          "library_process_median_ns": 26990.0,
+          "reference_process_median_ns": 27080.0,
+          "median_delta_ns": -119.0,
+          "median_percent": -0.44402985074626866,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -1.1499639509733237,
+            "upper_bound_percent": 0.10756277586142947
+          },
+          "workload": {
+            "bytes": 196608,
+            "elements": 12288,
+            "flops": 24576
+          }
+        },
+        "layout/extended-compose/runtime-ellipsis/consume": {
+          "status": "parity",
+          "library_process_median_ns": 13340.0,
+          "reference_process_median_ns": 12711.0,
+          "median_delta_ns": 600.0,
+          "median_percent": 4.7095761381475665,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 4.633781763826607,
+            "upper_bound_percent": 7.724769329804735
+          },
+          "workload": {
+            "bytes": 1179648,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/permute-compose/c-ab/consume": {
+          "status": "parity",
+          "library_process_median_ns": 13520.0,
+          "reference_process_median_ns": 13500.0,
+          "median_delta_ns": -20.0,
+          "median_percent": -0.14814814814814814,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.6603081438004402,
+            "upper_bound_percent": 1.500682128240109
+          },
+          "workload": {
+            "bytes": 786432,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "layout/permute-compose/n-hw-c/consume": {
+          "status": "parity",
+          "library_process_median_ns": 12420.0,
+          "reference_process_median_ns": 12351.0,
+          "median_delta_ns": 99.0,
+          "median_percent": 0.8054674151818404,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.5586592178770949,
+            "upper_bound_percent": 2.089864158829676
+          },
+          "workload": {
+            "bytes": 786432,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "product/sequential-vs-balanced/k-512": {
+          "status": "parity",
+          "library_process_median_ns": 2710676.0,
+          "reference_process_median_ns": 2709246.0,
+          "median_delta_ns": 2080.0,
+          "median_percent": 0.07651371158818555,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.3581111813386417,
+            "upper_bound_percent": 0.5045684297402303
+          },
+          "workload": {
+            "bytes": 524288,
+            "elements": 131072,
+            "flops": 130816
+          }
+        },
+        "product/sequential-vs-balanced/k-64": {
+          "status": "parity",
+          "library_process_median_ns": 337919.0,
+          "reference_process_median_ns": 338160.0,
+          "median_delta_ns": -730.0,
+          "median_percent": -0.2155624259926945,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.4036099347398348,
+            "upper_bound_percent": 0.03520918397538316
+          },
+          "workload": {
+            "bytes": 65536,
+            "elements": 16384,
+            "flops": 16128
+          }
+        },
+        "product/sequential-vs-balanced/k-8": {
+          "status": "parity",
+          "library_process_median_ns": 42601.0,
+          "reference_process_median_ns": 42511.0,
+          "median_delta_ns": 180.0,
+          "median_percent": 0.43205875999135884,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.0,
+            "upper_bound_percent": 1.2702594622568277
+          },
+          "workload": {
+            "bytes": 8192,
+            "elements": 2048,
+            "flops": 1792
+          }
+        },
+        "product/sequential-vs-balanced/two-axis-8x8": {
+          "status": "library_faster",
+          "library_process_median_ns": 79502.0,
+          "reference_process_median_ns": 333329.0,
+          "median_delta_ns": -254107.0,
+          "median_percent": -76.25802772942801,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -76.32131028510723,
+            "upper_bound_percent": -76.1005958640028
+          },
+          "workload": {
+            "bytes": 65536,
+            "elements": 16384,
+            "flops": 16128
+          }
+        },
+        "reduce/fusion/contiguous-trailing/mean": {
+          "status": "parity",
+          "library_process_median_ns": 23351.0,
+          "reference_process_median_ns": 23161.0,
+          "median_delta_ns": 141.0,
+          "median_percent": 0.6106539627544392,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.2154151049071561,
+            "upper_bound_percent": 0.9930915371329879
+          },
+          "workload": {
+            "bytes": 1049600,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "reduce/fusion/contiguous-trailing/sum": {
+          "status": "parity",
+          "library_process_median_ns": 21200.0,
+          "reference_process_median_ns": 21020.0,
+          "median_delta_ns": 239.0,
+          "median_percent": 1.14021277610801,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.29019980970504283,
+            "upper_bound_percent": 1.4781368821292775
+          },
+          "workload": {
+            "bytes": 1049600,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "reduce/fusion/strided-non-adjacent/mean": {
+          "status": "parity",
+          "library_process_median_ns": 18981.0,
+          "reference_process_median_ns": 18730.0,
+          "median_delta_ns": 261.0,
+          "median_percent": 1.3942307692307692,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.9627659574468085,
+            "upper_bound_percent": 3.3155365723438335
+          },
+          "workload": {
+            "bytes": 1050624,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "reduce/fusion/strided-non-adjacent/sum": {
+          "status": "parity",
+          "library_process_median_ns": 16750.0,
+          "reference_process_median_ns": 16580.0,
+          "median_delta_ns": 140.0,
+          "median_percent": 0.8428150021070375,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 0.6063913649869626,
+            "upper_bound_percent": 1.0875475802066341
+          },
+          "workload": {
+            "bytes": 1050624,
+            "elements": 262144,
+            "flops": 262144
+          }
+        },
+        "repeat/broadcast/single-axis/consume": {
+          "status": "library_faster",
+          "library_process_median_ns": 71092.0,
+          "reference_process_median_ns": 177915.0,
+          "median_delta_ns": -106783.0,
+          "median_percent": -60.03036864156567,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -60.18081253334082,
+            "upper_bound_percent": -59.986493711134244
+          },
+          "workload": {
+            "bytes": 8650752,
+            "elements": 2097152,
+            "flops": null
+          }
+        },
+        "repeat/broadcast/two-axis/consume": {
+          "status": "library_faster",
+          "library_process_median_ns": 123614.0,
+          "reference_process_median_ns": 790292.0,
+          "median_delta_ns": -666518.0,
+          "median_percent": -84.3381939839958,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -84.41977365861517,
+            "upper_bound_percent": -80.93110076829412
+          },
+          "workload": {
+            "bytes": 16842752,
+            "elements": 4194304,
+            "flops": null
+          }
+        },
+        "reshape/identity/contiguous/consume": {
+          "status": "parity",
+          "library_process_median_ns": 360.0,
+          "reference_process_median_ns": 340.0,
+          "median_delta_ns": 20.0,
+          "median_percent": 5.882352941176471,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 5.714285714285714,
+            "upper_bound_percent": 9.090909090909092
+          },
+          "workload": {
+            "bytes": 2097152,
+            "elements": 262144,
+            "flops": null
+          }
+        },
+        "reshape/identity/non-contiguous/consume": {
+          "status": "parity",
+          "library_process_median_ns": 15761.0,
+          "reference_process_median_ns": 15751.0,
+          "median_delta_ns": 10.0,
+          "median_percent": 0.06348803250587265,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.2544529262086514,
+            "upper_bound_percent": 0.3795066413662239
+          },
+          "workload": {
+            "bytes": 2097152,
+            "elements": 262144,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/both-broadcast": {
+          "status": "library_faster",
+          "library_process_median_ns": 33611.0,
+          "reference_process_median_ns": 545305.0,
+          "median_delta_ns": -511694.0,
+          "median_percent": -93.90036412501625,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -93.93217873288586,
+            "upper_bound_percent": -93.81358890192642
+          },
+          "workload": {
+            "bytes": 327680,
+            "elements": 65536,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/layout-hostile": {
+          "status": "parity",
+          "library_process_median_ns": 12381.0,
+          "reference_process_median_ns": 12431.0,
+          "median_delta_ns": -20.0,
+          "median_percent": -0.145985401459854,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.4022202558120827,
+            "upper_bound_percent": 0.40160642570281124
+          },
+          "workload": {
+            "bytes": 196608,
+            "elements": 16384,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/left-broadcast": {
+          "status": "library_faster",
+          "library_process_median_ns": 22211.0,
+          "reference_process_median_ns": 272018.0,
+          "median_delta_ns": -249807.0,
+          "median_percent": -91.85812532312717,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -92.08234568543384,
+            "upper_bound_percent": -91.78396348265133
+          },
+          "workload": {
+            "bytes": 266240,
+            "elements": 32768,
+            "flops": null
+          }
+        },
+        "spike/broadcast-gemm/right-broadcast": {
+          "status": "library_faster",
+          "library_process_median_ns": 22111.0,
+          "reference_process_median_ns": 270827.0,
+          "median_delta_ns": -248716.0,
+          "median_percent": -91.83574754363487,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -91.97583229300567,
+            "upper_bound_percent": -91.7729877177537
+          },
+          "workload": {
+            "bytes": 266240,
+            "elements": 32768,
+            "flops": null
+          }
+        },
+        "spike/diagonal/interleaved/n16": {
+          "status": "parity",
+          "library_process_median_ns": 8880.0,
+          "reference_process_median_ns": 8840.0,
+          "median_delta_ns": 1.0,
+          "median_percent": 0.01126126126126126,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.45454545454545453,
+            "upper_bound_percent": 0.45248868778280543
+          },
+          "workload": {
+            "bytes": 262144,
+            "elements": 65536,
+            "flops": null
+          }
+        },
+        "spike/diagonal/interleaved/n4": {
+          "status": "parity",
+          "library_process_median_ns": 8750.0,
+          "reference_process_median_ns": 8761.0,
+          "median_delta_ns": -11.0,
+          "median_percent": -0.12569992000914182,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.8,
+            "upper_bound_percent": 0.6719052499715295
+          },
+          "workload": {
+            "bytes": 1024,
+            "elements": 256,
+            "flops": null
+          }
+        },
+        "spike/diagonal/interleaved/n8": {
+          "status": "parity",
+          "library_process_median_ns": 8730.0,
+          "reference_process_median_ns": 8770.0,
+          "median_delta_ns": -40.0,
+          "median_percent": -0.45610034207525657,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.6962675493665107,
+            "upper_bound_percent": 0.11261261261261261
+          },
+          "workload": {
+            "bytes": 16384,
+            "elements": 4096,
+            "flops": null
+          }
+        },
+        "spike/diagonal/simple/n16": {
+          "status": "parity",
+          "library_process_median_ns": 8761.0,
+          "reference_process_median_ns": 8770.0,
+          "median_delta_ns": 0.0,
+          "median_percent": 0.0,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -0.4581901489117984,
+            "upper_bound_percent": 0.4446471325960552
+          },
+          "workload": {
+            "bytes": 1024,
+            "elements": 256,
+            "flops": null
+          }
+        },
+        "spike/diagonal/simple/n256": {
+          "status": "parity",
+          "library_process_median_ns": 9451.0,
+          "reference_process_median_ns": 9450.0,
+          "median_delta_ns": 11.0,
+          "median_percent": 0.11652542372881355,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -3.4371643394199785,
+            "upper_bound_percent": 0.21164021164021163
+          },
+          "workload": {
+            "bytes": 262144,
+            "elements": 65536,
+            "flops": null
+          }
+        },
+        "spike/diagonal/simple/n64": {
+          "status": "parity",
+          "library_process_median_ns": 9310.0,
+          "reference_process_median_ns": 9320.0,
+          "median_delta_ns": -20.0,
+          "median_percent": -0.21321961620469082,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -4.308855291576674,
+            "upper_bound_percent": -0.01073998496402105
+          },
+          "workload": {
+            "bytes": 16384,
+            "elements": 4096,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-leading/max": {
+          "status": "parity",
+          "library_process_median_ns": 17170.0,
+          "reference_process_median_ns": 17821.0,
+          "median_delta_ns": -660.0,
+          "median_percent": -3.7349329409767416,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -3.893685457931268,
+            "upper_bound_percent": -1.6834072162056002
+          },
+          "workload": {
+            "bytes": 393728,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-leading/min": {
+          "status": "parity",
+          "library_process_median_ns": 17490.0,
+          "reference_process_median_ns": 17851.0,
+          "median_delta_ns": -441.0,
+          "median_percent": -2.4594278065919357,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -3.9091269616452324,
+            "upper_bound_percent": 1.487376509330406
+          },
+          "workload": {
+            "bytes": 393728,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-trailing/max": {
+          "status": "library_faster",
+          "library_process_median_ns": 11970.0,
+          "reference_process_median_ns": 28171.0,
+          "median_delta_ns": -16181.0,
+          "median_percent": -57.43850058570871,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -58.0384082922154,
+            "upper_bound_percent": -56.84120720912872
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/contiguous-trailing/min": {
+          "status": "library_faster",
+          "library_process_median_ns": 12100.0,
+          "reference_process_median_ns": 28291.0,
+          "median_delta_ns": -16150.0,
+          "median_percent": -57.23021455586582,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -58.06256880082383,
+            "upper_bound_percent": -56.80419260666174
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/strided-trailing/max": {
+          "status": "parity",
+          "library_process_median_ns": 28681.0,
+          "reference_process_median_ns": 28081.0,
+          "median_delta_ns": 590.0,
+          "median_percent": 2.094352348159455,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 1.7449521028453403,
+            "upper_bound_percent": 2.6778753262601267
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/extrema/strided-trailing/min": {
+          "status": "parity",
+          "library_process_median_ns": 28491.0,
+          "reference_process_median_ns": 28001.0,
+          "median_delta_ns": 530.0,
+          "median_percent": 1.898212814727266,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 1.7136125093713184,
+            "upper_bound_percent": 2.4999107174743758
+          },
+          "workload": {
+            "bytes": 396288,
+            "elements": 98304,
+            "flops": null
+          }
+        },
+        "spike/nary-cost/balanced-tree": {
+          "status": "parity",
+          "library_process_median_ns": 37071.0,
+          "reference_process_median_ns": 35831.0,
+          "median_delta_ns": 1170.0,
+          "median_percent": 3.193063523792217,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 1.7303452317825347,
+            "upper_bound_percent": 3.7212165300355333
+          },
+          "workload": {
+            "bytes": 73792,
+            "elements": 16384,
+            "flops": 139328
+          }
+        },
+        "spike/nary-cost/broadcast-heavy": {
+          "status": "parity",
+          "library_process_median_ns": 54182.0,
+          "reference_process_median_ns": 51711.0,
+          "median_delta_ns": 1701.0,
+          "median_percent": 3.289435516621222,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 2.911409954249272,
+            "upper_bound_percent": 5.164884221967741
+          },
+          "workload": {
+            "bytes": 122496,
+            "elements": 10240,
+            "flops": 505280
+          }
+        },
+        "spike/nary-cost/layout-hostile": {
+          "status": "parity",
+          "library_process_median_ns": 38232.0,
+          "reference_process_median_ns": 37301.0,
+          "median_delta_ns": 900.0,
+          "median_percent": 2.4128039462748987,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": -2.696012352638416,
+            "upper_bound_percent": 3.7193782046064947
+          },
+          "workload": {
+            "bytes": 8000,
+            "elements": 300,
+            "flops": 16500
+          }
+        },
+        "spike/nary-cost/linear-chain": {
+          "status": "parity",
+          "library_process_median_ns": 38341.0,
+          "reference_process_median_ns": 37091.0,
+          "median_delta_ns": 1120.0,
+          "median_percent": 3.0302210438029276,
+          "percent_interval": {
+            "confidence_level": 0.95,
+            "lower_bound_percent": 2.1018890728041826,
+            "upper_bound_percent": 3.902333270101081
+          },
+          "workload": {
+            "bytes": 8000,
+            "elements": 300,
+            "flops": 16500
+          }
+        }
+      }
+    }
+  ]
+}

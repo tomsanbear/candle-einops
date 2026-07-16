@@ -1,0 +1,5 @@
+error: Axis `b` appears more than once on the right
+ --> tests/ui/fail/duplicate-axis.rs:4:21
+  |
+4 |     let _ = einops!("a b c -> b b (a)", ());
+  |                     ^^^^^^^^^^^^^^^^^^

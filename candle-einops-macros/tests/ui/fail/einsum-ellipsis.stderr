@@ -1,0 +1,5 @@
+error: einsum operand axis list contains more than one `..`
+ --> tests/ui/fail/einsum-ellipsis.rs:4:21
+  |
+4 |     let _ = einsum!(".. .. row -> row", ());
+  |                     ^^^^^^^^^^^^^^^^^^

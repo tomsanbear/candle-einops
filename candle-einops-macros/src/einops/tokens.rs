@@ -2,12 +2,25 @@ use crate::einops::{Composition, Decomposition, Index, Operation, Shape};
 
 use quote::quote;
 
+fn private_ident(name: &str) -> proc_macro2::Ident {
+    proc_macro2::Ident::new(
+        &format!("__candle_einops_{name}"),
+        proc_macro2::Span::mixed_site(),
+    )
+}
+
 pub fn to_tokens_composition(
+    runtime_crate: &syn::Path,
+    candle_crate: &syn::Path,
     right_expression: &[Composition],
     tensor_ident: &syn::Ident,
     ignored_len_ident: &syn::Ident,
     shape_ident: &syn::Ident,
 ) -> proc_macro2::TokenStream {
+    let group_lengths_ident = private_ident("composition_group_lengths");
+    let group_start_ident = private_ident("composition_group_start");
+    let group_end_ident = private_ident("composition_group_end");
+    let group_length_ident = private_ident("composition_group_length");
     let (before_ignored, ignored, after_ignored, _) = right_expression.iter().fold(
         (
             Vec::new(),
@@ -120,7 +133,7 @@ pub fn to_tokens_composition(
                 .into_iter()
                 .chain(#ignored)
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         (false, false, false) => quote!(
             [#(#before_ignored),*]
@@ -128,24 +141,76 @@ pub fn to_tokens_composition(
                 .chain(#ignored)
                 .chain([#(#after_ignored),*].into_iter())
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
 
         ),
         (true, false, false) => quote!(
             #ignored
                 .chain([#(#after_ignored),*].into_iter())
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         _ => unreachable!(),
     };
 
-    quote!(
-        let #tensor_ident = ::candle_einops::Backend::reshape(#tensor_ident, &#composition_shape);
-    )
+    let resolved_start = |index: &Index| match index {
+        Index::Known(index) | Index::Range(index) => quote!(::core::option::Option::Some(#index)),
+        Index::Unknown(index) => quote!(#index
+            .checked_add(#ignored_len_ident)
+            .and_then(|value| value.checked_sub(1))),
+    };
+    let resolved_end = |index: &Index| match index {
+        Index::Known(index) => quote!(::core::option::Option::Some(#index)),
+        Index::Unknown(index) | Index::Range(index) => quote!(#index
+            .checked_add(#ignored_len_ident)
+            .and_then(|value| value.checked_sub(1))),
+    };
+    let group_length_tokens = right_expression.iter().map(|expression| match expression {
+        Composition::Individual(Index::Range(_)) => quote!(
+            #group_lengths_ident.extend(::std::iter::repeat_n(1usize, #ignored_len_ident));
+        ),
+        Composition::Individual(_) => quote!(#group_lengths_ident.push(1usize);),
+        Composition::Combined {
+            from: Index::Range(_),
+            to: None,
+        } => quote!(#group_lengths_ident.push(#ignored_len_ident);),
+        Composition::Combined { to: None, .. } => {
+            quote!(#group_lengths_ident.push(1usize);)
+        }
+        Composition::Combined { from, to: Some(to) } => {
+            let start = resolved_start(from);
+            let end = resolved_end(to);
+            quote! {
+                let #group_start_ident = (#start).ok_or_else(|| {
+                    #candle_crate::Error::msg("composition group start underflows usize")
+                })?;
+                let #group_end_ident = (#end).ok_or_else(|| {
+                    #candle_crate::Error::msg("composition group end underflows usize")
+                })?;
+                let #group_length_ident = #group_end_ident
+                    .checked_sub(#group_start_ident)
+                    .and_then(|length| length.checked_add(1))
+                    .ok_or_else(|| {
+                        #candle_crate::Error::msg("composition group length overflows usize")
+                    })?;
+                #group_lengths_ident.push(#group_length_ident);
+            }
+        }
+    });
+
+    quote! {
+        let mut #group_lengths_ident = ::std::vec::Vec::new();
+        #(#group_length_tokens)*
+        let #tensor_ident = #runtime_crate::Backend::compose_axes(
+            #tensor_ident,
+            &#composition_shape,
+            &#group_lengths_ident,
+        )?;
+    }
 }
 
 pub fn to_tokens_repeat(
+    runtime_crate: &syn::Path,
     repeat: &[(Index, Shape)],
     tensor_ident: &syn::Ident,
     ignored_len_ident: &syn::Ident,
@@ -163,13 +228,14 @@ pub fn to_tokens_repeat(
     });
 
     quote!(
-        let #tensor_ident = ::candle_einops::Backend::add_axes(
+        let #tensor_ident = #runtime_crate::Backend::add_axes(
             #tensor_ident, #shape_ident.len() + #n_repeats, &[#(#repeat_pos_len),*]
-        );
+        )?;
     )
 }
 
 pub fn to_tokens_permute(
+    runtime_crate: &syn::Path,
     permute: &[Index],
     tensor_ident: &syn::Ident,
     ignored_len_ident: &syn::Ident,
@@ -223,7 +289,7 @@ pub fn to_tokens_permute(
                 .into_iter()
                 .chain(#ignored_permute)
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         (false, false, false) => quote!(
             [#(#before_ignored),*]
@@ -231,24 +297,25 @@ pub fn to_tokens_permute(
                 .chain(#ignored_permute)
                 .chain([#(#after_ignored),*].into_iter())
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
 
         ),
         (true, false, false) => quote!(
             #ignored_permute
                 .chain([#(#after_ignored),*].into_iter())
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         _ => unreachable!(),
     };
 
     quote!(
-        let #tensor_ident = ::candle_einops::Backend::transpose(#tensor_ident, &#permute_indices);
+        let #tensor_ident = #runtime_crate::Backend::transpose(#tensor_ident, &#permute_indices)?;
     )
 }
 
 pub fn to_tokens_reduce(
+    runtime_crate: &syn::Path,
     reduce: &[(Index, Operation)],
     tensor_ident: &syn::Ident,
     ignored_len_ident: &syn::Ident,
@@ -265,11 +332,11 @@ pub fn to_tokens_reduce(
              expression| {
                 let (index, operation) = expression;
                 let operation = match operation {
-                    Operation::Min => quote!(::candle_einops::Operation::Min),
-                    Operation::Max => quote!(::candle_einops::Operation::Max),
-                    Operation::Sum => quote!(::candle_einops::Operation::Sum),
-                    Operation::Mean => quote!(::candle_einops::Operation::Mean),
-                    Operation::Prod => quote!(::candle_einops::Operation::Prod),
+                    Operation::Min => quote!(#runtime_crate::Operation::Min),
+                    Operation::Max => quote!(#runtime_crate::Operation::Max),
+                    Operation::Sum => quote!(#runtime_crate::Operation::Sum),
+                    Operation::Mean => quote!(#runtime_crate::Operation::Mean),
+                    Operation::Prod => quote!(#runtime_crate::Operation::Prod),
                 };
                 match index {
                     Index::Known(i) => {
@@ -283,7 +350,7 @@ pub fn to_tokens_reduce(
                     Index::Range(i) => {
                         ignored_indices = Some(quote!((#i..(#i + #ignored_len_ident)).into_iter()));
                         ignored_operations =
-                            Some(quote!(std::iter::repeat(#operation).take(#ignored_len_ident)));
+                            Some(quote!(::std::iter::repeat(#operation).take(#ignored_len_ident)));
                     }
                 }
                 (
@@ -302,17 +369,17 @@ pub fn to_tokens_reduce(
     ) {
         (Some(ignored_indices), Some(ignored_operations), true) => {
             quote!(
-                let #tensor_ident = ::candle_einops::Backend::reduce_axes(
+                let #tensor_ident = #runtime_crate::Backend::reduce_axes(
                     #tensor_ident,
                     &mut #ignored_indices
                         .zip(#ignored_operations)
-                        .collect::<Vec<(_, _)>>()
-                );
+                        .collect::<::std::vec::Vec<(_, _)>>()
+                )?;
             )
         }
         (Some(ignored_indices), Some(ignored_operations), false) => {
             quote!(
-                let #tensor_ident = ::candle_einops::Backend::reduce_axes(
+                let #tensor_ident = #runtime_crate::Backend::reduce_axes(
                     #tensor_ident,
                     &mut [#(#reduce_indices),*]
                         .into_iter()
@@ -322,15 +389,15 @@ pub fn to_tokens_reduce(
                                 .into_iter()
                                 .chain(#ignored_operations)
                         )
-                        .collect::<Vec<(_, _)>>()
-                );
+                        .collect::<::std::vec::Vec<(_, _)>>()
+                )?;
             )
         }
         (None, None, false) => {
             quote!(
-                let #tensor_ident = ::candle_einops::Backend::reduce_axes(
+                let #tensor_ident = #runtime_crate::Backend::reduce_axes(
                     #tensor_ident, &mut [#((#reduce_indices, #reduce_operations)),*]
-                );
+                )?;
             )
         }
         _ => unreachable!(),
@@ -338,6 +405,8 @@ pub fn to_tokens_reduce(
 }
 
 pub fn to_tokens_decomposition(
+    runtime_crate: &syn::Path,
+    candle_crate: &syn::Path,
     left_expression: &[Decomposition],
     tensor_ident: &syn::Ident,
     ignored_len_ident: &syn::Ident,
@@ -365,7 +434,11 @@ pub fn to_tokens_decomposition(
                     index: Index::Known(i),
                     shape_calc,
                     ..
-                } => known_indices.push(quote!(#shape_ident[#i] / #shape_calc)),
+                } => known_indices.push(checked_derived_dimension(
+                    candle_crate,
+                    quote!(#shape_ident[#i]),
+                    shape_calc,
+                )),
                 Decomposition::Named {
                     index: Index::Range(i),
                     ..
@@ -392,8 +465,11 @@ pub fn to_tokens_decomposition(
                     index: Index::Unknown(i),
                     shape_calc,
                     ..
-                } => unknown_indices
-                    .push(quote!(#shape_ident[#i + #ignored_len_ident - 1] / #shape_calc)),
+                } => unknown_indices.push(checked_derived_dimension(
+                    candle_crate,
+                    quote!(#shape_ident[#i + #ignored_len_ident - 1]),
+                    shape_calc,
+                )),
                 _ => unreachable!(),
             }
             (known_indices, ignored_indices, unknown_indices)
@@ -413,7 +489,7 @@ pub fn to_tokens_decomposition(
                 .into_iter()
                 .chain(#ignored_indices)
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         (false, false, false) => quote!(
             [#(#known_indices),*]
@@ -421,21 +497,49 @@ pub fn to_tokens_decomposition(
                 .chain(#ignored_indices)
                 .chain([#(#unknown_indices),*].into_iter())
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         (true, false, false) => quote!(
             #ignored_indices
                 .chain([#(#unknown_indices),*].into_iter())
                 .into_iter()
-                .collect::<Vec<_>>()
+                .collect::<::std::vec::Vec<_>>()
         ),
         (true, false, true) => quote!(
-            #ignored_indices.collect::<Vec<_>>()
+            #ignored_indices.collect::<::std::vec::Vec<_>>()
         ),
         _ => unreachable!(),
     };
 
     quote!(
-        let #tensor_ident = ::candle_einops::Backend::reshape(#tensor_ident, &#decomposition_shape);
+        let #tensor_ident = #runtime_crate::Backend::reshape(#tensor_ident, &#decomposition_shape)?;
     )
+}
+
+fn checked_derived_dimension(
+    candle_crate: &syn::Path,
+    dimension: proc_macro2::TokenStream,
+    shape_calc: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let dimension_ident = private_ident("dimension");
+    let factor_ident = private_ident("factor");
+    quote!({
+        let #dimension_ident = #dimension;
+        let #factor_ident = (#shape_calc).ok_or_else(|| {
+            #candle_crate::Error::msg("decomposition factor product overflows usize")
+        })?;
+        if #factor_ident == 0 {
+            return ::core::result::Result::Err(#candle_crate::Error::msg(
+                "decomposition factor must be non-zero",
+            ));
+        }
+        if #dimension_ident % #factor_ident != 0 {
+            return ::core::result::Result::Err(#candle_crate::Error::msg(::std::format!(
+                "dimension size {} is not divisible by decomposition factor {}",
+                #dimension_ident,
+                #factor_ident,
+            )));
+        }
+        #dimension_ident / #factor_ident
+    })
 }

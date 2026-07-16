@@ -1,0 +1,5 @@
+error: Ellipsis `..` appears more than once on the right
+ --> tests/ui/fail/duplicate-ellipsis.rs:4:21
+  |
+4 |     let _ = einops!("a .. -> a .. ..", ());
+  |                     ^^^^^^^^^^^^^^^^^

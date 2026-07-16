@@ -211,6 +211,8 @@ dependencies = [
  "candle-core",
  "candle-einops",
  "criterion",
+ "cudarc 0.19.8",
+ "objc2-metal",
  "serde",
  "serde_json",
 ]

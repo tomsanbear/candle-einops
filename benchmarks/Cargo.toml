@@ -11,14 +11,16 @@ resolver = "3"
 [features]
 default = []
 accelerate = ["candle-core/accelerate"]
-cuda = ["candle-core/cuda"]
-metal = ["candle-core/metal"]
+cuda = ["candle-core/cuda", "dep:cudarc"]
+metal = ["candle-core/metal", "dep:objc2-metal"]
 mkl = ["candle-core/mkl"]
 
 [dependencies]
 candle-core = { version = "=0.11.0" }
 candle-einops = { path = "..", features = ["benchmark-internals"] }
 criterion = { version = "=0.7.0" }
+cudarc = { version = "=0.19.8", optional = true, default-features = false, features = ["std", "driver", "runtime", "cuda-version-from-build-system", "dynamic-linking"] }
+objc2-metal = { version = "=0.3.2", optional = true }
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = { version = "=1.0.149" }
 

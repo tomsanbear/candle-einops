@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use candle_einops_benchmarks::{
     Backend, BenchmarkDocument, BenchmarkRecord, CompiledFeatures, CpuImplementation,
-    DeviceSynchronizer, ExecutionProfile, MonotonicClock, PlumbingScenario, RunMetadata, Scenario,
+    DeviceDiagnostics, DeviceMemorySnapshot, DeviceSynchronizer, ExecutionProfile, MonotonicClock,
+    PlumbingScenario, RunMetadata, Scenario,
     binary_fast_path_scenarios, binary_operand_packing, broadcast_gemm_spike, diagonal_spike,
     extended_compose, extrema_spike, identity_reshape_scenarios, measure_pair,
     nary_cost_model_spike, partition_scenarios, permute_compose_layout_spike, prepare,
@@ -148,13 +149,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     let device = profile.create_device(CompiledFeatures::CURRENT)?;
     let synchronizer = DeviceSynchronizer(&device);
     let clock = MonotonicClock;
-    let run = RunMetadata::collect(profile, CompiledFeatures::CURRENT)?;
+    let run = RunMetadata::collect_for_device(profile, CompiledFeatures::CURRENT, &device)?;
     let records = selected
         .into_iter()
         .map(|scenario| {
             let prepared = prepare(scenario, &device)?;
+            let before = DeviceMemorySnapshot::collect(&device, profile.backend);
             let measurement = measure_pair(&prepared, &synchronizer, &clock, samples)?;
-            Ok(BenchmarkRecord::from_measurement(&prepared, &measurement)?)
+            let after = DeviceMemorySnapshot::collect(&device, profile.backend);
+            let diagnostics = DeviceDiagnostics::from_snapshots(before, after);
+            Ok(BenchmarkRecord::from_measurement_with_diagnostics(
+                &prepared,
+                &measurement,
+                diagnostics,
+            )?)
         })
         .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
     let document = BenchmarkDocument::new(run, records, skipped)?;

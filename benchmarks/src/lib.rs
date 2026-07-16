@@ -398,6 +398,281 @@ impl<T> Availability<T> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DeviceMemorySnapshot {
+    pub allocated_bytes: Availability<u64>,
+    pub free_bytes: Availability<u64>,
+    pub total_bytes: Availability<u64>,
+}
+
+impl DeviceMemorySnapshot {
+    #[must_use]
+    pub fn collect(device: &Device, backend: Backend) -> Self {
+        match backend {
+            Backend::Cpu => Self::unavailable(
+                "CPU allocator telemetry is not exposed by the benchmark device contract",
+            ),
+            Backend::Metal => collect_metal_memory(device),
+            Backend::Cuda => collect_cuda_memory(device),
+        }
+    }
+
+    fn unavailable(reason: &str) -> Self {
+        Self {
+            allocated_bytes: Availability::unavailable(reason),
+            free_bytes: Availability::unavailable(reason),
+            total_bytes: Availability::unavailable(reason),
+        }
+    }
+
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DeviceDiagnostics {
+    pub allocated_bytes_before: Availability<u64>,
+    pub allocated_bytes_after: Availability<u64>,
+    pub free_bytes_before: Availability<u64>,
+    pub free_bytes_after: Availability<u64>,
+    pub total_bytes: Availability<u64>,
+    pub device_elapsed_ns: Availability<u64>,
+    pub kernel_count: Availability<u64>,
+    pub command_buffer_count: Availability<u64>,
+    pub enqueue_count: Availability<u64>,
+}
+
+impl DeviceDiagnostics {
+    #[must_use]
+    pub fn from_snapshots(before: DeviceMemorySnapshot, after: DeviceMemorySnapshot) -> Self {
+        let total_bytes = after.total_bytes.clone();
+        Self {
+            allocated_bytes_before: before.allocated_bytes,
+            allocated_bytes_after: after.allocated_bytes,
+            free_bytes_before: before.free_bytes,
+            free_bytes_after: after.free_bytes,
+            total_bytes,
+            device_elapsed_ns: Availability::unavailable(
+                "device-event timing requires backend-specific capture",
+            ),
+            kernel_count: Availability::unavailable(
+                "kernel counts require an external GPU profiler",
+            ),
+            command_buffer_count: Availability::unavailable(
+                "command-buffer counts require an external GPU profiler",
+            ),
+            enqueue_count: Availability::unavailable(
+                "enqueue counts require an external GPU profiler",
+            ),
+        }
+    }
+
+    pub fn validate(&self) -> std::result::Result<(), ValidationError> {
+        for metric in [
+            &self.allocated_bytes_before,
+            &self.allocated_bytes_after,
+            &self.free_bytes_before,
+            &self.free_bytes_after,
+            &self.total_bytes,
+            &self.device_elapsed_ns,
+            &self.kernel_count,
+            &self.command_buffer_count,
+            &self.enqueue_count,
+        ] {
+            metric.validate()?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "metal")]
+fn collect_metal_memory(device: &Device) -> DeviceMemorySnapshot {
+    match device.as_metal_device() {
+        Ok(device) => DeviceMemorySnapshot {
+            allocated_bytes: Availability::available(
+                device.metal_device().current_allocated_size() as u64,
+                "MTLDevice.currentAllocatedSize",
+            ),
+            free_bytes: Availability::unavailable(
+                "Metal does not expose device-wide free memory",
+            ),
+            total_bytes: Availability::unavailable(
+                "recommendedMaxWorkingSetSize is not physical total memory",
+            ),
+        },
+        Err(error) => DeviceMemorySnapshot::unavailable(&format!(
+            "requested Metal diagnostics for a different device: {error}"
+        )),
+    }
+}
+
+#[cfg(not(feature = "metal"))]
+fn collect_metal_memory(_device: &Device) -> DeviceMemorySnapshot {
+    DeviceMemorySnapshot::unavailable("benchmark binary was compiled without Metal support")
+}
+
+#[cfg(feature = "cuda")]
+fn collect_cuda_memory(device: &Device) -> DeviceMemorySnapshot {
+    let result = device
+        .as_cuda_device()
+        .map_err(|error| error.to_string())
+        .and_then(|device| {
+            device
+                .cuda_stream()
+                .context()
+                .mem_get_info()
+                .map_err(|error| error.to_string())
+        });
+    match result {
+        Ok((free, total)) => DeviceMemorySnapshot {
+            allocated_bytes: Availability::available(
+                total.saturating_sub(free) as u64,
+                "derived from CUDA cuMemGetInfo total minus free",
+            ),
+            free_bytes: Availability::available(free as u64, "CUDA cuMemGetInfo"),
+            total_bytes: Availability::available(total as u64, "CUDA cuMemGetInfo"),
+        },
+        Err(error) => DeviceMemorySnapshot::unavailable(&format!(
+            "CUDA memory query failed: {error}"
+        )),
+    }
+}
+
+#[cfg(not(feature = "cuda"))]
+fn collect_cuda_memory(_device: &Device) -> DeviceMemorySnapshot {
+    DeviceMemorySnapshot::unavailable("benchmark binary was compiled without CUDA support")
+}
+
+type DeviceIdentity = (
+    String,
+    Availability<String>,
+    Availability<String>,
+    Availability<String>,
+);
+
+fn collect_device_identity(
+    profile: ExecutionProfile,
+    device: &Device,
+    fallback_name: String,
+) -> DeviceIdentity {
+    match profile.backend {
+        Backend::Cpu => (
+            fallback_name,
+            Availability::unavailable("CPU physical identity is not exposed by Candle"),
+            Availability::unavailable("CPU runs do not have a device driver version"),
+            Availability::unavailable("CPU runs do not have a device runtime version"),
+        ),
+        Backend::Metal => collect_metal_identity(device, fallback_name),
+        Backend::Cuda => collect_cuda_identity(device, fallback_name),
+    }
+}
+
+#[cfg(feature = "metal")]
+fn collect_metal_identity(device: &Device, fallback_name: String) -> DeviceIdentity {
+    use objc2_metal::MTLDevice as _;
+
+    match device.as_metal_device() {
+        Ok(device) => {
+            let device = device.metal_device();
+            (
+                device.as_ref().name().to_string(),
+                Availability::available(
+                    format!("registry-id:{:016x}", device.registry_id()),
+                    "MTLDevice.registryID",
+                ),
+                Availability::unavailable(
+                    "Metal does not expose a per-device driver version",
+                ),
+                Availability::unavailable(
+                    "Metal framework version is not exposed as a runtime API value",
+                ),
+            )
+        }
+        Err(error) => (
+            fallback_name,
+            Availability::unavailable(format!("Metal identity query failed: {error}")),
+            Availability::unavailable("Metal driver version query was not attempted"),
+            Availability::unavailable("Metal runtime version query was not attempted"),
+        ),
+    }
+}
+
+#[cfg(not(feature = "metal"))]
+fn collect_metal_identity(_device: &Device, fallback_name: String) -> DeviceIdentity {
+    (
+        fallback_name,
+        Availability::unavailable("benchmark binary was compiled without Metal support"),
+        Availability::unavailable("benchmark binary was compiled without Metal support"),
+        Availability::unavailable("benchmark binary was compiled without Metal support"),
+    )
+}
+
+#[cfg(feature = "cuda")]
+fn collect_cuda_identity(device: &Device, fallback_name: String) -> DeviceIdentity {
+    let context = match device.as_cuda_device() {
+        Ok(device) => device.cuda_stream().context().clone(),
+        Err(error) => {
+            return (
+                fallback_name,
+                Availability::unavailable(format!("CUDA identity query failed: {error}")),
+                Availability::unavailable("CUDA driver version query was not attempted"),
+                Availability::unavailable("CUDA runtime version query was not attempted"),
+            );
+        }
+    };
+    let name = context.name().unwrap_or(fallback_name);
+    let identity = context.uuid().map_or_else(
+        |error| Availability::unavailable(format!("CUDA UUID query failed: {error}")),
+        |uuid| {
+            let bytes = uuid.bytes.map(|byte| byte as u8);
+            Availability::available(
+                format!(
+                    "GPU-{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+                    bytes[0],
+                    bytes[1],
+                    bytes[2],
+                    bytes[3],
+                    bytes[4],
+                    bytes[5],
+                    bytes[6],
+                    bytes[7],
+                    bytes[8],
+                    bytes[9],
+                    bytes[10],
+                    bytes[11],
+                    bytes[12],
+                    bytes[13],
+                    bytes[14],
+                    bytes[15],
+                ),
+                "CUDA cuDeviceGetUuid",
+            )
+        },
+    );
+    let driver_version = cudarc::runtime::result::version::get_driver_version().map_or_else(
+        |error| Availability::unavailable(format!("CUDA driver version query failed: {error}")),
+        |version| Availability::available(format_cuda_version(version), "cudaDriverGetVersion"),
+    );
+    let runtime_version = cudarc::runtime::result::version::get_runtime_version().map_or_else(
+        |error| Availability::unavailable(format!("CUDA runtime version query failed: {error}")),
+        |version| Availability::available(format_cuda_version(version), "cudaRuntimeGetVersion"),
+    );
+    (name, identity, driver_version, runtime_version)
+}
+
+#[cfg(feature = "cuda")]
+fn format_cuda_version(version: i32) -> String {
+    format!("{}.{}", version / 1_000, version.rem_euclid(1_000) / 10)
+}
+
+#[cfg(not(feature = "cuda"))]
+fn collect_cuda_identity(_device: &Device, fallback_name: String) -> DeviceIdentity {
+    (
+        fallback_name,
+        Availability::unavailable("benchmark binary was compiled without CUDA support"),
+        Availability::unavailable("benchmark binary was compiled without CUDA support"),
+        Availability::unavailable("benchmark binary was compiled without CUDA support"),
+    )
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RunMetadata {
     pub git_sha: String,
     pub rust_version: String,
@@ -420,8 +695,36 @@ impl RunMetadata {
         profile: ExecutionProfile,
         compiled: CompiledFeatures,
     ) -> std::result::Result<Self, ValidationError> {
+        Self::collect_inner(profile, compiled, None)
+    }
+
+    pub fn collect_for_device(
+        profile: ExecutionProfile,
+        compiled: CompiledFeatures,
+        device: &Device,
+    ) -> std::result::Result<Self, ValidationError> {
+        Self::collect_inner(profile, compiled, Some(device))
+    }
+
+    fn collect_inner(
+        profile: ExecutionProfile,
+        compiled: CompiledFeatures,
+        device: Option<&Device>,
+    ) -> std::result::Result<Self, ValidationError> {
         profile.validate(compiled)?;
-        let (cpu_implementation, device_index, device_name, feature) = match profile.backend {
+        if let Some(device) = device {
+            let matches = match profile.backend {
+                Backend::Cpu => device.is_cpu(),
+                Backend::Metal => device.is_metal(),
+                Backend::Cuda => device.is_cuda(),
+            };
+            if !matches {
+                return Err(ValidationError::new(
+                    "execution profile does not match the created device",
+                ));
+            }
+        }
+        let (cpu_implementation, device_index, fallback_name, feature) = match profile.backend {
             Backend::Cpu => {
                 let name = match profile.cpu_implementation {
                     CpuImplementation::Baseline => "CPU (baseline)",
@@ -452,6 +755,17 @@ impl RunMetadata {
                 "cuda",
             ),
         };
+        let (device_name, device_identity, driver_version, runtime_version) = match device {
+            None => {
+                (
+                    fallback_name,
+                    Availability::unavailable("physical device identity requires a created device"),
+                    Availability::unavailable("driver version requires a created device"),
+                    Availability::unavailable("runtime version requires a created device"),
+                )
+            }
+            Some(device) => collect_device_identity(profile, device, fallback_name),
+        };
         let metadata = Self {
             git_sha: command_output("git", &["rev-parse", "HEAD"] )?,
             rust_version: command_output(
@@ -465,15 +779,9 @@ impl RunMetadata {
             cpu_implementation,
             device_index,
             device_name,
-            device_identity: Availability::unavailable(
-                "physical device identity is added by device diagnostics",
-            ),
-            driver_version: Availability::unavailable(
-                "driver version is added by device diagnostics when available",
-            ),
-            runtime_version: Availability::unavailable(
-                "runtime version is added by device diagnostics when available",
-            ),
+            device_identity,
+            driver_version,
+            runtime_version,
             feature_set: vec![feature.to_owned()],
             synchronization: "candle_device_synchronize".to_owned(),
         };
@@ -739,12 +1047,27 @@ pub struct BenchmarkRecord {
     pub library_to_reference_ratio: f64,
     #[serde(default)]
     pub sampling_order_policy: SamplingOrderPolicy,
+    pub diagnostics: DeviceDiagnostics,
 }
 
 impl BenchmarkRecord {
     pub fn from_measurement(
         prepared: &PreparedScenario<'_>,
         measurement: &PairMeasurement,
+    ) -> std::result::Result<Self, ValidationError> {
+        let before = DeviceMemorySnapshot::collect(&Device::Cpu, Backend::Cpu);
+        let after = DeviceMemorySnapshot::collect(&Device::Cpu, Backend::Cpu);
+        Self::from_measurement_with_diagnostics(
+            prepared,
+            measurement,
+            DeviceDiagnostics::from_snapshots(before, after),
+        )
+    }
+
+    pub fn from_measurement_with_diagnostics(
+        prepared: &PreparedScenario<'_>,
+        measurement: &PairMeasurement,
+        diagnostics: DeviceDiagnostics,
     ) -> std::result::Result<Self, ValidationError> {
         let record = Self {
             scenario_id: prepared.id().as_str().to_owned(),
@@ -755,6 +1078,7 @@ impl BenchmarkRecord {
             reference: measurement.reference.estimate.clone(),
             library_to_reference_ratio: measurement.library_to_reference_ratio,
             sampling_order_policy: measurement.order_policy,
+            diagnostics,
         };
         record.validate()?;
         Ok(record)
@@ -774,7 +1098,7 @@ impl BenchmarkRecord {
                 "library_to_reference_ratio must be finite and positive",
             ));
         }
-        Ok(())
+        self.diagnostics.validate()
     }
 }
 

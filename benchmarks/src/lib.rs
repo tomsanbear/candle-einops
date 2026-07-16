@@ -767,7 +767,7 @@ impl RunMetadata {
             Some(device) => collect_device_identity(profile, device, fallback_name),
         };
         let metadata = Self {
-            git_sha: command_output("git", &["rev-parse", "HEAD"] )?,
+            git_sha: benchmark_git_sha()?,
             rust_version: command_output(
                 std::env::var("RUSTC").as_deref().unwrap_or("rustc"),
                 &["--version"],
@@ -996,7 +996,7 @@ impl Fingerprint {
             Backend::Cuda => (Backend::Cuda, format!("cuda:{}", profile.device_index)),
         };
         let fingerprint = Self {
-            git_sha: command_output("git", &["rev-parse", "HEAD"] )?,
+            git_sha: benchmark_git_sha()?,
             rust_version: command_output(
                 std::env::var("RUSTC").as_deref().unwrap_or("rustc"),
                 &["--version"],
@@ -1171,6 +1171,19 @@ fn command_output(program: &str, args: &[&str]) -> std::result::Result<String, V
     String::from_utf8(output.stdout)
         .map(|value| value.trim().to_owned())
         .map_err(|error| ValidationError::new(format!("invalid {program} output: {error}")))
+}
+
+fn benchmark_git_sha() -> std::result::Result<String, ValidationError> {
+    match std::env::var("CANDLE_EINOPS_BENCHMARK_GIT_SHA") {
+        Ok(value) if !value.trim().is_empty() => Ok(value.trim().to_owned()),
+        Ok(_) => Err(ValidationError::new(
+            "CANDLE_EINOPS_BENCHMARK_GIT_SHA cannot be empty",
+        )),
+        Err(std::env::VarError::NotPresent) => command_output("git", &["rev-parse", "HEAD"]),
+        Err(std::env::VarError::NotUnicode(_)) => Err(ValidationError::new(
+            "CANDLE_EINOPS_BENCHMARK_GIT_SHA must be valid Unicode",
+        )),
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

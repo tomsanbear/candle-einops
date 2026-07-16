@@ -646,10 +646,7 @@ fn collect_cuda_identity(device: &Device, fallback_name: String) -> DeviceIdenti
             )
         },
     );
-    let driver_version = cudarc::runtime::result::version::get_driver_version().map_or_else(
-        |error| Availability::unavailable(format!("CUDA driver version query failed: {error}")),
-        |version| Availability::available(format_cuda_version(version), "cudaDriverGetVersion"),
-    );
+    let driver_version = collect_nvidia_driver_version(context.ordinal());
     let runtime_version = cudarc::runtime::result::version::get_runtime_version().map_or_else(
         |error| Availability::unavailable(format!("CUDA runtime version query failed: {error}")),
         |version| Availability::available(format_cuda_version(version), "cudaRuntimeGetVersion"),
@@ -660,6 +657,36 @@ fn collect_cuda_identity(device: &Device, fallback_name: String) -> DeviceIdenti
 #[cfg(feature = "cuda")]
 fn format_cuda_version(version: i32) -> String {
     format!("{}.{}", version / 1_000, version.rem_euclid(1_000) / 10)
+}
+
+#[cfg(feature = "cuda")]
+fn collect_nvidia_driver_version(device_index: usize) -> Availability<String> {
+    let output = Command::new("nvidia-smi")
+        .args([
+            "--query-gpu=driver_version",
+            "--format=csv,noheader",
+            &format!("--id={device_index}"),
+        ])
+        .output();
+    match output {
+        Ok(output) if output.status.success() => match String::from_utf8(output.stdout) {
+            Ok(version) if !version.trim().is_empty() => Availability::available(
+                version.trim().to_owned(),
+                "nvidia-smi --query-gpu=driver_version",
+            ),
+            Ok(_) => Availability::unavailable("nvidia-smi returned an empty driver version"),
+            Err(error) => Availability::unavailable(format!(
+                "nvidia-smi returned an invalid driver version: {error}"
+            )),
+        },
+        Ok(output) => Availability::unavailable(format!(
+            "nvidia-smi driver query exited with {}",
+            output.status
+        )),
+        Err(error) => Availability::unavailable(format!(
+            "could not execute nvidia-smi for driver identity: {error}"
+        )),
+    }
 }
 
 #[cfg(not(feature = "cuda"))]

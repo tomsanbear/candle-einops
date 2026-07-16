@@ -1,7 +1,7 @@
 ---
 id: cpu-zero-k-fixed-overhead
 title: Reduce CPU zero-K contraction overhead
-status: todo
+status: done
 priority: p2
 dependencies: [optimized-provider-performance-protocol]
 related: [einsum-zero-k-autograd]

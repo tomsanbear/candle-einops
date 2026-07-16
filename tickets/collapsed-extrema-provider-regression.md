@@ -1,6 +1,6 @@
 ---
 id: collapsed-extrema-provider-regression
-title: Eliminate collapsed extrema provider regressions
+title: Eliminate Metal and CUDA collapsed extrema regressions
 status: todo
 priority: p0
 dependencies: [optimized-provider-performance-protocol]
@@ -12,16 +12,16 @@ tags: [performance-gap, reductions]
 ---
 ## Evidence
 
-The collapsed contiguous extrema candidate measured 1.40x to 1.90x slower than sequential direct Candle across CPU, Accelerate, Metal, and CUDA despite issuing one public reduction.
+Five optimized 25-sample processes cleared CPU baseline and Accelerate. Metal contiguous extrema remained 37% to 53% / 66 to 88 microseconds behind reference. CUDA retained gaps across all six cases: roughly 10% to 142% / 1.7 to 15.8 microseconds.
 
 ## Work
 
-- Confirm the regression in the existing six-case extrema matrix using optimized runs.
-- Determine whether collapse materialization, kernel shape, or provider reduction implementation dominates.
-- Tighten selection to retain one-call collapse only where it is actually faster.
+- Freeze the existing six-case extrema matrix by provider and route.
+- Determine whether collapsed extent, required materialization, or provider reduction implementation dominates.
+- Use sequential reduction on provider/layout cells where collapse does not clear the materiality threshold.
 
 ## Acceptance
 
-- Tests first freeze contiguous leading/trailing eligibility, strided fallback, values, gradients, dtypes, and empty-axis errors.
-- Every provider uses the faster route within the protocol threshold.
-- Structural call-count claims remain honest and are not treated as performance wins by themselves.
+- Red-first tests freeze contiguous leading/trailing eligibility, strided fallback, values, gradients, dtypes, and empty-axis errors.
+- Metal and CUDA use the faster route within the protocol threshold.
+- CPU keeps its optimized collapsed route and structural call-count claims remain honest.

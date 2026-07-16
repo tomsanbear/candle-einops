@@ -1,7 +1,7 @@
 ---
 id: cuda-view-consumption-overhead
 title: Avoid CUDA view consumption regressions
-status: todo
+status: done
 priority: p1
 dependencies: [optimized-provider-performance-protocol]
 related: [fused-permute-compose-layout, identity-reshape-elision]

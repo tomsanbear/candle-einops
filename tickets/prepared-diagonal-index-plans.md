@@ -1,6 +1,6 @@
 ---
 id: prepared-diagonal-index-plans
-title: Add reusable prepared diagonal index plans
+title: Add reusable CPU and CUDA diagonal index plans
 status: todo
 priority: p1
 dependencies: [optimized-provider-performance-protocol]
@@ -12,7 +12,7 @@ tags: [performance-gap, einsum]
 ---
 ## Evidence
 
-Per-call diagonal extraction remains 1.16x to 3.88x slower than the cached-index reference because the library rebuilds and uploads indices for every invocation.
+Five optimized 25-sample processes cleared Metal. CUDA remained 29% to 63% / 2.8 to 6.2 microseconds behind cached-index reference in all six cases. CPU baseline and Accelerate retained one material interleaved n16 gap around 1.7 microseconds.
 
 ## Work
 
@@ -23,5 +23,5 @@ Per-call diagonal extraction remains 1.16x to 3.88x slower than the cached-index
 ## Acceptance
 
 - Red-first tests cover plan reuse, wrong shape/device rejection, zero extents, overflow, values, and gradients.
-- Prepared steady-state extraction is no slower than the cached reference by the protocol threshold on CPU, Metal, and CUDA.
-- One-shot behavior and error compatibility remain unchanged.
+- Prepared steady-state extraction is no slower than cached reference by the protocol threshold on CPU and CUDA.
+- One-shot behavior, Metal behavior, and error compatibility remain unchanged.

@@ -1,7 +1,7 @@
 ---
 id: cuda-simple-einsum-dispatch-overhead
 title: Remove CUDA simple einsum dispatch overhead
-status: todo
+status: done
 priority: p0
 dependencies: [optimized-provider-performance-protocol]
 related: [einsum-binary-fastpaths]

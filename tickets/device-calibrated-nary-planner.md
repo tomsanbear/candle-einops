@@ -1,6 +1,6 @@
 ---
 id: device-calibrated-nary-planner
-title: Calibrate n-ary planning by device
+title: Calibrate n-ary planning for CPU providers
 status: todo
 priority: p1
 dependencies: [optimized-provider-performance-protocol]
@@ -12,16 +12,16 @@ tags: [performance-gap, einsum]
 ---
 ## Evidence
 
-The selected n-ary strategy is workload/provider sensitive: layout-hostile cases were 1.48x slower on baseline CPU, 2.16x on Accelerate, and 1.54x on Metal, while balanced-tree selection also regressed 1.54x on Accelerate. CUDA often preferred different paths.
+Five optimized 25-sample processes cleared Metal and CUDA. Baseline CPU retained 13% to 101% / 4.7 to 13.8 microsecond gaps across the frozen n-ary matrix. Accelerate retained 48% to 116% / 6.2 to 13.3 microsecond gaps except broadcast-heavy, which cleared the threshold.
 
 ## Work
 
-- Reproduce only the existing four whole-network fixtures under the optimized protocol.
-- Calibrate cost weights and crossover eligibility by provider class without runtime autotuning.
-- Preserve deterministic bounded planning and the existing greedy fallback.
+- Freeze the four whole-network fixtures by CPU implementation.
+- Calibrate cost weights and crossover eligibility for baseline and Accelerate without runtime autotuning.
+- Preserve deterministic bounded planning and the existing greedy fallback; do not alter Metal or CUDA selection without evidence.
 
 ## Acceptance
 
-- Red-first path assertions cover every provider/workload crossover and deterministic ties.
-- Selected execution is never materially slower than greedy/direct reference on the frozen matrix.
-- Forward values, gradients, overflow fallback, and planner budget remain unchanged.
+- Red-first path assertions cover CPU workload crossovers and deterministic ties.
+- Selected CPU execution is never materially slower than greedy/direct reference on the frozen matrix.
+- Forward values, gradients, overflow fallback, planner budget, Metal, and CUDA remain unchanged.

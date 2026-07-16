@@ -507,8 +507,14 @@ impl Scenario for PermuteComposeScenario {
         if library.dims() != reference.dims() {
             candle_core::bail!("permute-compose outputs have different shapes")
         }
-        if self.mode == Mode::Construct && (library.is_contiguous() || !reference.is_contiguous()) {
-            candle_core::bail!("construct layout did not discriminate copy from candidate view")
+        if self.mode == Mode::Construct {
+            let eager_cpu_rank_two = library.device().is_cpu() && self.pattern == Pattern::CAb;
+            if eager_cpu_rank_two && (!library.is_contiguous() || !reference.is_contiguous()) {
+                candle_core::bail!("CPU rank-two construction must use the eager layout")
+            }
+            if !eager_cpu_rank_two && (library.is_contiguous() || !reference.is_contiguous()) {
+                candle_core::bail!("construct layout did not discriminate copy from candidate view")
+            }
         }
         if self.mode == Mode::Consume && (!library.is_contiguous() || !reference.is_contiguous()) {
             candle_core::bail!("consume outputs must both be contiguous")

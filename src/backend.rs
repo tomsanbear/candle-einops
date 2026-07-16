@@ -373,6 +373,14 @@ pub(crate) fn execute_tensor_permute_and_compose(
         start = end;
     }
 
+    // A recovered rank-two transpose view makes a later CPU materialization
+    // substantially slower than Candle's direct permute-and-reshape copy. GPU
+    // providers keep the view so they can avoid an enqueue when it is consumed
+    // by a layout-aware kernel.
+    if input.device().is_cpu() && input.elem_count() != 0 && output_shape.len() == 2 {
+        return input.permute(permutation)?.reshape(output_shape);
+    }
+
     if let Some(order) =
         plan_permute_compose_group_order(input.dims(), input.stride(), permutation, group_lengths)?
     {

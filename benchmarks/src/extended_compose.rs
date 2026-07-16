@@ -140,22 +140,15 @@ impl Scenario for ExtendedComposeScenario {
     fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor> {
         let output = match self.pattern {
             Pattern::RuntimeEllipsis => einops!("a b .. -> b (..) a", &inputs[0])?,
-            Pattern::PostReduction => {
-                einops!("sum(reduced) a b c -> c (a b)", &inputs[0])?
-            }
+            Pattern::PostReduction => einops!("sum(reduced) a b c -> c (a b)", &inputs[0])?,
         };
         self.maybe_consume(output)
     }
 
     fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor> {
         let output = match self.pattern {
-            Pattern::RuntimeEllipsis => inputs[0]
-                .permute([1, 2, 3, 0])?
-                .reshape((B, C * D, A))?,
-            Pattern::PostReduction => inputs[0]
-                .sum(0)?
-                .permute([2, 0, 1])?
-                .reshape((C, A * B))?,
+            Pattern::RuntimeEllipsis => inputs[0].permute([1, 2, 3, 0])?.reshape((B, C * D, A))?,
+            Pattern::PostReduction => inputs[0].sum(0)?.permute([2, 0, 1])?.reshape((C, A * B))?,
         };
         self.maybe_consume(output)
     }
@@ -164,8 +157,17 @@ impl Scenario for ExtendedComposeScenario {
         if library.dims() != reference.dims() {
             candle_core::bail!("extended composition outputs have different shapes")
         }
-        if self.mode == Mode::Construct && (library.is_contiguous() || !reference.is_contiguous()) {
-            candle_core::bail!("construction mode did not discriminate view from historical copy")
+        if self.mode == Mode::Construct {
+            let eager_cpu_rank_two =
+                library.device().is_cpu() && self.pattern == Pattern::PostReduction;
+            if eager_cpu_rank_two && (!library.is_contiguous() || !reference.is_contiguous()) {
+                candle_core::bail!("CPU rank-two construction must use the eager layout")
+            }
+            if !eager_cpu_rank_two && (library.is_contiguous() || !reference.is_contiguous()) {
+                candle_core::bail!(
+                    "construction mode did not discriminate view from historical copy"
+                )
+            }
         }
         if self.mode == Mode::Consume && (!library.is_contiguous() || !reference.is_contiguous()) {
             candle_core::bail!("consumption mode outputs must both be contiguous")

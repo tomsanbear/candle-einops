@@ -38,6 +38,11 @@ fn plan_reduction_runs(axes_operations: &mut [(usize, Operation)]) -> Vec<Reduct
             });
         }
     }
+    for run in &mut runs {
+        if matches!(run.operation, Operation::Sum | Operation::Mean) {
+            run.axes.reverse();
+        }
+    }
     runs
 }
 

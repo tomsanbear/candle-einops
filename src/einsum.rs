@@ -630,7 +630,17 @@ fn select_prepared_nary_plan<'a>(
     output_axes: &[ExpandedAxis<'a>],
 ) -> NaryPlannerDecision<'a> {
     let first = &planned[0].tensor;
-    let metadata = planned
+    let metadata = prepared_nary_metadata(planned);
+    select_layout_aware_plan(
+        &metadata,
+        output_axes,
+        first.dtype(),
+        first.device().is_cpu(),
+    )
+}
+
+fn prepared_nary_metadata<'a>(planned: &[PlannedOperand<'a>]) -> Vec<NaryPlannerMetadata<'a>> {
+    planned
         .iter()
         .map(|operand| NaryPlannerMetadata {
             stable_ordinal: operand.stable_ordinal,
@@ -647,13 +657,7 @@ fn select_prepared_nary_plan<'a>(
             },
             members: operand.members,
         })
-        .collect::<Vec<_>>();
-    select_layout_aware_plan(
-        &metadata,
-        output_axes,
-        first.dtype(),
-        first.device().is_cpu(),
-    )
+        .collect()
 }
 
 /// Runs production n-ary preparation and selection without executing a plan.
@@ -743,6 +747,13 @@ fn execute_nary_einsum_internal<'a>(
     } else {
         NaryPlannerDecision::Greedy(NaryGreedyReason::Arity)
     };
+    let calibrated_greedy = matches!(
+        &decision,
+        NaryPlannerDecision::Greedy(NaryGreedyReason::Calibration)
+    );
+    let greedy_cache_key = calibrated_greedy
+        .then(|| nary_plan_cache_key(&prepared_nary_metadata(&planned), &output_axes));
+    let cached_greedy = greedy_cache_key.as_ref().and_then(cached_nary_sequence);
     let mut trace = NaryExecutionTrace::default();
     match decision {
         NaryPlannerDecision::Exact(plan) => {
@@ -802,9 +813,32 @@ fn execute_nary_einsum_internal<'a>(
             }
         }
         NaryPlannerDecision::Greedy(_) => {
+            trace.used_cached_greedy = cached_greedy.is_some();
+            let mut cached_steps = cached_greedy.as_deref().unwrap_or_default().iter();
             while planned.len() > 1 {
-                let selected =
-                    select_nary_pair_with_order(&planned, &output_axes, &global_axis_order)?;
+                let selected = if let Some(&(left_members, right_members)) = cached_steps.next() {
+                    let left = planned
+                        .iter()
+                        .position(|operand| operand.members == left_members)
+                        .ok_or_else(|| {
+                            candle_core::Error::msg("cached greedy left members are not live")
+                        })?;
+                    let right = planned
+                        .iter()
+                        .position(|operand| operand.members == right_members)
+                        .ok_or_else(|| {
+                            candle_core::Error::msg("cached greedy right members are not live")
+                        })?;
+                    estimate_pair_with_order(
+                        &planned,
+                        left,
+                        right,
+                        &output_axes,
+                        &global_axis_order,
+                    )?
+                } else {
+                    select_nary_pair_with_order(&planned, &output_axes, &global_axis_order)?
+                };
                 let right = planned.remove(selected.right);
                 let left = planned.remove(selected.left);
                 let tensor = execute_expanded_binary(
@@ -824,6 +858,11 @@ fn execute_nary_einsum_internal<'a>(
                         members: left.members | right.members,
                     },
                 );
+            }
+            if let Some(key) = greedy_cache_key
+                && !trace.used_cached_greedy
+            {
+                cache_nary_sequence(key, trace.member_sequence.clone());
             }
         }
     }
@@ -1148,6 +1187,11 @@ fn cache_nary_sequence(key: NaryPlanCacheKey, sequence: Vec<NaryMemberPair>) {
         }
         cache.push_back(NaryCachedPlan { key, sequence });
     });
+}
+
+#[cfg(test)]
+fn clear_nary_plan_cache_for_test() {
+    NARY_PLAN_CACHE.with(|cache| cache.borrow_mut().clear());
 }
 
 fn model_axis_extent(operand: &NaryPlannerMetadata<'_>, axis: ExpandedAxis<'_>) -> Option<usize> {
@@ -3332,12 +3376,7 @@ mod tests {
 
         let broadcast = matrix_chain_metadata([32, 32, 15, 5, 10], Some(32));
         assert!(matches!(
-            select_layout_aware_plan_for_test(
-                &broadcast,
-                &["batch", "a", "e"],
-                DType::F32,
-                true
-            ),
+            select_layout_aware_plan_for_test(&broadcast, &["batch", "a", "e"], DType::F32, true),
             NaryPlannerDecision::Greedy(NaryGreedyReason::Calibration)
         ));
 

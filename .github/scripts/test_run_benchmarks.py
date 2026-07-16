@@ -17,6 +17,15 @@ SPEC.loader.exec_module(run_benchmarks)
 
 
 class CaptureCommandTests(unittest.TestCase):
+    def test_measurement_commands_use_the_release_profile(self) -> None:
+        for command in ("run", "probe", "capture", "gaps"):
+            self.assertEqual(
+                run_benchmarks.cargo_profile_arguments(command),
+                ["--release"],
+            )
+        for command in ("compile", "smoke"):
+            self.assertEqual(run_benchmarks.cargo_profile_arguments(command), [])
+
     def test_cuda_capture_uses_exact_profiler_api_range_without_cpu_sampling(self) -> None:
         command = run_benchmarks.nsys_capture_command(
             nsys=Path("/usr/local/bin/nsys"),

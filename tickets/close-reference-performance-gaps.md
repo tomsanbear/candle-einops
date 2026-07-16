@@ -3,7 +3,7 @@ id: close-reference-performance-gaps
 title: Close material performance gaps to direct Candle
 status: todo
 priority: p0
-dependencies: [optimized-provider-performance-protocol, cuda-simple-einsum-dispatch-overhead, cuda-view-consumption-overhead, provider-aware-reduction-selection, collapsed-extrema-provider-regression, prepared-diagonal-index-plans, device-calibrated-nary-planner, cpu-zero-k-fixed-overhead, cpu-layout-consumption-overhead, nonzero-benchmark-duration-floor, cpu-product-association-overhead, repeat-broadcast-consumption-overhead, layout-hostile-broadcast-gemm-overhead, cpu-leading-extrema-overhead]
+dependencies: [optimized-provider-performance-protocol, cuda-simple-einsum-dispatch-overhead, cuda-view-consumption-overhead, provider-aware-reduction-selection, collapsed-extrema-provider-regression, prepared-diagonal-index-plans, device-calibrated-nary-planner, cpu-zero-k-fixed-overhead, cpu-layout-consumption-overhead, nonzero-benchmark-duration-floor, cpu-product-association-overhead, repeat-broadcast-consumption-overhead, layout-hostile-broadcast-gemm-overhead, cpu-leading-extrema-overhead, cpu-trailing-extrema-overhead]
 related: []
 scopes: [ticketing]
 shared_scopes: []

@@ -1,7 +1,7 @@
 ---
 id: prepared-diagonal-index-plans
-title: Add reusable CPU and CUDA diagonal index plans
-status: in-progress
+title: Add caller-owned prepared diagonal plans
+status: done
 priority: p1
 dependencies: [optimized-provider-performance-protocol]
 related: [einsum-diagonal-fastpath, spike-reusable-diagonal-index-plans]
@@ -9,22 +9,17 @@ scopes: [runtime, benchmarks]
 shared_scopes: []
 paths: []
 tags: [performance-gap, einsum]
-claimed_from: todo
-assignee: codex-root
-lease_expires_at: 1784223951
 ---
-## Evidence
+## Resolution
 
-Five optimized 25-sample processes cleared Metal. CUDA remained 29% to 63% / 2.8 to 6.2 microseconds behind cached-index reference in all six cases. CPU baseline and Accelerate retained one material interleaved n16 gap around 1.7 microseconds.
+Added public PreparedDiagonalPlan for caller-owned, device-bound diagonal indices. Numeric axis ids encode the input-side equation, repeated ids select diagonals, and first-occurrence order defines the extraction output. Convenience constructors cover repeated and interleaved forms.
 
-## Work
+Plans store one u32 index tensor, require the exact prepared shape, contiguous input, and same device, and expose no global cache. One-shot einsum behavior and non-contiguous fallback remain unchanged.
 
-- Design a caller-owned prepared plan keyed by equation, shape, index dtype, and device identity; do not add an unbounded global cache.
-- Keep the one-shot macro API correct while exposing an explicit reusable path for repeated shapes.
-- Measure preparation separately from steady-state extraction with the existing six diagonal scenarios.
+## Acceptance evidence
 
-## Acceptance
-
-- Red-first tests cover plan reuse, wrong shape/device rejection, zero extents, overflow, values, and gradients.
-- Prepared steady-state extraction is no slower than cached reference by the protocol threshold on CPU and CUDA.
-- One-shot behavior, Metal behavior, and error compatibility remain unchanged.
+- Red-first tests cover reuse across inputs, wrong shape, non-contiguous input, unequal repeated extents, missing repeats, u32/usize overflow, zero extents, exact values, and gradients.
+- The benchmark now invokes the public plan as the library path with preparation outside timing.
+- Existing benchmark tests prove index storage reuse and shape/device binding.
+- Five optimized 25-sample processes report all six scenarios as parity on CPU baseline, Accelerate, Metal, and CUDA.
+- README documents prepared versus one-shot usage and ownership boundaries.

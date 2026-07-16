@@ -651,7 +651,11 @@ mod tests {
 
         reset_backend_reduction_call_count();
         (&input).reduce_axes(&mut [(1, Operation::Min), (2, Operation::Min)])?;
-        assert_eq!(backend_reduction_call_count(), 1);
+        assert_eq!(
+            backend_reduction_call_count(),
+            2,
+            "CPU extrema should retain Candle's faster sequential trailing-axis route"
+        );
 
         reset_backend_reduction_call_count();
         (&input).reduce_axes(&mut [(0, Operation::Max), (1, Operation::Max)])?;

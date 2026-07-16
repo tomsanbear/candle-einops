@@ -35,11 +35,24 @@ python3 .github/scripts/run_benchmarks.py compile
 python3 .github/scripts/run_benchmarks.py smoke
 python3 .github/scripts/run_benchmarks.py run --filter rearrange/view-permute --output target/benchmarks/result.json
 python3 .github/scripts/run_benchmarks.py probe --filter spike/diagonal --output target/benchmarks/index-preparation.json
+python3 .github/scripts/run_benchmarks.py capture --backend metal --filter reshape/identity/non-contiguous/consume --operation library
+python3 .github/scripts/run_benchmarks.py capture --backend cuda --filter reshape/identity/non-contiguous/consume --operation reference
 ```
 
 The wrapper pins Rust 1.94, uses this crate's committed lockfile, and shares the
-root ignored `target/benchmarks` directory. `run` selects tracked scenarios by
+root ignored `target/benchmarks` directory. Select `--backend cpu|metal|cuda`,
+`--cpu-implementation baseline|accelerate|mkl`, and `--device-index` explicitly
+when the defaults are not appropriate. `run` selects tracked scenarios by
 substring. `smoke` additionally opts into the untracked plumbing fixture.
+
+`capture` requires a GPU backend, a filter that resolves to exactly one
+supported scenario, and `--operation library|reference`. It performs three
+synchronized warmups by default (`--warmups` changes this), then captures one
+synchronized operation. Metal capture uses Candle's `MTLCaptureManager` path
+and writes an Xcode `.gputrace` bundle. CUDA capture builds the locked harness
+and invokes Nsight Systems with the exact `cudaProfilerApi` range, CPU sampling
+disabled, and no proprietary-report parsing. For CUDA, `--output` is the report
+prefix to which Nsight Systems adds `.nsys-rep`; `nsys` must be on `PATH`.
 
 `probe` is a CPU-only companion for the repeated-label diagonal spike. It
 isolates host index construction plus device upload and records the input,
@@ -53,17 +66,24 @@ after its black-boxed output is produced. The output remains alive through the
 second synchronization.
 
 Paired JSON samples alternate deterministically between library-first and
-reference-first execution. The additive `sampling_order_policy` field records
-that policy without changing the v1 schema or the environment fingerprint;
-legacy v1 records without the field deserialize as fixed library-first order.
-Criterion invokes the operations directly under its own timer and synchronizes
-after every output, rather than nesting the JSON harness clock.
+reference-first execution. Each record's `sampling_order_policy` field records
+that policy. The advisory comparator still reads legacy v1 arrays, treating a
+missing policy as fixed library-first order, but it never compares v1 and v2
+results as if they were equivalent. Criterion invokes the operations directly
+under its own timer and synchronizes after every output, rather than nesting
+the JSON harness clock.
 
-The versioned JSON record is the automation contract. It contains paired
-library/reference medians, a deterministic 95% bootstrap interval, their ratio,
-work units, and a git/Rust/Candle/platform/device fingerprint. Criterion output
-is useful for local inspection but is secondary and must not be parsed by
-automation or committed.
+The versioned JSON document is the automation contract. Schema v2 owns one run
+identity, paired library/reference records, explicit unsupported-scenario
+entries, a deterministic 95% bootstrap interval, ratios, work units, and
+per-record device diagnostics. Every diagnostic is either a value with its
+source or an explicit unavailable reason. Metal reports physical name,
+registry ID, and current allocation; CUDA reports physical name and UUID,
+installed NVIDIA driver, CUDA runtime, and free/total/derived allocation.
+Synchronized host timing remains the primary timing. Device-event, kernel,
+command-buffer, and enqueue counts remain unavailable in JSON until a native
+capture supplies them. Criterion output and native GPU traces are secondary
+and must not be parsed by automation or committed.
 
 ## Advisory base/head comparisons
 
@@ -108,8 +128,9 @@ Their stable ids preserve registration continuity, but results produced before
 this methodology change are different workloads and must not be compared with
 new medians unless the recorded work units also match.
 
-CPU is the default backend. `--backend metal` and `--backend cuda` establish
-mutually exclusive feature builds for later device-specific instrumentation;
-this foundation does not claim GPU timing, allocation, kernel, or enqueue
-metrics. Profilers should wrap the supported command rather than bypassing its
-locked build. There is no universal timing baseline or CI regression gate.
+CPU is the default backend. Metal, CUDA, Accelerate, and MKL are mutually
+exclusive feature builds. View-only construction scenarios are retained for
+CPU analysis but explicitly skipped on accelerators because they enqueue no GPU
+work; their materializing consumers remain supported. Use the capture command
+instead of wrapping ad hoc binaries so warmup and exact-operation boundaries
+stay consistent. There is no universal timing baseline or CI regression gate.

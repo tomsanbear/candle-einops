@@ -35,12 +35,12 @@ class CaptureCommandTests(unittest.TestCase):
         self.assertIn("--capture-range-end=stop", command)
         self.assertIn("--sample=none", command)
         self.assertIn("--cpuctxsw=none", command)
-        self.assertEqual(command[-5:], [
+        self.assertEqual(command[-4:], [
             "--filter",
             "einsum/binary/gemm",
             "--capture-operation",
             "library",
-            ])
+        ])
 
     def test_capture_requires_an_explicit_scenario_operation_and_gpu_backend(self) -> None:
         with self.assertRaisesRegex(SystemExit, "--filter"):

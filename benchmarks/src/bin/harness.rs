@@ -6,8 +6,9 @@ use candle_einops_benchmarks::{
     Backend, BenchmarkDocument, BenchmarkRecord, CompiledFeatures, CpuImplementation,
     DeviceDiagnostics, DeviceMemorySnapshot, DeviceSynchronizer, ExecutionProfile, MonotonicClock,
     PlumbingScenario, RunMetadata, Scenario,
-    binary_fast_path_scenarios, binary_operand_packing, broadcast_gemm_spike, diagonal_spike,
-    extended_compose, extrema_spike, identity_reshape_scenarios, measure_pair,
+    binary_fast_path_scenarios, binary_operand_packing, broadcast_gemm_spike,
+    capture_operation as capture_one_operation, diagonal_spike, extended_compose, extrema_spike,
+    identity_reshape_scenarios, measure_pair,
     nary_cost_model_spike, partition_scenarios, permute_compose_layout_spike, prepare,
     product_scenarios, reduction_fusion_scenarios, repeat_broadcast_scenarios, zero_k_scenarios,
 };
@@ -20,6 +21,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut backend = Backend::Cpu;
     let mut cpu_implementation = CpuImplementation::Baseline;
     let mut device_index = 0;
+    let mut capture_operation = None;
+    let mut capture_output = None;
+    let mut capture_warmups = 3;
     let mut arguments = std::env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -60,6 +64,24 @@ fn main() -> Result<(), Box<dyn Error>> {
                 device_index = arguments
                     .next()
                     .ok_or("--device-index requires a value")?
+                    .parse()?;
+            }
+            "--capture-operation" => {
+                capture_operation = match arguments.next().as_deref() {
+                    Some("library") => Some(candle_einops_benchmarks::Operation::Library),
+                    Some("reference") => Some(candle_einops_benchmarks::Operation::Reference),
+                    _ => return Err("--capture-operation requires library or reference".into()),
+                };
+            }
+            "--capture-output" => {
+                capture_output = Some(PathBuf::from(
+                    arguments.next().ok_or("--capture-output requires a value")?,
+                ));
+            }
+            "--capture-warmups" => {
+                capture_warmups = arguments
+                    .next()
+                    .ok_or("--capture-warmups requires a value")?
                     .parse()?;
             }
             _ => return Err(format!("unknown benchmark argument: {argument}").into()),
@@ -147,6 +169,36 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err(format!("no supported benchmark scenarios matched ({reasons})").into());
     }
     let device = profile.create_device(CompiledFeatures::CURRENT)?;
+    if let Some(operation) = capture_operation {
+        if selected.len() != 1 {
+            return Err(format!(
+                "capture filter must match exactly one supported scenario, matched {}",
+                selected.len()
+            )
+            .into());
+        }
+        let prepared = prepare(selected[0], &device)?;
+        capture_one_operation(
+            &prepared,
+            operation,
+            &device,
+            profile.backend,
+            capture_output.as_deref(),
+            capture_warmups,
+        )?;
+        println!(
+            "captured {} operation for {}",
+            match operation {
+                candle_einops_benchmarks::Operation::Library => "library",
+                candle_einops_benchmarks::Operation::Reference => "reference",
+            },
+            selected[0].id().as_str()
+        );
+        return Ok(());
+    }
+    if capture_output.is_some() {
+        return Err("--capture-output requires --capture-operation".into());
+    }
     let synchronizer = DeviceSynchronizer(&device);
     let clock = MonotonicClock;
     let run = RunMetadata::collect_for_device(profile, CompiledFeatures::CURRENT, &device)?;

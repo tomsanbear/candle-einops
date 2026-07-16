@@ -173,10 +173,12 @@ smoke with the supported wrapper:
 ```console
 python3 .github/scripts/run_benchmarks.py compile
 python3 .github/scripts/run_benchmarks.py smoke
+python3 .github/scripts/run_benchmarks.py capture --backend metal --filter reshape/identity/non-contiguous/consume --operation library
 ```
 
 Timing results are advisory rather than a CI gate. See
-[benchmarks/README.md](benchmarks/README.md) for filtering, JSON metadata, and
+[benchmarks/README.md](benchmarks/README.md) for device profiles, filtering,
+schema v2 diagnostics, exact-operation Metal/CUDA capture, and
 measurement boundaries.
 
 Licensed under either Apache-2.0 or MIT, at your option.

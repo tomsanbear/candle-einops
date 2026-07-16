@@ -3,6 +3,7 @@
 use std::fmt;
 use std::hint::black_box;
 use std::mem::size_of;
+use std::path::Path;
 use std::process::Command;
 use std::sync::OnceLock;
 use std::time::Instant;
@@ -254,6 +255,91 @@ pub fn run_synchronized_operation(
     black_box(&output);
     synchronizer.synchronize()?;
     Ok(black_box(output))
+}
+
+pub fn capture_operation(
+    prepared: &PreparedScenario<'_>,
+    operation: Operation,
+    device: &Device,
+    backend: Backend,
+    output: Option<&Path>,
+    warmup_count: usize,
+) -> Result<()> {
+    if warmup_count == 0 {
+        candle_core::bail!("capture warmup count must be non-zero")
+    }
+    let synchronizer = DeviceSynchronizer(device);
+    for _ in 0..warmup_count {
+        run_synchronized_operation(prepared, operation, &synchronizer)?;
+    }
+    synchronizer.synchronize()?;
+    begin_device_capture(device, backend, output)?;
+    let operation_result = run_synchronized_operation(prepared, operation, &synchronizer);
+    let capture_result = end_device_capture(backend);
+    operation_result?;
+    capture_result
+}
+
+fn begin_device_capture(device: &Device, backend: Backend, output: Option<&Path>) -> Result<()> {
+    match backend {
+        Backend::Cpu => candle_core::bail!("capture requires a Metal or CUDA backend"),
+        Backend::Metal => begin_metal_capture(device, output),
+        Backend::Cuda => begin_cuda_capture(),
+    }
+}
+
+fn end_device_capture(backend: Backend) -> Result<()> {
+    match backend {
+        Backend::Cpu => candle_core::bail!("capture requires a Metal or CUDA backend"),
+        Backend::Metal => end_metal_capture(),
+        Backend::Cuda => end_cuda_capture(),
+    }
+}
+
+#[cfg(feature = "metal")]
+fn begin_metal_capture(device: &Device, output: Option<&Path>) -> Result<()> {
+    let output = output.ok_or_else(|| {
+        candle_core::Error::Msg("Metal capture requires an output .gputrace path".to_owned())
+    })?;
+    device.as_metal_device()?.capture(output)
+}
+
+#[cfg(not(feature = "metal"))]
+fn begin_metal_capture(_device: &Device, _output: Option<&Path>) -> Result<()> {
+    candle_core::bail!("benchmark binary was compiled without Metal capture support")
+}
+
+#[cfg(feature = "metal")]
+fn end_metal_capture() -> Result<()> {
+    use objc2_metal::MTLCaptureManager;
+
+    unsafe { MTLCaptureManager::sharedCaptureManager() }.stopCapture();
+    Ok(())
+}
+
+#[cfg(not(feature = "metal"))]
+fn end_metal_capture() -> Result<()> {
+    candle_core::bail!("benchmark binary was compiled without Metal capture support")
+}
+
+#[cfg(feature = "cuda")]
+fn begin_cuda_capture() -> Result<()> {
+    cudarc::driver::profiler_start().map_err(|error| candle_core::Error::Msg(error.to_string()))
+}
+
+#[cfg(not(feature = "cuda"))]
+fn begin_cuda_capture() -> Result<()> {
+    candle_core::bail!("benchmark binary was compiled without CUDA capture support")
+}
+
+#[cfg(feature = "cuda")]
+fn end_cuda_capture() -> Result<()> {
+    cudarc::driver::profiler_stop().map_err(|error| candle_core::Error::Msg(error.to_string()))
+}
+
+#[cfg(not(feature = "cuda"))]
+fn end_cuda_capture() -> Result<()> {
+    candle_core::bail!("benchmark binary was compiled without CUDA capture support")
 }
 
 fn measure_operation(

@@ -105,6 +105,14 @@ class PerformanceReportGeneratorTests(unittest.TestCase):
         self.assertIn("+0.20 us", heatmap)
         self.assertIn("role=\"img\"", outcomes)
         self.assertIn("role=\"img\"", heatmap)
+        self.assertIn("data-render-fingerprint=\"", outcomes)
+        self.assertTrue(self.generator.svg_is_current(outcomes, outcomes))
+        self.assertFalse(
+            self.generator.svg_is_current(
+                outcomes.replace("data-render-fingerprint=\"", "data-stale=\"", 1),
+                outcomes,
+            )
+        )
 
 
 if __name__ == "__main__":

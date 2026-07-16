@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -164,7 +165,18 @@ def normalize_summaries(paths: list[pathlib.Path], snapshot_date: str) -> dict[s
     }
 
 
-def accessible_svg(figure: plt.Figure, title: str, description: str) -> str:
+def render_fingerprint(data: dict[str, Any]) -> str:
+    source = json.dumps(data, sort_keys=True, separators=(",", ":")).encode()
+    generator = pathlib.Path(__file__).read_bytes()
+    return hashlib.sha256(source + b"\0" + generator).hexdigest()
+
+
+def accessible_svg(
+    figure: plt.Figure,
+    title: str,
+    description: str,
+    fingerprint: str,
+) -> str:
     output = io.StringIO()
     figure.savefig(
         output,
@@ -179,7 +191,8 @@ def accessible_svg(figure: plt.Figure, title: str, description: str) -> str:
     root = svg[start:end]
     root = root.replace(
         "<svg",
-        '<svg role="img" aria-labelledby="performance-title performance-description"',
+        '<svg role="img" aria-labelledby="performance-title performance-description" '
+        f'data-render-fingerprint="{fingerprint}"',
         1,
     )
     accessible = (
@@ -245,6 +258,7 @@ def render_outcomes_svg(data: dict[str, Any]) -> str:
         figure,
         "Performance outcome counts by provider",
         "Stacked horizontal bars show Win, Tie, Loss, and Skipped counts for CPU baseline, CPU Accelerate, Metal, and CUDA.",
+        render_fingerprint(data),
     )
 
 
@@ -333,6 +347,7 @@ def render_heatmap_svg(data: dict[str, Any]) -> str:
         figure,
         "Complete performance outcome heatmap",
         "Every tracked scenario shows its Win, Tie, Loss, or Skipped classification, median percentage delta, and median absolute delta for each provider.",
+        render_fingerprint(data),
     )
 
 
@@ -462,11 +477,35 @@ def generated_outputs(data: dict[str, Any]) -> dict[pathlib.Path, str]:
     }
 
 
+def svg_is_current(existing: str, expected: str) -> bool:
+    marker = 'data-render-fingerprint="'
+    try:
+        existing_start = existing.index(marker) + len(marker)
+        expected_start = expected.index(marker) + len(marker)
+    except ValueError:
+        return False
+    existing_fingerprint = existing[existing_start : existing.index('"', existing_start)]
+    expected_fingerprint = expected[expected_start : expected.index('"', expected_start)]
+    return (
+        len(existing_fingerprint) == 64
+        and existing_fingerprint == expected_fingerprint
+        and 'role="img"' in existing
+        and "<title" in existing
+        and "<desc" in existing
+    )
+
+
 def write_or_check(outputs: dict[pathlib.Path, str], check: bool) -> int:
     stale = []
     for path, content in outputs.items():
         if check:
-            if not path.exists() or path.read_text() != content:
+            existing = path.read_text() if path.exists() else ""
+            current = (
+                svg_is_current(existing, content)
+                if path.suffix == ".svg"
+                else existing == content
+            )
+            if not current:
                 stale.append(path.relative_to(ROOT))
         else:
             path.parent.mkdir(parents=True, exist_ok=True)

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
   "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<svg role="img" aria-labelledby="performance-title performance-description" xmlns:xlink="http://www.w3.org/1999/xlink" width="746.410312pt" height="285.205194pt" viewBox="0 0 746.410312 285.205194" xmlns="http://www.w3.org/2000/svg" version="1.1"><title id="performance-title">Performance outcome counts by provider</title><desc id="performance-description">Stacked horizontal bars show Win, Tie, Loss, and Skipped counts for CPU baseline, CPU Accelerate, Metal, and CUDA.</desc>
+<svg role="img" aria-labelledby="performance-title performance-description" data-render-fingerprint="f8f02830fc73a32ef214f38be457e10a48ae39ebaa7bc18c237a17a0b37cad70" xmlns:xlink="http://www.w3.org/1999/xlink" width="746.410312pt" height="285.205194pt" viewBox="0 0 746.410312 285.205194" xmlns="http://www.w3.org/2000/svg" version="1.1"><title id="performance-title">Performance outcome counts by provider</title><desc id="performance-description">Stacked horizontal bars show Win, Tie, Loss, and Skipped counts for CPU baseline, CPU Accelerate, Metal, and CUDA.</desc>
  <title>Performance outcome counts by provider</title>
  <metadata>
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">

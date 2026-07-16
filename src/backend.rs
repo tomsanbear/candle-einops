@@ -301,6 +301,9 @@ fn collapse_extrema_run(
     let start = *descending_axes
         .last()
         .expect("an extrema run contains at least one axis");
+    if input.device().is_cpu() && start == 0 {
+        return Ok(None);
+    }
     let mut group_lengths = vec![1; start];
     group_lengths.push(descending_axes.len());
     group_lengths.extend(std::iter::repeat_n(

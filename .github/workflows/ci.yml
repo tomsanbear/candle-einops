@@ -61,6 +61,10 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python3 .github/scripts/test_run_benchmarks.py
+      - name: Test repeated reference-gap summary contract
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 .github/scripts/test_summarize_reference_gaps.py
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy

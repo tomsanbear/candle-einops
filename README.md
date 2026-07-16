@@ -133,6 +133,12 @@ with permutation, reduction, or contraction.
 Axes introduced by `einops!` repeat patterns are returned as broadcast views.
 These tensors can be non-contiguous and share storage with the input; operations
 that require contiguous storage may materialize them when consumed.
+If a repeated result must be contiguous immediately, benchmark that complete
+consumer path on the target backend. Candle's eager `Tensor::repeat` can copy a
+single leading repeat faster on baseline CPU and Metal, while the view avoids
+the copy entirely for stride-aware consumers and is faster for the measured
+two-axis and CUDA paths. The library therefore preserves the view contract
+rather than predicting a later consumer and materializing eagerly.
 
 ## Migrating from 0.1
 

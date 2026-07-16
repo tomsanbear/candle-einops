@@ -57,6 +57,10 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python3 .github/scripts/test_compare_benchmarks.py
+      - name: Test benchmark execution and capture contract
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 .github/scripts/test_run_benchmarks.py
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy
@@ -138,6 +142,26 @@ jobs:
         run: python3 .github/scripts/run_benchmarks.py compile
       - name: Run correctness and structural smoke contracts
         run: python3 .github/scripts/run_benchmarks.py smoke
+      - name: Compile locked MKL performance harness
+        run: python3 .github/scripts/run_benchmarks.py compile --cpu-implementation mkl
+      - name: Run MKL correctness and structural smoke contracts
+        run: python3 .github/scripts/run_benchmarks.py smoke --cpu-implementation mkl
+
+  performance-cuda-build:
+    name: Performance harness CUDA compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container: nvidia/cuda:12.8.1-devel-ubuntu24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.94
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: "1.94"
+      - name: Compile locked CUDA performance harness without runtime claims
+        run: python3 .github/scripts/run_benchmarks.py compile --backend cuda
 
   dependency-policy:
     name: Dependency policy
@@ -167,3 +191,21 @@ jobs:
           toolchain: stable
       - name: Test representative runtime behavior
         run: cargo test -p candle-einops --lib --test behavior --test errors
+      - name: Install Rust 1.94 for the locked performance harness
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: "1.94"
+      - name: Compile locked Accelerate performance harness
+        run: python3 .github/scripts/run_benchmarks.py compile --cpu-implementation accelerate
+      - name: Run Accelerate smoke (known Candle stride-zero failure)
+        id: accelerate-smoke
+        continue-on-error: true
+        run: python3 .github/scripts/run_benchmarks.py smoke --cpu-implementation accelerate
+      - name: Surface known upstream Accelerate smoke issue
+        if: steps.accelerate-smoke.outcome == 'failure'
+        run: >-
+          echo "::warning title=Known Candle stride-zero matmul issue::
+          Accelerate differs from the baseline CPU provider;
+          see https://github.com/huggingface/candle/issues/3744"
+      - name: Compile locked Metal performance harness without runtime claims
+        run: python3 .github/scripts/run_benchmarks.py compile --backend metal

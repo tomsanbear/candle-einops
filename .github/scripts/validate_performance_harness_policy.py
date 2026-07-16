@@ -75,10 +75,10 @@ def main() -> int:
         failures.append("required CI must not compare benchmark timings")
     if "nvidia/cuda:" not in required_workflow or "devel-ubuntu24.04" not in required_workflow:
         failures.append("required CUDA compile coverage must use a CUDA devel container")
-    if "https://github.com/huggingface/candle/issues/3744" not in required_workflow:
-        failures.append("Accelerate smoke must link the known upstream Candle issue")
-    if "continue-on-error: true" not in required_workflow:
-        failures.append("the known Accelerate provider failure must remain non-blocking")
+    if "intel-oneapi-mkl-devel" not in required_workflow:
+        failures.append("MKL smoke must install a current system oneMKL")
+    if "continue-on-error: true" in required_workflow:
+        failures.append("device profile smoke coverage must be blocking")
 
     if not comparison_script.is_file():
         failures.append("advisory benchmark comparison script is missing")

@@ -1,7 +1,7 @@
 ---
 id: benchmark-device-support
 title: Support every Candle device and CPU provider honestly
-status: todo
+status: done
 priority: p1
 dependencies: [performance-harness-foundation, repeat-broadcast-view-lowering, homogeneous-reduction-fusion, einsum-binary-fastpaths, validate-metal-device-support, validate-cuda-device-support]
 related: [advisory-performance-comparison-ci]

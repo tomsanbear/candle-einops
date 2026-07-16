@@ -7,8 +7,8 @@ use candle_einops::einops;
 use criterion::Criterion;
 
 use crate::{
-    DeviceSynchronizer, Operation, Scenario, ScenarioId, WorkUnits, criterion_operation,
-    deterministic_f32_values, prepare,
+    Backend, DeviceSynchronizer, Operation, Scenario, ScenarioId, ScenarioSupport, WorkUnits,
+    criterion_operation, deterministic_f32_values, prepare,
 };
 
 const A: usize = 32;
@@ -109,6 +109,19 @@ impl Scenario for ExtendedComposeScenario {
             ((input + output * traversals) * size_of::<f32>()) as u64,
             flops.map(|value| value as u64),
         )
+    }
+
+    fn support(&self, backend: Backend) -> ScenarioSupport {
+        if backend != Backend::Cpu
+            && self.pattern == Pattern::RuntimeEllipsis
+            && self.mode == Mode::Construct
+        {
+            ScenarioSupport::Unsupported(
+                "library path is view-only and enqueues no accelerator work",
+            )
+        } else {
+            ScenarioSupport::Supported
+        }
     }
 
     fn setup(&self, device: &Device) -> Result<Vec<Tensor>> {

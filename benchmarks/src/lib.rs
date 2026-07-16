@@ -77,10 +77,19 @@ impl WorkUnits {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ScenarioSupport {
+    Supported,
+    Unsupported(&'static str),
+}
+
 pub trait Scenario {
     fn id(&self) -> ScenarioId;
     fn tracked(&self) -> bool;
     fn work(&self) -> WorkUnits;
+    fn support(&self, _backend: Backend) -> ScenarioSupport {
+        ScenarioSupport::Supported
+    }
     fn setup(&self, device: &Device) -> Result<Vec<Tensor>>;
     fn run_library(&self, inputs: &[Tensor]) -> Result<Tensor>;
     fn run_reference(&self, inputs: &[Tensor]) -> Result<Tensor>;
@@ -523,6 +532,25 @@ impl SkippedScenario {
         }
         Ok(())
     }
+}
+
+#[must_use]
+pub fn partition_scenarios<'a>(
+    scenarios: impl IntoIterator<Item = &'a dyn Scenario>,
+    backend: Backend,
+) -> (Vec<&'a dyn Scenario>, Vec<SkippedScenario>) {
+    let mut supported = Vec::new();
+    let mut skipped = Vec::new();
+    for scenario in scenarios {
+        match scenario.support(backend) {
+            ScenarioSupport::Supported => supported.push(scenario),
+            ScenarioSupport::Unsupported(reason) => skipped.push(SkippedScenario::new(
+                scenario.id().as_str(),
+                reason,
+            )),
+        }
+    }
+    (supported, skipped)
 }
 
 impl ExecutionProfile {
@@ -1511,6 +1539,16 @@ impl Scenario for RepeatBroadcastScenario {
         )
     }
 
+    fn support(&self, backend: Backend) -> ScenarioSupport {
+        if backend != Backend::Cpu && matches!(self.mode, RepeatMode::Construct) {
+            ScenarioSupport::Unsupported(
+                "library path is view-only and enqueues no accelerator work",
+            )
+        } else {
+            ScenarioSupport::Supported
+        }
+    }
+
     fn setup(&self, device: &Device) -> Result<Vec<Tensor>> {
         let side = self.input_side();
         let values = (0..side * side)
@@ -1644,6 +1682,16 @@ impl Scenario for IdentityReshapeScenario {
             (elements * traversals * size_of::<f32>()) as u64,
             None,
         )
+    }
+
+    fn support(&self, backend: Backend) -> ScenarioSupport {
+        if backend != Backend::Cpu && self.mode == IdentityReshapeMode::Construct {
+            ScenarioSupport::Unsupported(
+                "library path is view-only and enqueues no accelerator work",
+            )
+        } else {
+            ScenarioSupport::Supported
+        }
     }
 
     fn setup(&self, device: &Device) -> Result<Vec<Tensor>> {

@@ -44,7 +44,8 @@ fn accelerator_partition_reports_every_view_only_scenario() {
 
 #[test]
 fn cpu_partition_keeps_view_and_materializing_scenarios() {
-    let scenarios = identity_reshape_scenarios()
+    let identities = identity_reshape_scenarios();
+    let scenarios = identities
         .iter()
         .map(|scenario| scenario as &dyn Scenario);
     let (supported, skipped) = partition_scenarios(scenarios, Backend::Cpu);

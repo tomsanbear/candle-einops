@@ -11,8 +11,8 @@ use candle_einops::einops;
 use criterion::Criterion;
 
 use crate::{
-    DeviceSynchronizer, Operation, Scenario, ScenarioId, WorkUnits, criterion_operation,
-    deterministic_f32_values, prepare,
+    Backend, DeviceSynchronizer, Operation, Scenario, ScenarioId, ScenarioSupport, WorkUnits,
+    criterion_operation, deterministic_f32_values, prepare,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -461,6 +461,16 @@ impl Scenario for PermuteComposeScenario {
             (Self::ELEMENTS * traversals * size_of::<f32>()) as u64,
             None,
         )
+    }
+
+    fn support(&self, backend: Backend) -> ScenarioSupport {
+        if backend != Backend::Cpu && self.mode == Mode::Construct {
+            ScenarioSupport::Unsupported(
+                "library path is view-only and enqueues no accelerator work",
+            )
+        } else {
+            ScenarioSupport::Supported
+        }
     }
 
     fn setup(&self, device: &Device) -> CandleResult<Vec<Tensor>> {

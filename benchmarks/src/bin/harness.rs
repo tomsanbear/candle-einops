@@ -7,8 +7,8 @@ use candle_einops_benchmarks::{
     DeviceSynchronizer, ExecutionProfile, MonotonicClock, PlumbingScenario, RunMetadata, Scenario,
     binary_fast_path_scenarios, binary_operand_packing, broadcast_gemm_spike, diagonal_spike,
     extended_compose, extrema_spike, identity_reshape_scenarios, measure_pair,
-    nary_cost_model_spike, permute_compose_layout_spike, prepare, product_scenarios,
-    reduction_fusion_scenarios, repeat_broadcast_scenarios, zero_k_scenarios,
+    nary_cost_model_spike, partition_scenarios, permute_compose_layout_spike, prepare,
+    product_scenarios, reduction_fusion_scenarios, repeat_broadcast_scenarios, zero_k_scenarios,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -136,6 +136,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let profile = ExecutionProfile::new(backend, cpu_implementation, device_index);
+    let (selected, skipped) = partition_scenarios(selected, profile.backend);
+    if selected.is_empty() {
+        let reasons = skipped
+            .iter()
+            .map(|scenario| format!("{}: {}", scenario.scenario_id, scenario.reason))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!("no supported benchmark scenarios matched ({reasons})").into());
+    }
     let device = profile.create_device(CompiledFeatures::CURRENT)?;
     let synchronizer = DeviceSynchronizer(&device);
     let clock = MonotonicClock;
@@ -148,7 +157,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(BenchmarkRecord::from_measurement(&prepared, &measurement)?)
         })
         .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
-    let document = BenchmarkDocument::new(run, records, Vec::new())?;
+    let document = BenchmarkDocument::new(run, records, skipped)?;
     let document = serde_json::to_string_pretty(&document)?;
     println!("{document}");
     if let Some(path) = output {

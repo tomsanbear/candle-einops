@@ -5,9 +5,9 @@ status: in-progress
 priority: p0
 dependencies: [publish-reproducible-performance-report]
 related: []
-scopes: [docs, tooling, macros, runtime]
+scopes: [docs, tooling, macros, runtime, parity, benchmarks, tests]
 shared_scopes: [ticketing]
-paths: []
+paths: [deny.toml]
 tags: [release-0.2.0]
 claimed_from: todo
 assignee: codex-root

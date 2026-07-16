@@ -1,7 +1,7 @@
 ---
 id: device-calibrated-nary-planner
-title: Calibrate n-ary planning for CPU providers
-status: in-progress
+title: Calibrate and cache CPU nary greedy execution
+status: done
 priority: p1
 dependencies: [optimized-provider-performance-protocol]
 related: [einsum-nary-layout-aware-planner]
@@ -9,22 +9,17 @@ scopes: [runtime, benchmarks]
 shared_scopes: []
 paths: []
 tags: [performance-gap, einsum]
-claimed_from: todo
-assignee: codex-root
-lease_expires_at: 1784223603
 ---
-## Evidence
+## Resolution
 
-Five optimized 25-sample processes cleared Metal and CUDA. Baseline CPU retained 13% to 101% / 4.7 to 13.8 microsecond gaps across the frozen n-ary matrix. Accelerate retained 48% to 116% / 6.2 to 13.3 microsecond gaps except broadcast-heavy, which cleared the threshold.
+The bounded exact planner improves the abstract FLOP and peak-memory score but its canonical execution route was slower on every frozen CPU network. Production therefore keeps the exact planner as a deterministic bounded analysis tool while calibrated execution uses streaming greedy.
 
-## Work
+A bounded 16-entry thread-local cache now stores only the stable greedy member sequence, keyed by operand axes, dimensions, layouts, strides, and output. Warm replay skips repeated pair search but still uses the same general binary lowering; no tensors, device allocations, or unbounded global state are cached.
 
-- Freeze the four whole-network fixtures by CPU implementation.
-- Calibrate cost weights and crossover eligibility for baseline and Accelerate without runtime autotuning.
-- Preserve deterministic bounded planning and the existing greedy fallback; do not alter Metal or CUDA selection without evidence.
+## Acceptance evidence
 
-## Acceptance
-
-- Red-first path assertions cover CPU workload crossovers and deterministic ties.
-- Selected CPU execution is never materially slower than greedy/direct reference on the frozen matrix.
-- Forward values, gradients, overflow fallback, planner budget, Metal, and CUDA remain unchanged.
+- Red-first selection tests freeze the Calibration fallback across balanced, broadcast, threshold, overflow, dtype, backend, layout, and arity boundaries.
+- Red-first execution tests prove first-run planning then cached replay with identical member sequence, forward values, all gradients, and deterministic ordering.
+- Exact planner analysis, overflow, zero-K, broadcast materialization, and planner budget tests remain green.
+- Five optimized 25-sample processes report all four networks as parity on CPU baseline and Accelerate, with medians now 0% to 2% faster and 0.17 to 0.33 microseconds faster than reference.
+- Metal and CUDA continue down their existing greedy backend route.

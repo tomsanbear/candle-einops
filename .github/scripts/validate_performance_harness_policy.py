@@ -7,6 +7,14 @@ import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[2]
+IGNORED_SCAN_PARTS = {".venv", "target", "__pycache__"}
+
+
+def is_forbidden_benchmark_artifact(path: Path) -> bool:
+    """Return whether a repository benchmark path is a committed report artifact."""
+    if any(part in IGNORED_SCAN_PARTS for part in path.parts):
+        return False
+    return path.name == "baseline" or "criterion" in path.parts or path.suffix == ".html"
 
 
 def main() -> int:
@@ -68,6 +76,7 @@ def main() -> int:
         "python3 .github/scripts/run_benchmarks.py compile --backend cuda",
         "python3 .github/scripts/test_run_benchmarks.py",
         "python3 .github/scripts/test_compare_benchmarks.py",
+        "python3 .github/scripts/test_validate_performance_harness_policy.py",
     ]:
         if required_command not in required_workflow:
             failures.append(f"required CI must run `{required_command}`")
@@ -125,8 +134,7 @@ def main() -> int:
     forbidden = [
         path
         for path in (ROOT / "benchmarks").rglob("*")
-        if path.is_file()
-        and (path.name == "baseline" or "criterion" in path.parts or path.suffix == ".html")
+        if path.is_file() and is_forbidden_benchmark_artifact(path)
     ]
     if forbidden:
         failures.append(f"benchmark reports or baselines must not be committed: {forbidden}")

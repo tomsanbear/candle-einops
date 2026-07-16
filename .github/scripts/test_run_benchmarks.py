@@ -65,6 +65,15 @@ class CaptureCommandTests(unittest.TestCase):
                 backend="cpu", scenario_filter="einsum", operation="library"
             )
 
+    def test_gap_runs_require_five_independent_output_documents(self) -> None:
+        output = Path("/tmp/gaps")
+        self.assertEqual(
+            run_benchmarks.gap_output_paths(output, 5),
+            [output / f"run-{index:02}.json" for index in range(1, 6)],
+        )
+        with self.assertRaisesRegex(SystemExit, "at least five"):
+            run_benchmarks.gap_output_paths(output, 4)
+
 
 if __name__ == "__main__":
     unittest.main()

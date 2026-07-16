@@ -1,7 +1,7 @@
 ---
 id: optimized-provider-performance-protocol
 title: Establish optimized provider performance protocol
-status: in-progress
+status: done
 priority: p0
 dependencies: []
 related: []
@@ -9,9 +9,6 @@ scopes: [benchmarks, tooling]
 shared_scopes: []
 paths: []
 tags: [performance-gap, performance-0.2]
-claimed_from: todo
-assignee: codex-root
-lease_expires_at: 1784221819
 ---
 ## Goal
 

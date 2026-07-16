@@ -73,6 +73,21 @@ fn eager_strategy_materializes_broadcast_operands() -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "metal")]
+#[test]
+fn eager_strategy_reports_materialization_on_metal() -> Result<()> {
+    let device = Device::new_metal(0)?;
+    let left = Tensor::ones((1, 8, 8), DType::F32, &device)?;
+    let right = Tensor::ones((4, 8, 8), DType::F32, &device)?;
+    let probe = eager_expansion_probe(&left, &right)?;
+
+    assert_eq!(probe.left_copy_elements, 4 * 8 * 8);
+    assert_eq!(probe.right_copy_elements, 0);
+    assert_eq!(probe.output.dims(), &[4, 8, 8]);
+    device.synchronize()?;
+    Ok(())
+}
+
 #[test]
 fn direct_and_slice_candidates_cover_their_structural_boundaries() -> Result<()> {
     let left = Tensor::ones((4, 8, 8), DType::F32, &Device::Cpu)?;

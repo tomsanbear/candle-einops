@@ -661,6 +661,34 @@ mod tests {
     }
 
     #[test]
+    fn product_reduction_uses_balanced_association() -> Result<()> {
+        let values = (0..64)
+            .map(|index| 1. + ((index % 7) as f32 - 3.) * 0.0001)
+            .collect::<Vec<_>>();
+        let input = Tensor::from_vec(values, (1, 64), &Device::Cpu)?;
+        let selected = (&input).reduce_axes(&mut [(1, Operation::Prod)])?;
+
+        let mut factors = (0..64)
+            .map(|index| input.narrow(1, index, 1)?.squeeze(1))
+            .collect::<Result<Vec<_>>>()?;
+        while factors.len() > 1 {
+            let mut next = Vec::with_capacity(factors.len().div_ceil(2));
+            let mut factor_iter = factors.into_iter();
+            while let Some(left) = factor_iter.next() {
+                next.push(match factor_iter.next() {
+                    Some(right) => left.mul(&right)?,
+                    None => left,
+                });
+            }
+            factors = next;
+        }
+        let balanced = factors.pop().expect("non-empty factors");
+
+        assert_eq!(selected.to_vec1::<f32>()?, balanced.to_vec1::<f32>()?);
+        Ok(())
+    }
+
+    #[test]
     fn reduce() -> Result<()> {
         let tests = vec![
             (

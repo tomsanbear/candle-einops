@@ -638,6 +638,14 @@ mod tests {
         (&input).reduce_axes(&mut [(1, Operation::Min), (2, Operation::Min)])?;
         assert_eq!(backend_reduction_call_count(), 1);
 
+        reset_backend_reduction_call_count();
+        (&input).reduce_axes(&mut [(0, Operation::Max), (1, Operation::Max)])?;
+        assert_eq!(
+            backend_reduction_call_count(),
+            2,
+            "CPU extrema should retain Candle's faster sequential leading-axis route"
+        );
+
         let strided = input.permute([0, 2, 1])?;
         reset_backend_reduction_call_count();
         let selected = (&strided).reduce_axes(&mut [(1, Operation::Max), (2, Operation::Max)])?;

@@ -71,7 +71,7 @@ jobs:
             local worktree="$2"
             local pair="$3"
             local target="$RESULTS/build/$side"
-            local arguments=(cargo +1.94 run --locked --manifest-path benchmarks/Cargo.toml --bin harness --)
+            local arguments=(cargo +1.94 run --release --locked --manifest-path benchmarks/Cargo.toml --bin harness --)
             arguments+=(--samples 25 --output "$RESULTS/json/$side/run-$pair.json")
             if [[ -n "$BENCHMARK_FILTER" ]]; then
               arguments+=(--filter "$BENCHMARK_FILTER")

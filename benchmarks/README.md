@@ -34,6 +34,7 @@ Use the repository wrapper for every supported operation:
 python3 .github/scripts/run_benchmarks.py compile
 python3 .github/scripts/run_benchmarks.py smoke
 python3 .github/scripts/run_benchmarks.py run --filter rearrange/view-permute --output target/benchmarks/result.json
+python3 .github/scripts/run_benchmarks.py gaps --filter einsum/binary --output target/benchmarks/gaps/cpu
 python3 .github/scripts/run_benchmarks.py probe --filter spike/diagonal --output target/benchmarks/index-preparation.json
 python3 .github/scripts/run_benchmarks.py capture --backend metal --filter reshape/identity/non-contiguous/consume --operation library
 python3 .github/scripts/run_benchmarks.py capture --backend cuda --filter reshape/identity/non-contiguous/consume --operation reference
@@ -43,7 +44,10 @@ The wrapper pins Rust 1.94, uses this crate's committed lockfile, and shares the
 root ignored `target/benchmarks` directory. Select `--backend cpu|metal|cuda`,
 `--cpu-implementation baseline|accelerate|mkl`, and `--device-index` explicitly
 when the defaults are not appropriate. `run` selects tracked scenarios by
-substring. `smoke` additionally opts into the untracked plumbing fixture.
+substring. `run`, `gaps`, `probe`, and `capture` always use release artifacts,
+and schema-v2 run metadata records the build profile so optimized and debug
+measurements cannot be compared. `smoke` additionally opts into the untracked
+plumbing fixture.
 
 The supported execution profiles are deliberately explicit:
 
@@ -84,6 +88,14 @@ prefix to which Nsight Systems adds `.nsys-rep`; `nsys` must be on `PATH`.
 isolates host index construction plus device upload and records the input,
 materialized-copy, output, and index element counts beside its timing. This
 separates reusable setup cost from the paired current/cached operation timing.
+
+`gaps` runs the selected scenario set in five independent harness processes and
+writes each primary document plus `summary.json` beneath its required `--output`
+directory. `--processes` may raise, but not lower, the process count. The summary
+uses paired library/reference medians and reports a material reference gap only
+when the repeated-process median exceeds both 10% and 1 microsecond and its
+deterministic 95% interval lies beyond 5%. This report is the high-signal input
+for provider optimization work; sub-microsecond controls remain parity.
 
 Each scenario has an immutable id, deterministic setup, a library operation, a
 direct Candle reference, an untimed correctness check, and elements/bytes with

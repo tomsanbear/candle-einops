@@ -92,10 +92,16 @@ def cargo_target_dir() -> Path:
     return Path(os.environ.get("CARGO_TARGET_DIR", TARGET))
 
 
+def gap_output_paths(output: Path, processes: int) -> list[Path]:
+    if processes < 5:
+        raise SystemExit("gaps requires at least five independent processes")
+    return [output / f"run-{index:02}.json" for index in range(1, processes + 1)]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "command", choices=("compile", "smoke", "run", "probe", "capture")
+        "command", choices=("compile", "smoke", "run", "probe", "capture", "gaps")
     )
     parser.add_argument("--backend", choices=("cpu", "metal", "cuda"), default="cpu")
     parser.add_argument(
@@ -109,6 +115,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--operation", choices=("library", "reference"))
     parser.add_argument("--warmups", type=int, default=3)
+    parser.add_argument("--processes", type=int, default=5)
     return parser.parse_args()
 
 
@@ -233,6 +240,33 @@ def main() -> int:
     ]
     if args.filter:
         harness_arguments.extend(["--filter", args.filter])
+    if args.command == "gaps":
+        if args.output is None:
+            raise SystemExit("gaps requires an --output directory")
+        paths = gap_output_paths(args.output, args.processes)
+        args.output.mkdir(parents=True, exist_ok=True)
+        for path in paths:
+            cargo(
+                "run",
+                *cargo_profile_arguments(args.command),
+                "--bin",
+                "harness",
+                backend=args.backend,
+                cpu_implementation=args.cpu_implementation,
+                *("--", *harness_arguments, "--output", str(path)),
+            )
+        subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / ".github/scripts/summarize_reference_gaps.py"),
+                *(str(path) for path in paths),
+                "--output",
+                str(args.output / "summary.json"),
+            ],
+            cwd=ROOT,
+            check=True,
+        )
+        return 0
     if args.output:
         harness_arguments.extend(["--output", str(args.output)])
     binary = "diagonal_probe" if args.command == "probe" else "harness"

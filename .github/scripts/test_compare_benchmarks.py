@@ -88,6 +88,7 @@ class AdvisoryComparisonTests(unittest.TestCase):
         side: str,
         sha: str,
         medians: list[float],
+        build_profile: str = "release",
     ) -> list[Path]:
         paths = []
         for index, median in enumerate(medians, 1):
@@ -97,6 +98,7 @@ class AdvisoryComparisonTests(unittest.TestCase):
             fingerprint = item.pop("fingerprint")
             run = {
                 **fingerprint,
+                "build_profile": build_profile,
                 "cpu_implementation": "baseline",
                 "device_index": None,
                 "device_name": "CPU (baseline)",
@@ -141,6 +143,19 @@ class AdvisoryComparisonTests(unittest.TestCase):
             head = self.write_v2_runs(root, "head", HEAD_SHA, [12_000] * 5)
             report = compare_benchmarks.compare_files(base, head, BASE_SHA, HEAD_SHA)
         self.assertEqual(report["scenarios"][0]["status"], "advisory_regression")
+
+    def test_schema_v2_build_profiles_are_incomparable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = self.write_v2_runs(root, "base", BASE_SHA, [10_000] * 5)
+            head = self.write_v2_runs(
+                root, "head", HEAD_SHA, [12_000] * 5, build_profile="debug"
+            )
+            report = compare_benchmarks.compare_files(base, head, BASE_SHA, HEAD_SHA)
+        self.assertEqual(report["scenarios"][0]["status"], "incomparable")
+        self.assertEqual(
+            report["scenarios"][0]["reason"], "fingerprint_mismatch"
+        )
 
     def test_report_marks_only_large_confident_movement_advisory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

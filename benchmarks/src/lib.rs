@@ -788,6 +788,7 @@ fn collect_cuda_identity(_device: &Device, fallback_name: String) -> DeviceIdent
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RunMetadata {
     pub git_sha: String,
+    pub build_profile: String,
     pub rust_version: String,
     pub candle_version: String,
     pub os: String,
@@ -881,6 +882,11 @@ impl RunMetadata {
         };
         let metadata = Self {
             git_sha: benchmark_git_sha()?,
+            build_profile: if cfg!(debug_assertions) {
+                "debug".to_owned()
+            } else {
+                "release".to_owned()
+            },
             rust_version: command_output(
                 std::env::var("RUSTC").as_deref().unwrap_or("rustc"),
                 &["--version"],
@@ -905,6 +911,7 @@ impl RunMetadata {
     pub fn validate(&self) -> std::result::Result<(), ValidationError> {
         if self.git_sha.len() != 40
             || !self.git_sha.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !matches!(self.build_profile.as_str(), "debug" | "release")
             || self.rust_version.trim().is_empty()
             || self.candle_version.trim().is_empty()
             || self.os.trim().is_empty()

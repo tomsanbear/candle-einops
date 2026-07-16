@@ -131,6 +131,7 @@ def _fingerprint_key(record: dict[str, Any]) -> tuple[Any, ...] | None:
             return None
         return values
     fields = (
+        "build_profile",
         "rust_version",
         "candle_version",
         "os",

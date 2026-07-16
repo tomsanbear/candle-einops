@@ -16,6 +16,10 @@ MANIFEST = ROOT / "benchmarks/Cargo.toml"
 TARGET = ROOT / "target/benchmarks"
 
 
+def cargo_profile_arguments(command: str) -> list[str]:
+    return ["--release"] if command in {"run", "probe", "capture", "gaps"} else []
+
+
 def feature_for(backend: str, cpu_implementation: str) -> str | None:
     if backend != "cpu":
         if cpu_implementation != "baseline":
@@ -184,6 +188,7 @@ def main() -> int:
             harness_arguments.extend(["--capture-output", str(metal_output)])
             cargo(
                 "run",
+                *cargo_profile_arguments(args.command),
                 "--bin",
                 "harness",
                 backend=args.backend,
@@ -198,6 +203,7 @@ def main() -> int:
             raise SystemExit("CUDA capture requires nsys on PATH")
         cargo(
             "build",
+            *cargo_profile_arguments(args.command),
             "--bin",
             "harness",
             backend=args.backend,
@@ -205,7 +211,7 @@ def main() -> int:
         )
         command = nsys_capture_command(
             nsys=Path(nsys_path),
-            binary=cargo_target_dir() / "debug/harness",
+            binary=cargo_target_dir() / "release/harness",
             output=output,
             harness_arguments=harness_arguments,
         )
@@ -232,6 +238,7 @@ def main() -> int:
     binary = "diagonal_probe" if args.command == "probe" else "harness"
     cargo(
         "run",
+        *cargo_profile_arguments(args.command),
         "--bin",
         binary,
         backend=args.backend,

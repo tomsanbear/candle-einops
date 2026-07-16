@@ -5,11 +5,18 @@ use candle_einops_benchmarks::broadcast_gemm_spike::broadcast_scenarios;
 use candle_einops_benchmarks::{
     Backend, BenchmarkRecord, Clock, Fingerprint, Operation, SamplingOrderPolicy, Scenario,
     ScenarioId, Synchronizer, WorkUnits, binary_fast_path_scenarios, binary_operand_packing,
-    extended_compose, extrema_spike, identity_reshape_scenarios, measure_pair,
+    elapsed_ns, extended_compose, extrema_spike, identity_reshape_scenarios, measure_pair,
     permute_compose_layout_spike,
     prepare, reduction_fusion_scenarios, repeat_broadcast_scenarios, run_synchronized_operation,
     zero_k_scenarios,
 };
+
+#[test]
+fn host_clock_samples_have_an_explicit_one_nanosecond_floor() {
+    assert_eq!(elapsed_ns(10, 10), 1);
+    assert_eq!(elapsed_ns(11, 10), 1);
+    assert_eq!(elapsed_ns(10, 15), 5);
+}
 
 #[derive(Clone)]
 struct EventLog(Arc<Mutex<Vec<&'static str>>>);
